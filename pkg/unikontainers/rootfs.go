@@ -29,6 +29,11 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
+type mountFlagStruct struct {
+	clear bool
+	flag  int
+}
+
 // pivotRootfs changes rootfs with pivot
 // It should be called with CWD being the new rootfs
 func pivotRootfs(newRoot string) error {
@@ -109,7 +114,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 // essentially sets up the devices (KVM, snapshotter block device) that are required
 // for the guest execution and any other files (e.g. binaries).
 func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needsKVM bool, needsTAP bool) error {
-	err := fileFromHost(monRootfs, monitorPath, "", false)
+	err := fileFromHost(monRootfs, monitorPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 	if err != nil {
 		return err
 	}
@@ -117,17 +122,17 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 	// TODO: Remove these when we switch to static binaries
 	monitorName := filepath.Base(monitorPath)
 	if monitorName != "firecracker" {
-		err = fileFromHost(monRootfs, "/lib", "", false)
+		err = fileFromHost(monRootfs, "/lib", "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
 			return err
 		}
 
-		err = fileFromHost(monRootfs, "/lib64", "", false)
+		err = fileFromHost(monRootfs, "/lib64", "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
 			return err
 		}
 
-		err = fileFromHost(monRootfs, "/usr/lib", "", false)
+		err = fileFromHost(monRootfs, "/usr/lib", "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
 			return err
 		}
@@ -141,7 +146,7 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 			return err
 		}
 
-		err = fileFromHost(monRootfs, qDataPath, "/usr/share/qemu", false)
+		err = fileFromHost(monRootfs, qDataPath, "/usr/share/qemu", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
 			return err
 		}
@@ -150,7 +155,7 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 		// we do not need it. SO if we do not find, just ignore it.
 		sBiosPath, err := findQemuDataDir("seabios")
 		if err == nil {
-			err = fileFromHost(monRootfs, sBiosPath, "/usr/share/seabios", false)
+			err = fileFromHost(monRootfs, sBiosPath, "/usr/share/seabios", unix.MS_BIND|unix.MS_PRIVATE, false)
 			if err != nil {
 				return err
 			}
@@ -310,7 +315,7 @@ func setupDev(monRootfs string, devPath string) error {
 // none of the monitor processes will share memory with other processes
 // of the same monitor. On the other hand, a copy is slower and consumes
 // more space.
-func fileFromHost(monRootfs string, hostPath string, target string, withCopy bool) error {
+func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, withCopy bool) error {
 	// Get the info of the original file
 	var fileInfo unix.Stat_t
 	err := unix.Stat(hostPath, &fileInfo)
@@ -336,13 +341,13 @@ func fileFromHost(monRootfs string, hostPath string, target string, withCopy boo
 				return fmt.Errorf("failed to copy file %s: %w", hostPath, err)
 			}
 		} else {
-			err = bindMountFile(hostPath, dstDir, dstPath, fileInfo.Mode, false)
+			err = bindMountFile(hostPath, dstDir, dstPath, fileInfo.Mode, mFlags, false)
 			if err != nil {
 				return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
 			}
 		}
 	} else {
-		err = bindMountFile(hostPath, dstPath, "", 0, true)
+		err = bindMountFile(hostPath, dstPath, "", 0, mFlags, true)
 		if err != nil {
 			return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
 		}
@@ -359,11 +364,25 @@ func fileFromHost(monRootfs string, hostPath string, target string, withCopy boo
 		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
 	}
 
+	// The initial MS_BIND won't change the mount options, we need to do a
+	// separate MS_BIND|MS_REMOUNT to apply the mount options. We skip
+	// doing this if the user has not specified any mount flags at all
+	// (including cleared flags) -- in which case we just keep the original
+	// mount flags.
+	if mFlags & ^(unix.MS_BIND|unix.MS_REC|unix.MS_REMOUNT) != 0 {
+		flags := mFlags | unix.MS_BIND | unix.MS_REMOUNT
+		err = unix.Mount(dstPath, dstPath, "", uintptr(flags), "")
+		if err != nil {
+			return fmt.Errorf("Failed to set mount flags for %s: %w", dstPath, err)
+		}
+	}
+
 	return nil
 }
 
 // bindMountFile bind mounts a file/directory to a new path
-func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, isDir bool) error {
+func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, mFlags int, isDir bool) error {
+	var mountTarget string
 	err := os.MkdirAll(dstDir, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
@@ -372,15 +391,17 @@ func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, 
 	if !isDir {
 		dstFile, err1 := unix.Open(dstPath, unix.O_CREAT, perm)
 		if err1 != nil {
-			return fmt.Errorf("failed to create file %s: %w", dstPath, err)
+			return fmt.Errorf("failed to create file %s: %w", dstPath, err1)
 		}
 		unix.Close(dstFile)
-		err = unix.Mount(hostPath, dstPath, "", unix.MS_BIND|unix.MS_PRIVATE, "")
+		mountTarget = dstPath
 	} else {
-		err = unix.Mount(hostPath, dstDir, "", unix.MS_BIND|unix.MS_PRIVATE, "")
+		mountTarget = dstDir
 	}
+
+	err = unix.Mount(hostPath, mountTarget, "", uintptr(mFlags), "")
 	if err != nil {
-		return fmt.Errorf("failed to bind mount %s: %w", dstPath, err)
+		return fmt.Errorf("failed to bind mount %s: %w", mountTarget, err)
 	}
 
 	return nil
@@ -495,4 +516,96 @@ func findQemuDataDir(basename string) (string, error) {
 	}
 
 	return qdPath, nil
+}
+
+func mountVolumes(rootfsPath string, mounts []specs.Mount) error {
+	for _, m := range mounts {
+		// Skip non-bind mounts
+		// TODO handle other types of mounts too
+		if m.Type != "bind" {
+			continue
+		}
+		var mountFlags int
+		var mountClearedFlags int
+		var propFlag []int
+		mountFlags = 0
+		mountClearedFlags = 0
+		for _, o := range m.Options {
+			f, exists := mapMountFlag(o)
+			if exists {
+				if f.clear {
+					mountFlags &= ^f.flag
+					mountClearedFlags |= f.flag
+				} else {
+					mountFlags |= f.flag
+					mountClearedFlags &= ^f.flag
+				}
+				continue
+			}
+			fprop, err := mapRootfsPropagationFlag(o)
+			if err == nil {
+				propFlag = append(propFlag, fprop)
+			}
+			// Ignore unknown flags
+			// TODO: Handle unknown flags. These can be mount attribute flags
+			// or specific flags for a particular fs type.
+		}
+		err := fileFromHost(rootfsPath, m.Source, m.Destination, mountFlags, false)
+		if err != nil {
+			return err
+		}
+
+		dstPath := filepath.Join(rootfsPath, m.Destination)
+		for _, pFlag := range propFlag {
+			err = unix.Mount(dstPath, dstPath, "", uintptr(pFlag), "")
+			if err != nil {
+				return fmt.Errorf("Failed to set propagation flag for %s: %w", m.Source, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// mapMountFlag retrieves the mount flags of a mount entry
+// from the container's configuration
+func mapMountFlag(value string) (mountFlagStruct, bool) {
+	mountFlagsMapping := map[string]mountFlagStruct{
+		"async":         {true, unix.MS_SYNCHRONOUS},
+		"atime":         {true, unix.MS_NOATIME},
+		"bind":          {false, unix.MS_BIND},
+		"defaults":      {false, 0},
+		"dev":           {true, unix.MS_NODEV},
+		"diratime":      {true, unix.MS_NODIRATIME},
+		"dirsync":       {false, unix.MS_DIRSYNC},
+		"exec":          {true, unix.MS_NOEXEC},
+		"iversion":      {false, unix.MS_I_VERSION},
+		"lazytime":      {false, unix.MS_LAZYTIME},
+		"loud":          {true, unix.MS_SILENT},
+		"mand":          {false, unix.MS_MANDLOCK},
+		"noatime":       {false, unix.MS_NOATIME},
+		"nodev":         {false, unix.MS_NODEV},
+		"nodiratime":    {false, unix.MS_NODIRATIME},
+		"noexec":        {false, unix.MS_NOEXEC},
+		"noiversion":    {true, unix.MS_I_VERSION},
+		"nolazytime":    {true, unix.MS_LAZYTIME},
+		"nomand":        {true, unix.MS_MANDLOCK},
+		"norelatime":    {true, unix.MS_RELATIME},
+		"nostrictatime": {true, unix.MS_STRICTATIME},
+		"nosuid":        {false, unix.MS_NOSUID},
+		"nosymfollow":   {false, unix.MS_NOSYMFOLLOW}, // since kernel 5.10
+		"rbind":         {false, unix.MS_BIND | unix.MS_REC},
+		"relatime":      {false, unix.MS_RELATIME},
+		"remount":       {false, unix.MS_REMOUNT},
+		"ro":            {false, unix.MS_RDONLY},
+		"rw":            {true, unix.MS_RDONLY},
+		"silent":        {false, unix.MS_SILENT},
+		"strictatime":   {false, unix.MS_STRICTATIME},
+		"suid":          {true, unix.MS_NOSUID},
+		"sync":          {false, unix.MS_SYNCHRONOUS},
+		"symfollow":     {true, unix.MS_NOSYMFOLLOW}, // since kernel 5.10
+	}
+
+	f, e := mountFlagsMapping[value]
+	return f, e
 }

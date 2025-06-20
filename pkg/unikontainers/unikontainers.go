@@ -349,6 +349,11 @@ func (u *Unikontainer) Exec() error {
 		return err
 	}
 
+	err = mountVolumes(rootfsDir, u.Spec.Mounts)
+	if err != nil {
+		return err
+	}
+
 	withPivot := containsNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	err = changeRoot(rootfsDir, withPivot)
 	if err != nil {
@@ -360,7 +365,6 @@ func (u *Unikontainer) Exec() error {
 	if err != nil {
 		return err
 	}
-
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(u.State.ID, "TS18")
 	// metrics.Wait()
