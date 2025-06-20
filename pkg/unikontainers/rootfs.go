@@ -167,6 +167,17 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 		}
 	}
 
+	newProcDir := filepath.Join(monRootfs, "/proc")
+	err = os.MkdirAll(newProcDir, 0555)
+	if err != nil {
+		return err
+	}
+
+	err = unix.Mount("proc", newProcDir, "proc", 0, "")
+	if err != nil {
+		return err
+	}
+
 	err = createTmpfs(monRootfs, "/dev", unix.MS_NOSUID|unix.MS_STRICTATIME, "755")
 	if err != nil {
 		return err
