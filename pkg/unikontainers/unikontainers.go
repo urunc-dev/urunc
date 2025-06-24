@@ -294,16 +294,29 @@ func (u *Unikontainer) Exec() error {
 	}
 
 	var dmPath = ""
+	monRootfs := rootfsDir
 	// If we need to mount the rootfs, we need to choose between devmapper and
 	// shared-fs. At first, we check if the unikernel supports block devices.
 	if withRootfsMount {
+		// Create a new directory for the monitor's rootfs.
+		// THis will be the directory where we will chroot.
+		// It is not the container's rootfs. The container's rootfs
+		// will get mounted inside this directory.
+		// For the time being, we choose to place it under the bundle, but
+		// we might want to revisit this in the future.
+		monRootfs = filepath.Join(bundleDir, monitorRootfsDirName)
+		err := os.MkdirAll(monRootfs, 0o755)
+		if err != nil {
+			return err
+		}
+
 		if unikernel.SupportsBlock() {
 			rootFsDevice, err := getBlockDevice(rootfsDir)
 			if err != nil {
 				return err
 			}
 			if unikernel.SupportsFS(rootFsDevice.FsType) {
-				err = prepareDMAsBlock(rootFsDevice.Path, unikernelPath, uruncJSONFilename, initrdPath)
+				err = prepareDMAsBlock(rootFsDevice.Path, monRootfs, unikernelPath, uruncJSONFilename, initrdPath)
 				if err != nil {
 					return err
 				}
@@ -359,21 +372,6 @@ func (u *Unikontainer) Exec() error {
 	err = u.ExecuteHooks("StartContainer")
 	if err != nil {
 		return err
-	}
-
-	monRootfs := rootfsDir
-	if unikernelParams.RootFSType == "9pfs" {
-		// Create a new directory for the monitor's rootfs.
-		// THis will be the directory where we will chroot.
-		// It is not the container's rootfs. The container's rootfs
-		// will get mounted inside this directory.
-		// For the time being, we choose to place it under the bundle, but
-		// we might want to revisit this in the future.
-		monRootfs = filepath.Join(bundleDir, monitorRootfsDirName)
-		err := os.MkdirAll(monRootfs, 0o755)
-		if err != nil {
-			return err
-		}
 	}
 
 	// Make sure that rootfs is mounted with the correct propagation
@@ -496,38 +494,56 @@ func (u *Unikontainer) Delete() error {
 	if !filepath.IsAbs(rootfsDir) {
 		rootfsDir = filepath.Join(bundleDir, rootfsDir)
 	}
-	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
-	err := os.RemoveAll(monRootfs)
+
+	// Check if we used a different directory for monitor's rootfs than the
+	// container's one.
+	withRootfsMount := false
+	withRootfsMount, err := strconv.ParseBool(u.State.Annotations[annotMountRootfs])
 	if err != nil {
-		return fmt.Errorf("cannot remove %s: %v", monRootfs, err)
+		withRootfsMount = false
 	}
-	cntrDev := filepath.Join(rootfsDir, "/dev")
-	err = os.RemoveAll(cntrDev)
-	if err != nil {
-		return fmt.Errorf("cannot remove /dev: %v", err)
-	}
-	cntrTmp := filepath.Join(rootfsDir, "/tmp")
-	err = os.RemoveAll(cntrTmp)
-	if err != nil {
-		return fmt.Errorf("cannot remove /tmp: %v", err)
-	}
-	cntrLib := filepath.Join(rootfsDir, "/lib")
-	err = os.RemoveAll(cntrLib)
-	if err != nil {
-		return fmt.Errorf("cannot remove /lib: %v", err)
-	}
-	cntrLib64 := filepath.Join(rootfsDir, "/lib64")
-	err = os.RemoveAll(cntrLib64)
-	if err != nil {
-		return fmt.Errorf("cannot remove /lib64: %v", err)
-	}
-	// We do not need to unmount anything here, since we rely on Linux
-	// to do the cleanup for us. This will happen automatically,
-	// when the mount namespace gets destroyed
-	cntrUsr := filepath.Join(rootfsDir, "/usr")
-	err = os.RemoveAll(cntrUsr)
-	if err != nil {
-		return fmt.Errorf("cannot remove /usr: %v", err)
+	annotBlock := u.State.Annotations[annotBlock]
+	// TODO: We might not need to rmeove all these directories.
+	if annotBlock == "" && withRootfsMount {
+		// Since there was no no block defined for the unikernel
+		// and we created a new rootfs for the monitor, we need to
+		// clean it up.
+		monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
+		err = os.RemoveAll(monRootfs)
+		if err != nil {
+			return fmt.Errorf("cannot remove %s: %v", monRootfs, err)
+		}
+	} else {
+		// Otherwise remove the enw directories we created inside the
+		// container's rootfs.
+		cntrDev := filepath.Join(rootfsDir, "/dev")
+		err = os.RemoveAll(cntrDev)
+		if err != nil {
+			return fmt.Errorf("cannot remove /dev: %v", err)
+		}
+		cntrTmp := filepath.Join(rootfsDir, "/tmp")
+		err = os.RemoveAll(cntrTmp)
+		if err != nil {
+			return fmt.Errorf("cannot remove /tmp: %v", err)
+		}
+		cntrLib := filepath.Join(rootfsDir, "/lib")
+		err = os.RemoveAll(cntrLib)
+		if err != nil {
+			return fmt.Errorf("cannot remove /lib: %v", err)
+		}
+		cntrLib64 := filepath.Join(rootfsDir, "/lib64")
+		err = os.RemoveAll(cntrLib64)
+		if err != nil {
+			return fmt.Errorf("cannot remove /lib64: %v", err)
+		}
+		// We do not need to unmount anything here, since we rely on Linux
+		// to do the cleanup for us. This will happen automatically,
+		// when the mount namespace gets destroyed
+		cntrUsr := filepath.Join(rootfsDir, "/usr")
+		err = os.RemoveAll(cntrUsr)
+		if err != nil {
+			return fmt.Errorf("cannot remove /usr: %v", err)
+		}
 	}
 	return os.RemoveAll(u.BaseDir)
 }
