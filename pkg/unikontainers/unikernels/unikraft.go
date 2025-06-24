@@ -74,8 +74,13 @@ func (u *Unikraft) SupportsBlock() bool {
 	return false
 }
 
-func (u *Unikraft) SupportsFS(_ string) bool {
-	return false
+func (u *Unikraft) SupportsFS(fsType string) bool {
+	switch fsType {
+	case "9pfs":
+		return true
+	default:
+		return false
+	}
 }
 
 // There is no need for any changes here yet.
@@ -118,14 +123,15 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 
 	setCurrentArgs := func() {
 		u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":8.8.8.8"
-		// TODO: We need to add support for actual block devices (e.g. virtio-blk)
-		// and sharedfs or any other Unikraft related ways to pass data to guest.
-		if rootFsType == "initrd" {
+		switch rootFsType {
+		case "initrd":
 			// TODO: This needs better handling. We need to revisit this
 			// when we better understand all the available options for
 			// passing info inside unikraft unikernels.
 			u.VFS.RootFS = "vfs.fstab=[ \"initrd0:/:extract:::\" ]"
-		} else {
+		case "9pfs":
+			u.VFS.RootFS = "vfs.fstab=[ \"fs0:/:9pfs:::\" ]"
+		default:
 			u.VFS.RootFS = ""
 		}
 	}

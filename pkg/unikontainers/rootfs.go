@@ -450,9 +450,6 @@ func mapRootfsPropagationFlag(value string) (int, error) {
 //   - pivot_root() will fail if parent mount is shared;
 //   - when we bind mount rootfs, if its parent is not private, the new mount
 //     will propagate (leak!) to parent namespace and we don't want that.
-//
-// Revisit this: We can remove this if we decide to create our own rootfs for
-// the execution of the monitor, since we can make sure that the mount will be private.
 func rootfsParentMountPrivate(path string) error {
 	var err error
 	// Assuming path is absolute and clean.

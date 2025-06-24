@@ -50,12 +50,17 @@ func (l *Linux) CommandString() (string, error) {
 	}
 	bootParams += " " + consoleStr
 
-	if l.RootFsType == "block" {
+	switch l.RootFsType {
+	case "block":
 		rootParams := "root=/dev/vda rw"
 		bootParams += " " + rootParams
-	} else if l.RootFsType == "initrd" {
+	case "initrd":
 		rootParams := "root=/dev/ram0 rw"
 		rdinit = "rd"
+		bootParams += " " + rootParams
+	case "9pfs":
+		rootParams := "root=fs0 rw rootfstype=9p rootflags="
+		rootParams += "trans=virtio,version=9p2000.L,msize=5000000,cache=mmap,posixacl"
 		bootParams += " " + rootParams
 	}
 	if l.Net.Address != "" {
@@ -80,8 +85,19 @@ func (l *Linux) SupportsBlock() bool {
 	return true
 }
 
-func (l *Linux) SupportsFS(_ string) bool {
-	return true
+func (l *Linux) SupportsFS(fsType string) bool {
+	switch fsType {
+	case "ext2":
+		return true
+	case "ext3":
+		return true
+	case "ext4":
+		return true
+	case "9pfs":
+		return true
+	default:
+		return false
+	}
 }
 
 func (l *Linux) MonitorNetCli(_ string) string {

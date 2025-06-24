@@ -41,6 +41,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	monitorRootfsDirName     string = "monRootfs"
+	containerRootfsMountPath string = "/cntrRootfs"
+)
+
 var uniklog = logrus.WithField("subsystem", "unikontainers")
 
 var ErrQueueProxy = errors.New("this a queue proxy container")
@@ -306,8 +311,11 @@ func (u *Unikontainer) Exec() error {
 				unikernelParams.RootFSType = "block"
 				dmPath = rootFsDevice.Device
 			}
-		} else {
+		}
+		// If we could not use a block-based rootfs, check if we can use 9pfs
+		if unikernelParams.RootFSType == "" {
 			if unikernel.SupportsFS("9pfs") {
+				vmmArgs.SharedfsPath = containerRootfsMountPath
 				unikernelParams.RootFSType = "9pfs"
 			}
 		}
@@ -353,27 +361,55 @@ func (u *Unikontainer) Exec() error {
 		return err
 	}
 
+	monRootfs := rootfsDir
+	if unikernelParams.RootFSType == "9pfs" {
+		// Create a new directory for the monitor's rootfs.
+		// THis will be the directory where we will chroot.
+		// It is not the container's rootfs. The container's rootfs
+		// will get mounted inside this directory.
+		// For the time being, we choose to place it under the bundle, but
+		// we might want to revisit this in the future.
+		monRootfs = filepath.Join(bundleDir, monitorRootfsDirName)
+		err := os.MkdirAll(monRootfs, 0o755)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Make sure that rootfs is mounted with the correct propagation
 	// flags so we can later pivot if needed.
-	err = prepareRoot(rootfsDir, u.Spec.Linux.RootfsPropagation)
+	err = prepareRoot(monRootfs, u.Spec.Linux.RootfsPropagation)
 	if err != nil {
 		return err
 	}
 
 	// Setup the rootfs for the the monitor execution, creating necessary
 	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsDir, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP)
+	err = prepareMonRootfs(monRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
 		return err
 	}
 
-	err = mountVolumes(rootfsDir, u.Spec.Mounts)
-	if err != nil {
-		return err
+	if unikernelParams.RootFSType == "9pfs" {
+		// Mount the container's image rootfs inside the monitor rootfs
+		err := fileFromHost(monRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
+		if err != nil {
+			return err
+		}
+		newCntrRootfs := filepath.Join(monRootfs, containerRootfsMountPath)
+		err = mountVolumes(newCntrRootfs, u.Spec.Mounts)
+		if err != nil {
+			return err
+		}
+		// Update the paths of the files we need to pass in the monitor process.
+		vmmArgs.UnikernelPath = filepath.Join(containerRootfsMountPath, vmmArgs.UnikernelPath)
+		if vmmArgs.InitrdPath != "" {
+			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
+		}
 	}
 
 	withPivot := containsNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
-	err = changeRoot(rootfsDir, withPivot)
+	err = changeRoot(monRootfs, withPivot)
 	if err != nil {
 		return err
 	}
@@ -454,28 +490,16 @@ func (u *Unikontainer) Delete() error {
 	if u.isRunning() {
 		return fmt.Errorf("cannot delete running unikernel: %s", u.State.ID)
 	}
-	unikernelType := u.State.Annotations[annotType]
-	unikernel, err := unikernels.New(unikernelType)
-	if err != nil {
-		return fmt.Errorf("cannot retrieve unikernel %s: %v", unikernelType, err)
-	}
-	withRootfsMount := false
-	withRootfsMount, err = strconv.ParseBool(u.State.Annotations[annotMountRootfs])
-	if err != nil {
-		withRootfsMount = false
-	}
-	annotBlock := u.State.Annotations[annotBlock]
 	// Make sure paths are clean
 	bundleDir := filepath.Clean(u.State.Bundle)
 	rootfsDir := filepath.Clean(u.Spec.Root.Path)
 	if !filepath.IsAbs(rootfsDir) {
 		rootfsDir = filepath.Join(bundleDir, rootfsDir)
 	}
-	if unikernel.SupportsBlock() && annotBlock == "" && withRootfsMount {
-		err := cleanupExtractedFiles(rootfsDir)
-		if err != nil {
-			return fmt.Errorf("cannot delete rootfs %s: %v", rootfsDir, err)
-		}
+	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
+	err := os.RemoveAll(monRootfs)
+	if err != nil {
+		return fmt.Errorf("cannot remove %s: %v", monRootfs, err)
 	}
 	cntrDev := filepath.Join(rootfsDir, "/dev")
 	err = os.RemoveAll(cntrDev)

@@ -33,6 +33,7 @@ type ExecArgs struct {
 	TapDevice     string   // The TAP device name
 	BlockDevice   string   // The block device path
 	InitrdPath    string   // The path to the initrd of the unikernel
+	SharedfsPath  string   // The path in the host to share with guest
 	Command       string   // The unikernel's command line
 	IPAddress     string   // The IP address of the TAP device
 	GuestMAC      string   // The MAC address of the guest network device

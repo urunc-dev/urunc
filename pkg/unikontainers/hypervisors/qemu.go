@@ -102,6 +102,10 @@ func (q *Qemu) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	if args.InitrdPath != "" {
 		cmdString += " -initrd " + args.InitrdPath
 	}
+	if args.SharedfsPath != "" {
+		cmdString += " -fsdev local,id=rootfs9p,security_model=none,path=" + args.SharedfsPath
+		cmdString += " -device virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0"
+	}
 	cmdString += ukernel.MonitorCli(qemuString)
 	exArgs := strings.Split(cmdString, " ")
 	exArgs = append(exArgs, "-append", args.Command)
