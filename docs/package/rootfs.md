@@ -15,8 +15,9 @@ unikernel frameworks. On this page, we will explore the current state of our
 tools and explain how to use them to create and package a root filesystem
 (rootfs) for a unikernel.
 
-For the time being, `urunc` supports two ways for passing the rootfs to the
-unikernel: a) through initrd and b) as a virtio-block. In the latter case,
+For the time being, `urunc` supports three ways for passing the rootfs to the
+unikernel: a) through initrd, b) as a virtio-block and c) through shared-fs.
+In the virtio-block case,
 `urunc` can either levarage the container's snapshot and pass the whole
 container's rootfs as the rootfs, or `urunc` can make use of
 a user-created file inside the OCI image to pass as a virtio-block device
@@ -27,8 +28,7 @@ Therefore, the users have the following options:
 1. Manually create a rootfs (either initrd or block) and package it along with
    the unikernel.
 2. Directly copy all the files to the container's rootfs and use devmapper
-   snapshotter, in order to allow `urunc` to pass the snapshot as a virtio-block
-   to the unikernel.
+   snapshotter or shared-fs to pass the container's rootfs to the unikernel.
 3. Let [bunny](https://github.com/nubificus/bunny) and [bunix](https://github.com/nubificus/bunix) create the rootfs file.
 
 > **NOTE**: For the time being, [bunny](https://github.com/nubificus/bunny) supports the creation of initrd files and [bunix](https://github.com/nubificus/bunix) does not provide any support for creating the rootfs.
@@ -86,13 +86,18 @@ docker build -f bunnyfile -t urunc/prebuilt/redis-unikraft-qemu:test .
 
 ## Preparing an OCI image to be used as a rootfs for the unikernel
 
-As previously mentioned, `urunc` is able to pass the whole container's rootfs as
-the rootfs for the unikernels that support virtio-block. In that scenario, we
-simply need to copy any local files to the OCI image's rootfs. For this scenario
-we can use both [bunny](https://github.com/nubificus/bunny) and [bunix](https://github.com/nubificus/bunix). It is important to note that we need to create
-the unikernel container using devmapper as a snapshotter. In that way,`urunc`
-will use the snapshot of the container and directly attach it to the unikernel
-as  a virtio-block device.
+As previously mentioned, `urunc` is able to pass the whole container's rootfs
+as the rootfs for the unikernels that support virtio-block or shared-fs. In
+that scenario, we simply need to copy any local files into the OCI image's
+rootfs. For this scenario we can use both
+[bunny](https://github.com/nubificus/bunny) and
+[bunix](https://github.com/nubificus/bunix).
+
+> **NOTE**: In case the unikernel does not supports shared-fs (e.g. 9pfs), we
+> can only use block devices and for that reason we need to create the unikernel
+> container using devmapper as a snapshotter. In that way,`urunc` will use the
+> snapshot of the container's image and directly attach it to the unikernel as  a
+> block device.
 
 As an example, we will use a Redis
 [Rumprun](https://github.com/cloudkernels/rumprun) unikernel from
@@ -100,7 +105,7 @@ As an example, we will use a Redis
 [Solo5-hvt](https://github.com/Solo5/solo5).
 
 > **NOTE**: [Rumprun](https://github.com/nubificus/rumprun) does not support
-> attaching a virtio-block directly to `/`, hence `urunc` will instruct
+> attaching a block directly to `/`, hence `urunc` will instruct
 > [Rumprun](https://github.com/nubificus/rumprun) to mount it at `/data`.
 
 ### Using `bunny`
@@ -173,7 +178,7 @@ LABEL com.urunc.unikernel.binary=/unikernel/redis.hvt
 LABEL "com.urunc.unikernel.cmdline"="redis-server /data/conf/redis.conf"
 LABEL "com.urunc.unikernel.unikernelType"="rumprun"
 LABEL "com.urunc.unikernel.hypervisor"="hvt"
-LABEL "com.urunc.unikernel.useDMBlock"="true"
+LABEL "com.urunc.unikernel.mountRootfs"="true"
 
 ```
 
@@ -182,8 +187,8 @@ In the above file:
 - We directly copy the unikernel binary and any files that we want to have in
   the OCI's image rootfs.
 - We manually specify through labels the necessary `urunc` annotations,
-  including the `com.urunc.unikernel.useDMBlock` which instructs `urunc` to
-  attach the container snapshot as a virtio-block device for the unikernel.
+  including the `com.urunc.unikernel.mountRootfs` which instructs `urunc` to
+  attach the container snapshot as a block device to the unikernel.
 
 We can build the OCI image with the following command:
 
@@ -214,7 +219,7 @@ pre-built Redis [Rumprun](https://github.com/nubificus/rumprun) unikernel we can
     initrd = "";
     block = "";
     blkMntPoint = "";
-    useDMBlock = "true";
+    mountRootfs = "true";
   };
 }
 ```
@@ -223,8 +228,8 @@ In the above file:
 
 - We directly specify the files to copy inside the OCI's image rootfs.
 - We manually specify through labels the necessary `urunc` annotations,
-  including the `com.urunc.unikernel.useDMBlock` which instructs `urunc` to
-  attach the container snapshot as a virtio-block device for the unikernel.
+  including the `com.urunc.unikernel.mountRootfs` which instructs `urunc` to
+  attach the container snapshot as a block device to the unikernel.
 
 We can build the OCI image by simply running the following command:
 
@@ -349,7 +354,7 @@ the unikernel and the cpio file. Then, we simply need to edit the `args.nix` fil
     initrd = "/unikernel/rootfs.cpio";
     block = "";
     blkMntPoint = "";
-    useDMBlock = "";
+    mountRootfs = "";
   };
 }
 ```

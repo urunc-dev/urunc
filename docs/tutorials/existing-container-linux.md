@@ -86,18 +86,18 @@ Another important aspect is preparing the root filesystem (rootfs). Since we're
 booting a full Linux virtual machine, a proper rootfs must be provided. There
 are three main ways to do this:
 
-1. Using directly the rootfs of the container's image (requires devmapper).
+1. Using directly the rootfs of the container's image (requires devmapper or 9pfs).
 2. Creating a block image out of a container's image rootfs.
 3. Creating a initrd.
 
 ### Using directly the container's rootfs
 
-The simplest way to boot an existing container with a Linux kernel on `urunc` is
-to reuse the container’s rootfs. However, since `urunc` does not yet support
-shared filesystems between host and guest, this method currently requires using
-devmapper as the snapshotter.  In that way, containerd's devmapper snapshotter
-will create a block image out of the container's rootfs and `urunc` can easily
-attach this block image to the VM.
+The simplest way to boot an existing container with a Linux kernel on `urunc`
+is to reuse the container’s rootfs. This is possible either through shared-fs
+between the host and the Linux VM or by using devmapper as the snapshotter. In
+the latter case containerd's devmapper snapshotter will create a snapshot of
+the container;s image in the form of a block image and `urunc` can then
+directly attach this block image to the VM.
 
 To set up devmapper as a snapshotter please refer to the [installation
 guide](../installation#setup-thinpool-devmapper).
@@ -184,7 +184,28 @@ cmdline: "/urunit /usr/local/bin/redis-server"
 #### Running the container
 
 Unfortunately, Docker requires additional setup to work with the devmapper
-snapshotter. To bypass this limitation, we will use
+snapshotter. Therefore, in order to run the container using Docker, we can
+only use shared-fs.
+
+```bash
+docker run --rm -it --runtime "io.containerd.urunc.v2" redis/apline/linux/qemu:latest
+```
+
+Let's find the IP of the container:
+```console
+$ docker inspect <CONTAINER ID> | grep IPAddress
+            "SecondaryIPAddresses": null,
+            "IPAddress": "172.17.0.2",
+                    "IPAddress": "172.17.0.2",
+```
+
+and we should be able to ping it:
+
+```bash
+ping -c 3 172.17.0.2
+```
+
+ALternatively, if we want to use devmapper as the snapshotter, we can use
 [nerdctl](https://github.com/containerd/nerdctl), which integrates seamlessly
 with containerd and supports devmapper out of the box.
 
@@ -216,8 +237,8 @@ ping -c 3 10.4.0.2
 
 ### Using a block image
 
-If we are not able to set up devmapper or we have a block image that can be used
-as a rootfs, we can instruct `urunc` to use a block image.
+If we have a block image that can be used as a rootfs, we can instruct `urunc`
+to pass this block image as a rootfs.
 
 #### Preparing the container image.
 
@@ -266,8 +287,7 @@ docker build -f Containerfile -t nginx/apline/linux/firecracker:latest .
 
 #### Running the container
 
-In this case, we can directly use docker to run the container, since there is no
-need for devmapper.
+We can run the container with the following command:
 
 ```bash
 docker run --rm -it --runtime "io.containerd.urunc.v2" nginx/apline/linux/firecracker:latest
@@ -367,8 +387,7 @@ docker build -f bunnyfile -t traefik/whoami/linux/firecracker:latest .
 
 #### Running the container
 
-In this case, we can directly use docker to run the container, since there is no
-need for devmapper.
+We can run the container with the following command:
 
 ```bash
 docker run --rm -it --runtime "io.containerd.urunc.v2" traefik/whoami/linux/firecracker:latest

@@ -314,7 +314,7 @@ Focusing on the single-application notion of using the
 both [Qemu](https://qemu.org) and
 [Firecracker](https://github.com/firecracker-microvm/firecracker). For network,
 `urunc` will make use of virtio-net either through PCI or MMIO, depending on
-the monitor. In the case of storage, `urunc` uses virtio-block and initrd. In
+the monitor. In the case of storage, `urunc` can use initrd, virtio-block or 9pfs. In
 particular, `urunc` takes advantage of the extensive filesystem support of
 [Linux](https://github.com/torvalds/linux) and can directly mount containerd's
 snapshot directly to a [Linux](https://github.com/torvalds/linux) VM. This is

@@ -44,7 +44,7 @@ const (
 	annotInitrd        = "com.urunc.unikernel.initrd"
 	annotBlock         = "com.urunc.unikernel.block"
 	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
-	annotUseDMBlock    = "com.urunc.unikernel.useDMBlock"
+	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
 )
 
 // A UnikernelConfig struct holds the info provided by bima image on how to execute our unikernel
@@ -57,7 +57,7 @@ type UnikernelConfig struct {
 	Initrd           string `json:"com.urunc.unikernel.initrd,omitempty"`
 	Block            string `json:"com.urunc.unikernel.block,omitempty"`
 	BlkMntPoint      string `json:"com.urunc.unikernel.blkMntPoint,omitempty"`
-	UseDMBlock       string `json:"com.urunc.unikernel.useDMBlock"`
+	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 }
 
 // GetUnikernelConfig tries to get the Unikernel config from the bundle annotations.
@@ -103,7 +103,7 @@ func getConfigFromSpec(spec *specs.Spec) (*UnikernelConfig, error) {
 	initrd := spec.Annotations[annotInitrd]
 	block := spec.Annotations[annotBlock]
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
-	useDMBlock := spec.Annotations[annotUseDMBlock]
+	MountRootfs := spec.Annotations[annotMountRootfs]
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    tryDecode(unikernelType),
 		"unikernelVersion": tryDecode(unikernelVersion),
@@ -113,7 +113,7 @@ func getConfigFromSpec(spec *specs.Spec) (*UnikernelConfig, error) {
 		"initrd":           tryDecode(initrd),
 		"block":            tryDecode(block),
 		"blkMntPoint":      tryDecode(blkMntPoint),
-		"useDMBlock":       tryDecode(useDMBlock),
+		"mountRootfs":      tryDecode(MountRootfs),
 	}).WithField("source", "spec").Debug("urunc annotations")
 
 	// TODO: We need to use a better check to see if annotations were empty
@@ -130,7 +130,7 @@ func getConfigFromSpec(spec *specs.Spec) (*UnikernelConfig, error) {
 		Initrd:           initrd,
 		Block:            block,
 		BlkMntPoint:      blkMntPoint,
-		UseDMBlock:       useDMBlock,
+		MountRootfs:      MountRootfs,
 	}, nil
 }
 
@@ -169,7 +169,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"initrd":           tryDecode(conf.Initrd),
 		"block":            tryDecode(conf.Block),
 		"blkMntPoint":      tryDecode(conf.BlkMntPoint),
-		"useDMBlock":       tryDecode(conf.UseDMBlock),
+		"mountRootfs":      tryDecode(conf.MountRootfs),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -234,11 +234,11 @@ func (c *UnikernelConfig) decode() error {
 	}
 	c.BlkMntPoint = string(decoded)
 
-	decoded, err = base64.StdEncoding.DecodeString(c.UseDMBlock)
+	decoded, err = base64.StdEncoding.DecodeString(c.MountRootfs)
 	if err != nil {
-		return fmt.Errorf("failed to decode UseDMBlock: %v", err)
+		return fmt.Errorf("failed to decode mountRootfs: %v", err)
 	}
-	c.UseDMBlock = string(decoded)
+	c.MountRootfs = string(decoded)
 
 	return nil
 }
@@ -270,10 +270,8 @@ func (c *UnikernelConfig) Map() map[string]string {
 	if c.BlkMntPoint != "" {
 		myMap[annotBlockMntPoint] = c.BlkMntPoint
 	}
-	if c.UseDMBlock != "" {
-		myMap[annotUseDMBlock] = c.UseDMBlock
-	} else {
-		myMap[annotUseDMBlock] = os.Getenv("USE_DEVMAPPER_AS_BLOCK")
+	if c.MountRootfs != "" {
+		myMap[annotMountRootfs] = c.MountRootfs
 	}
 
 	return myMap

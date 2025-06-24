@@ -76,7 +76,7 @@ LABEL com.urunc.unikernel.binary=/unikernel/network.hvt
 LABEL "com.urunc.unikernel.cmdline"=""
 LABEL "com.urunc.unikernel.unikernelType"="mirage"
 LABEL "com.urunc.unikernel.hypervisor"="hvt"
-LABEL "com.urunc.unikernel.useDMBlock"="false"
+LABEL "com.urunc.unikernel.mountRootfs"="false"
 ```
 
 In the above file:
@@ -112,7 +112,7 @@ unikernel. Then, we simply need to edit the `args.nix` file as:
     initrd = "";
     block = "";
     blkMntPoint = "";
-    useDMBlock = "false";
+    mountRootfs = "false";
   };
 }
 ```

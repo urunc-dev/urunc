@@ -37,7 +37,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 				annotInitrd:        "initrd1",
 				annotBlock:         "block1",
 				annotBlockMntPoint: "point1",
-				annotUseDMBlock:    "true",
+				annotMountRootfs:   "true",
 			},
 		}
 
@@ -49,7 +49,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 			Initrd:          "initrd1",
 			Block:           "block1",
 			BlkMntPoint:     "point1",
-			UseDMBlock:      "true",
+			MountRootfs:     "true",
 		}
 
 		config, err := getConfigFromSpec(spec)
@@ -102,7 +102,7 @@ func TestGetConfigFromJSON(t *testing.T) {
 			Initrd:          "initrd1",
 			Block:           "block1",
 			BlkMntPoint:     "point1",
-			UseDMBlock:      "true",
+			MountRootfs:     "true",
 		}
 		configData, err := json.Marshal(expectedConfig)
 		assert.NoError(t, err)
@@ -235,7 +235,7 @@ func TestMap(t *testing.T) {
 			Initrd:          "initrd_value",
 			Block:           "block_value",
 			BlkMntPoint:     "point_value",
-			UseDMBlock:      "false",
+			MountRootfs:     "false",
 		}
 		expectedMap := map[string]string{
 			annotCmdLine:       "cmd_value",
@@ -245,7 +245,7 @@ func TestMap(t *testing.T) {
 			annotInitrd:        "initrd_value",
 			annotBlock:         "block_value",
 			annotBlockMntPoint: "point_value",
-			annotUseDMBlock:    "false",
+			annotMountRootfs:   "false",
 		}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
@@ -260,11 +260,9 @@ func TestMap(t *testing.T) {
 			Initrd:          "",
 			Block:           "",
 			BlkMntPoint:     "",
-			UseDMBlock:      "",
+			MountRootfs:     "",
 		}
-		expectedMap := map[string]string{
-			annotUseDMBlock: "",
-		}
+		expectedMap := map[string]string{}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
 	})
@@ -278,14 +276,14 @@ func TestMap(t *testing.T) {
 			Initrd:          "initrd_value",
 			Block:           "",
 			BlkMntPoint:     "point_value",
-			UseDMBlock:      "0",
+			MountRootfs:     "0",
 		}
 		expectedMap := map[string]string{
 			annotCmdLine:       "cmd_value",
 			annotBinary:        "binary_value",
 			annotInitrd:        "initrd_value",
 			annotBlockMntPoint: "point_value",
-			annotUseDMBlock:    "0",
+			annotMountRootfs:   "0",
 		}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
@@ -294,9 +292,7 @@ func TestMap(t *testing.T) {
 	t.Run("unikernelConfig map no fields", func(t *testing.T) {
 		t.Parallel()
 		config := &UnikernelConfig{}
-		expectedMap := map[string]string{
-			annotUseDMBlock: "",
-		}
+		expectedMap := map[string]string{}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
 	})

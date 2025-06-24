@@ -63,15 +63,15 @@ Except of the above, `urunc` accepts the following optional annotations:
 
 - `com.urunc.unikernel.initrd`: The path to the initrd of the unikernel inside
   the container's rootfs.
-- `com.urunc.unikernel.unikernelVersion`: The version of the unikernel framework (e.g.
-  0.17.0).
+- `com.urunc.unikernel.unikernelVersion`: The version of the unikernel framework
+  (e.g.  0.17.0).
 - `com.urunc.unikernel.block`: The path to a block image inside container's
   rootfs, which will get attached to the unikernel.
 - `com.urunc.unikernel.blkMntPoint`: The mount point of the block image to
   attach in the unikernel.
-- `com.urunc.unikernel.useDMBlock`: A boolean value that if it is `true`, requests
-  from `urunc` to mount the container's image rootfs in the unikernel, Requires
-  the `devmapper` snapshotter.
+- `com.urunc.unikernel.mountRootfs`: A boolean value that if it is `true`,
+  requests from `urunc` to mount the container's image rootfs in the unikernel
+  (either as a block device or through shared-fs).
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container

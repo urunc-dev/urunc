@@ -258,40 +258,58 @@ func (u *Unikontainer) Exec() error {
 		return err
 	}
 
-	// handle storage
-	// useDevmapper will contain the value of either the annotation (if was set)
-	// or from the environment variable. The annotation has more power than the
-	// environment variable. However, if none of them is set, we do not take them
-	// into consideration, meaning that if the rest of the checks are valid (e.g.
-	// no block device in the container, devmapper is in use, unikernel supports
-	// block/FS of devmapper) then we will use the devmapper as a block device
-	// for the unikernel.
-	useDevmapper := false
-	useDevmapper, err = strconv.ParseBool(u.State.Annotations[annotUseDMBlock])
+	// handle guest's rootfs.
+	// There are three options:
+	// 1. No rootfs for guest
+	// 2. Use the devmapper snapshot as a block device for the guest's rootfs
+	// 3. Use 9pfs to share the container's rootfs as the guest's rootfs
+	// By default, urunc will not set any rootfs for the guest. However,
+	// if the respective annotation is set then, depending on the guest
+	// (supports block or 9pfs), it will use the supported option. In case
+	// both ae supported, then the block option will be used by default.
+	//
+	// Parse the annotation and convert it from string to bool. If it is not
+	// a vlaid bool value, then urunc will not try to pass any rootfs to the guest.
+	withRootfsMount := false
+	withRootfsMount, err = strconv.ParseBool(u.State.Annotations[annotMountRootfs])
 	if err != nil {
-		uniklog.Errorf("Invalid value in useDMBlock: %s. Urunc will try to use it",
-			u.State.Annotations[annotUseDMBlock])
-		useDevmapper = true
+		uniklog.Infof("Invalid value in MountRootfs annotation: %s. Urunc will not mount any rootfs to the guest.",
+			u.State.Annotations[annotMountRootfs])
+		withRootfsMount = false
 	}
+
+	// TODO: Support both mounting the rootfs and another block device.
 	if u.State.Annotations[annotBlock] != "" && unikernel.SupportsBlock() {
 		vmmArgs.BlockDevice = u.State.Annotations[annotBlock]
 		unikernelParams.RootFSType = "block"
+		if withRootfsMount {
+			uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
+			withRootfsMount = false
+		}
 	}
 
 	var dmPath = ""
-	if unikernel.SupportsBlock() && vmmArgs.BlockDevice == "" && useDevmapper {
-		rootFsDevice, err := getBlockDevice(rootfsDir)
-		if err != nil {
-			return err
-		}
-		if unikernel.SupportsFS(rootFsDevice.FsType) {
-			err = prepareDMAsBlock(rootFsDevice.Path, unikernelPath, uruncJSONFilename, initrdPath)
+	// If we need to mount the rootfs, we need to choose between devmapper and
+	// shared-fs. At first, we check if the unikernel supports block devices.
+	if withRootfsMount {
+		if unikernel.SupportsBlock() {
+			rootFsDevice, err := getBlockDevice(rootfsDir)
 			if err != nil {
 				return err
 			}
-			vmmArgs.BlockDevice = rootFsDevice.Device
-			unikernelParams.RootFSType = "block"
-			dmPath = rootFsDevice.Device
+			if unikernel.SupportsFS(rootFsDevice.FsType) {
+				err = prepareDMAsBlock(rootFsDevice.Path, unikernelPath, uruncJSONFilename, initrdPath)
+				if err != nil {
+					return err
+				}
+				vmmArgs.BlockDevice = rootFsDevice.Device
+				unikernelParams.RootFSType = "block"
+				dmPath = rootFsDevice.Device
+			}
+		} else {
+			if unikernel.SupportsFS("9pfs") {
+				unikernelParams.RootFSType = "9pfs"
+			}
 		}
 	}
 	metrics.Capture(u.State.ID, "TS17")
@@ -441,10 +459,10 @@ func (u *Unikontainer) Delete() error {
 	if err != nil {
 		return fmt.Errorf("cannot retrieve unikernel %s: %v", unikernelType, err)
 	}
-	useDevmapper := false
-	useDevmapper, err = strconv.ParseBool(u.State.Annotations[annotUseDMBlock])
+	withRootfsMount := false
+	withRootfsMount, err = strconv.ParseBool(u.State.Annotations[annotMountRootfs])
 	if err != nil {
-		useDevmapper = true
+		withRootfsMount = false
 	}
 	annotBlock := u.State.Annotations[annotBlock]
 	// Make sure paths are clean
@@ -453,7 +471,7 @@ func (u *Unikontainer) Delete() error {
 	if !filepath.IsAbs(rootfsDir) {
 		rootfsDir = filepath.Join(bundleDir, rootfsDir)
 	}
-	if unikernel.SupportsBlock() && annotBlock == "" && useDevmapper {
+	if unikernel.SupportsBlock() && annotBlock == "" && withRootfsMount {
 		err := cleanupExtractedFiles(rootfsDir)
 		if err != nil {
 			return fmt.Errorf("cannot delete rootfs %s: %v", rootfsDir, err)
