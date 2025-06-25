@@ -57,7 +57,7 @@ func TestNerdctl(t *testing.T) {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
 			Name:           "Hvt-rumprun-ping-redis",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -102,7 +102,7 @@ func TestNerdctl(t *testing.T) {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
 			Name:           "Hvt-rumprun-with-seccomp",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -117,7 +117,7 @@ func TestNerdctl(t *testing.T) {
 			TestFunc:       seccompTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
 			Name:           "Hvt-rumprun-without-seccomp",
 			Devmapper:      true,
 			Seccomp:        false,
@@ -147,7 +147,7 @@ func TestNerdctl(t *testing.T) {
 			TestFunc:       userGroupTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-spt-rumprun:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/redis-spt-rumprun-raw:latest",
 			Name:           "Spt-rumprun-ping-redis",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -222,7 +222,7 @@ func TestNerdctl(t *testing.T) {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-qemu-linux:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-qemu-linux-raw:latest",
 			Name:           "Qemu-linux-nginx",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -297,7 +297,7 @@ func TestNerdctl(t *testing.T) {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux-raw:latest",
 			Name:           "Firecracker-linux-nginx",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -512,6 +512,22 @@ func TestCtr(t *testing.T) {
 			TestFunc:       matchTest,
 		},
 		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/readfile-qemu-unikraft-raw:latest",
+			Name:           "Qemu-unikraft-read-file-9pfs",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			ExpectOut:      "Once upon a time",
+			TestFunc:       matchTest,
+		},
+		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/hello-world-qemu-linux-initrd:latest",
 			Name:           "Qemu-linux-hello-world",
 			Devmapper:      false,
@@ -525,6 +541,22 @@ func TestCtr(t *testing.T) {
 			SideContainers: []string{},
 			Skippable:      false,
 			ExpectOut:      "Linux Qemu urunc",
+			TestFunc:       matchTest,
+		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/readfile-qemu-linux-raw:latest",
+			Name:           "Qemu-linux-read-file-9pfs",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			ExpectOut:      "Once upon a time",
 			TestFunc:       matchTest,
 		},
 		{
@@ -607,7 +639,7 @@ func TestCrictl(t *testing.T) {
 	}
 	tests := []containerTestArgs{
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
 			Name:           "Hvt-rumprun-redis",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -637,7 +669,7 @@ func TestCrictl(t *testing.T) {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-spt-rumprun:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/redis-spt-rumprun-raw:latest",
 			Name:           "Spt-rumprun-redis",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -742,7 +774,7 @@ func TestCrictl(t *testing.T) {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux-raw:latest",
 			Name:           "Firecracker-linux-nginx",
 			Devmapper:      true,
 			Seccomp:        true,
