@@ -45,6 +45,11 @@ func (q *Qemu) UsesKVM() bool {
 	return true
 }
 
+// SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
+func (q *Qemu) SupportsSharedfs() bool {
+	return true
+}
+
 func (q *Qemu) Path() string {
 	return q.binaryPath
 }

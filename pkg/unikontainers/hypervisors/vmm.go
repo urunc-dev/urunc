@@ -52,6 +52,7 @@ type VMM interface {
 	Stop(t string) error
 	Path() string
 	UsesKVM() bool
+	SupportsSharedfs() bool
 	Ok() error
 }
 

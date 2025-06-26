@@ -43,6 +43,11 @@ func (s *SPT) UsesKVM() bool {
 	return false
 }
 
+// SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
+func (s *SPT) SupportsSharedfs() bool {
+	return false
+}
+
 // Path returns the path to the spt binary.
 func (s *SPT) Path() string {
 	return s.binaryPath

@@ -129,6 +129,11 @@ func (h *HVT) UsesKVM() bool {
 	return true
 }
 
+// SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
+func (h *HVT) SupportsSharedfs() bool {
+	return false
+}
+
 // Path returns the path to the hvt binary.
 func (h *HVT) Path() string {
 	return h.binaryPath

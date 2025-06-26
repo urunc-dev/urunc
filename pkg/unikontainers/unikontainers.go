@@ -293,6 +293,12 @@ func (u *Unikontainer) Exec() error {
 		}
 	}
 
+	// get a new vmm
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType))
+	if err != nil {
+		return err
+	}
+
 	var dmPath = ""
 	monRootfs := rootfsDir
 	// If we need to mount the rootfs, we need to choose between devmapper and
@@ -327,19 +333,13 @@ func (u *Unikontainer) Exec() error {
 		}
 		// If we could not use a block-based rootfs, check if we can use 9pfs
 		if unikernelParams.RootFSType == "" {
-			if unikernel.SupportsFS("9pfs") {
+			if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs() {
 				vmmArgs.SharedfsPath = containerRootfsMountPath
 				unikernelParams.RootFSType = "9pfs"
 			}
 		}
 	}
 	metrics.Capture(u.State.ID, "TS17")
-
-	// get a new vmm
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType))
-	if err != nil {
-		return err
-	}
 
 	err = unikernel.Init(unikernelParams)
 	if err == unikernels.ErrUndefinedVersion || err == unikernels.ErrVersionParsing {

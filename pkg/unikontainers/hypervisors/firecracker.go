@@ -81,6 +81,11 @@ func (fc *Firecracker) UsesKVM() bool {
 	return true
 }
 
+// SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
+func (fc *Firecracker) SupportsSharedfs() bool {
+	return false
+}
+
 func (fc *Firecracker) Path() string {
 	return fc.binaryPath
 }

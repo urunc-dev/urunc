@@ -41,6 +41,11 @@ func (h *Hedge) UsesKVM() bool {
 	return true
 }
 
+// SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
+func (h *Hedge) SupportsSharedfs() bool {
+	return false
+}
+
 func (h *Hedge) Path() string {
 	return ""
 }
