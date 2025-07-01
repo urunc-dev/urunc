@@ -16,6 +16,7 @@ package unikernels
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 )
 
@@ -37,7 +38,18 @@ type LinuxNet struct {
 
 func (l *Linux) CommandString() (string, error) {
 	rdinit := ""
-	bootParams := "panic=-1 console=ttyS0"
+	bootParams := "panic=-1"
+
+	// TODO: Check if this check causes any performance drop
+	// or explore alternative implementations
+	consoleStr := ""
+	if runtime.GOARCH == "arm64" {
+		consoleStr = "console=ttyAMA0"
+	} else {
+		consoleStr = "console=ttyS0"
+	}
+	bootParams += " " + consoleStr
+
 	if l.RootFsType == "block" {
 		rootParams := "root=/dev/vda rw"
 		bootParams += " " + rootParams
