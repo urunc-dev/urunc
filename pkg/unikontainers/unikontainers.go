@@ -503,7 +503,7 @@ func (u *Unikontainer) Delete() error {
 		withRootfsMount = false
 	}
 	annotBlock := u.State.Annotations[annotBlock]
-	// TODO: We might not need to rmeove all these directories.
+	// TODO: We might not need to remove all these directories.
 	if annotBlock == "" && withRootfsMount {
 		// Since there was no no block defined for the unikernel
 		// and we created a new rootfs for the monitor, we need to
