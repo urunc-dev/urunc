@@ -20,40 +20,23 @@ on:
 
   workflow_dispatch:
   
-env:
-  SSH_USER: 'incus-ci'
-  SSH_KEY: '${{ secrets.INCUS_ID_ED25519 }}'
-  INCUS_CLUSTER: 'nbfc'
-  INCUS_PROJECT: 'nbfc-ci'
-  VM_NAME: 'test-vm'
-  INCUS_NAME: '${{ github.event.repository.name }}-${{ github.run_id }}'
-
 jobs:
   prepare:
     name: VM test
-    runs-on: ${{ format('{0}-{1}', join(fromJSON(inputs.runner), '-'), matrix.archconfig) }}
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
-        archconfig: ["${{ fromJSON(inputs.runner-archs) }}"]
+        #archconfig: ["${{ fromJSON(inputs.runner-archs) }}"]
+        test: ["test_ctr","test_nerdctl","test_crictl","test_docker"]
       fail-fast: false
     steps:
-    - name: Setup Incus remote
-      uses: nubificus/incus-remote-setup-action@v2
+    - uses: actions/checkout@v3
       with:
-        ssh_user: ${{ env.SSH_USER }}
-        ssh_key: ${{ secrets.INCUS_ID_ED25519 }}
-        remote_host: ${{ secrets.INCUS_IP_ADDR }}
-        friendly_name: ${{ env.INCUS_CLUSTER }}
-        incus_client_name: '${{ env.INCUS_NAME }}'
-        cleanup: false
-    
-    - name: Generate Names
-      id: generate-names
-      uses: boonya/gh-action-name-generator@v1
+        ref: ${{ github.event.pull_request.head.sha }}
+    - uses: actions/setup-go@v4
       with:
-        separator: '-'
-        length: 2
-        style: 'lowerCase'
+        go-version: '1.24.1'
+        cache: false
 
     - name: Set ref and repo from PR or dispatch
       id: set-ref
@@ -67,88 +50,133 @@ jobs:
           echo "repo=${{ github.repository }}" >> "$GITHUB_OUTPUT"
           echo "vmnamestr=manual" >> "$GITHUB_ENV"
         fi
-
-    - name: Set VM name
-      id: set-vm-name
+    - name: Install base dependencies
       run: |
-        echo "VM_NAME=${{ github.event.repository.name }}-${{ env.vmnamestr }}-${{ steps.generate-names.outputs.name }}" >> $GITHUB_ENV
+        sudo apt-get update
+        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system
 
-    - name: Launch VM
-      id: launch-vm
-      uses: nubificus/incus-launch-vm-action@00e5e2f420e7377f1be706c4546aeb9365169dd7
-      with:
-        vm_name: '${{ env.VM_NAME }}'
-        vm_description: 'CI VM for ${{ github.event.repository.name }} for PR ${{ github.event.pull_request.number }} end-to-end testing'
-        incus_remote: ${{ env.INCUS_CLUSTER }}
-        incus_image: '${{ env.INCUS_CLUSTER }}:jammy-urunc-ci-template'
-        cpu_cores: '3'
-        memory: '3' # size in GiB
-        disk_size: '20' # size in GiB
-        incus_profile: 'urunc-ci'
-        incus_project: ${{ env.INCUS_PROJECT }}
-        incus_target: '@amd64'
-        cleanup: 'true'
-        snapshot: 'false'
-  
+    - name: Install runc
+      run: |
+        RUNC_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/opencontainers/runc/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
+        wget -q https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/runc.$(dpkg --print-architecture)
+        sudo install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
+        rm -f ./runc.$(dpkg --print-architecture)
+
+    - name: Install containerd
+      run: |
+        CONTAINERD_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/containerd/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
+        wget -q https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/containerd-$CONTAINERD_VERSION-linux-$(dpkg --print-architecture).tar.gz
+        sudo tar Cxzvf /usr/local containerd-$CONTAINERD_VERSION-linux-$(dpkg --print-architecture).tar.gz
+        rm -f containerd-$CONTAINERD_VERSION-linux-$(dpkg --print-architecture).tar.gz
+
+    - name: Set up containerd service
+      run: |
+        CONTAINERD_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/containerd/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
+        wget -q https://raw.githubusercontent.com/containerd/containerd/v$CONTAINERD_VERSION/containerd.service
+        sudo rm -f /lib/systemd/system/containerd.service
+        sudo mv containerd.service /lib/systemd/system/containerd.service
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now containerd
+
+    - name: Configure containerd
+      run: |
+        sudo mkdir -p /etc/containerd/
+        sudo mv /etc/containerd/config.toml /etc/containerd/config.toml.bak || true
+        sudo containerd config default | sudo tee /etc/containerd/config.toml
+        sudo systemctl restart containerd
+
+    - name: Setup devmapper
+      run: |
+        sudo mkdir -p /usr/local/bin/scripts
+        sudo cp script/dm_create.sh /usr/local/bin/scripts/dm_create.sh
+        sudo chmod 755 /usr/local/bin/scripts/dm_create.sh
+        sudo /usr/local/bin/scripts/dm_create.sh
+        sudo sed -i "/\[plugins\.'io\.containerd\.snapshotter\.v1\.devmapper'\]/,/^$/d" /etc/containerd/config.toml
+        sudo tee -a /etc/containerd/config.toml > /dev/null <<'EOT'
+        [plugins.'io.containerd.snapshotter.v1.devmapper']
+          pool_name = "containerd-pool"
+          root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.devmapper"
+          base_image_size = "10GB"
+          fs_type = "ext2"
+        EOT
+        sudo tee -a /etc/containerd/config.toml > /dev/null <<EOT
+        [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.urunc]
+            runtime_type = "io.containerd.urunc.v2"
+            container_annotations = ["com.urunc.unikernel.*"]
+            pod_annotations = ["com.urunc.unikernel.*"]
+            snapshotter = "devmapper"
+        EOT
+        sudo systemctl restart containerd
+
+
+    - name: Install CNI plugins
+      run: |
+        CNI_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containernetworking/plugins/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
+        wget -q https://github.com/containernetworking/plugins/releases/download/v$CNI_VERSION/cni-plugins-linux-$(dpkg --print-architecture)-v$CNI_VERSION.tgz
+        sudo mkdir -p /opt/cni/bin
+        sudo tar Cxzvf /opt/cni/bin cni-plugins-linux-$(dpkg --print-architecture)-v$CNI_VERSION.tgz
+        rm -f cni-plugins-linux-$(dpkg --print-architecture)-v$CNI_VERSION.tgz
+
+    - name: Install nerdctl
+      run: |
+        NERDCTL_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/nerdctl/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
+        wget -q https://github.com/containerd/nerdctl/releases/download/v$NERDCTL_VERSION/nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
+        sudo tar Cxzvf /usr/local/bin nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
+        rm -f nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
+
+    - name: Install crictl
+      run: |
+        VERSION="v1.30.0" # check latest version in /releases page
+        wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
+        sudo tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin
+        rm -f crictl-$VERSION-linux-amd64.tar.gz
+        sudo tee -a /etc/crictl.yaml > /dev/null <<'EOT'
+        runtime-endpoint: unix:///run/containerd/containerd.sock
+        image-endpoint: unix:///run/containerd/containerd.sock
+        timeout: 20
+        EOT
+
+
+    - name: Install Firecracker
+      run: |
+        ARCH="$(uname -m)"
+        VERSION="v1.7.0"
+        release_url="https://github.com/firecracker-microvm/firecracker/releases"
+        curl -L ${release_url}/download/${VERSION}/firecracker-${VERSION}-${ARCH}.tgz | tar -xz
+        # Rename the binary to "firecracker"
+        sudo mv release-${VERSION}-${ARCH}/firecracker-${VERSION}-${ARCH} /usr/local/bin/firecracker
+        rm -fr release-${VERSION}-${ARCH}
+
+    - name: Install solo5
+      run: |
+        git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+        cd solo5
+        ./configure.sh  && make -j$(nproc)
+        sudo cp tenders/hvt/solo5-hvt /usr/local/bin
+        sudo cp tenders/spt/solo5-spt /usr/local/bin
+
     - name: Install urunc
       id: install-urunc
       run: |
-        export VM_NAME="${{ env.INCUS_CLUSTER }}:${{ env.VM_NAME }}"
-        export INCUS_RUN="incus exec $VM_NAME --project ${{ env.INCUS_PROJECT }} -- sh -c "
-        $INCUS_RUN "rm -f /usr/local/bin/urunc"
-        $INCUS_RUN "wget https://s3.nbfc.io/nbfc-assets/github/urunc/dist/${{ steps.set-ref.outputs.ref }}/amd64/containerd-shim-urunc-v2_static_amd64"
-        $INCUS_RUN "wget https://s3.nbfc.io/nbfc-assets/github/urunc/dist/${{ steps.set-ref.outputs.ref }}/amd64/urunc_static_amd64"
-        $INCUS_RUN "chmod +x urunc_static_amd64"
-        $INCUS_RUN "chmod +x containerd-shim-urunc-v2_static_amd64"
-        $INCUS_RUN "mv urunc_static_amd64 /usr/local/bin/urunc"
-        $INCUS_RUN "mv containerd-shim-urunc-v2_static_amd64 /usr/local/bin/containerd-shim-urunc-v2"
-        $INCUS_RUN "urunc --version"
-        $INCUS_RUN "git clone https://github.com/${{ steps.set-ref.outputs.repo }} -b ${{ steps.set-ref.outputs.ref }} /root/develop/urunc"
+        wget https://s3.nbfc.io/nbfc-assets/github/urunc/dist/${{ steps.set-ref.outputs.ref }}/amd64/containerd-shim-urunc-v2_static_amd64
+        wget https://s3.nbfc.io/nbfc-assets/github/urunc/dist/${{ steps.set-ref.outputs.ref }}/amd64/urunc_static_amd64
+        chmod +x urunc_static_amd64
+        chmod +x containerd-shim-urunc-v2_static_amd64
+        sudo mv urunc_static_amd64 /usr/local/bin/urunc
+        sudo mv containerd-shim-urunc-v2_static_amd64 /usr/local/bin/containerd-shim-urunc-v2
+        urunc --version
 
-
-    - name: Run ctr tests
-      id: test-ctr
+    - name: Add runner user to KVM group
+      id: kvm-setup
       run: |
-        export VM_NAME=${{ env.INCUS_CLUSTER }}:${{ env.VM_NAME }}
-        export TEST_CMD="cd /root/develop/urunc && PATH=/usr/local/go/bin:$PATH make test_ctr"
-        if ! incus exec "$VM_NAME" --project ${{ env.INCUS_PROJECT }} -- sh -c "$TEST_CMD"; then
-          echo "Test failed"
-          echo "CLEANUP_OVERRIDE=false" >> $GITHUB_ENV
-          exit 1
-        fi
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+        sudo usermod -a -G kvm $USER
 
-    - name: Run nerdctl tests
-      id: test-nerdctl
+
+    - name: Run ${{ matrix.test }}
+      id: test
       if: ${{ !cancelled() }}
       run: |
-        export VM_NAME=${{ env.INCUS_CLUSTER }}:${{ env.VM_NAME }}
-        export TEST_CMD="cd /root/develop/urunc && PATH=/usr/local/go/bin:$PATH make test_nerdctl"
-        if ! incus exec "$VM_NAME" --project ${{ env.INCUS_PROJECT }} -- sh -c "$TEST_CMD"; then
-          echo "Test failed"
-          echo "CLEANUP_OVERRIDE=false" >> $GITHUB_ENV
-          exit 1
-        fi
-
-    - name: Run crictl tests
-      id: test-crictl
-      if: ${{ !cancelled() }}
-      run: |
-        export VM_NAME=${{ env.INCUS_CLUSTER }}:${{ env.VM_NAME }}
-        export TEST_CMD="cd /root/develop/urunc && PATH=/usr/local/go/bin:$PATH make test_crictl"
-        if ! incus exec "$VM_NAME" --project ${{ env.INCUS_PROJECT }} -- sh -c "$TEST_CMD"; then
-          echo "Test failed"
-          echo "CLEANUP_OVERRIDE=false" >> $GITHUB_ENV
-          exit 1
-        fi
-
-    - name: Run docker tests
-      id: test-docker
-      if: ${{ !cancelled() }}
-      run: |
-        export VM_NAME=${{ env.INCUS_CLUSTER }}:${{ env.VM_NAME }}
-        export TEST_CMD="cd /root/develop/urunc && PATH=/usr/local/go/bin:$PATH make test_docker"
-        if ! incus exec "$VM_NAME" --project ${{ env.INCUS_PROJECT }} -- sh -c "$TEST_CMD"; then
-          echo "Test failed"
-          echo "CLEANUP_OVERRIDE=false" >> $GITHUB_ENV
-          exit 1
-        fi
+        sudo make ${{ matrix.test }}
