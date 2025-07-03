@@ -1,5 +1,7 @@
 # urunc
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10840/badge)](https://www.bestpractices.dev/projects/10840)
+
 Welcome to `urunc`, the "runc for unikernels".
 
 ## Table of Contents
@@ -10,10 +12,14 @@ Welcome to `urunc`, the "runc for unikernels".
 4. [Documentation](#documentation)
 5. [Supported platforms](#supported-platforms)
 6. [Publications and talks](#publications-and-talks)
-7. [Contributing](#Contributing)
-8. [Security Policy](#security-policy)
-9. [License](#Introduction)
-10. [Contact](#Introduction)
+7. [Bug Reporting](#bug-reporting)
+8. [Community & Meetings](#community-and-meetings)
+9. [Roadmap](#roadmap)
+10. [Contributing](#Contributing)
+11. [Security Policy](#security-policy)
+12. [Changelog](#changelog)
+13. [License](#Introduction)
+14. [Contact](#Introduction)
 
 ## Introduction
 
@@ -168,6 +174,31 @@ such as:
 - [FOSDEM 2025 -- Containers devroom](https://fosdem.org/2025/schedule/event/fosdem-2025-6284-less-overhead-strong-isolation-running-containers-in-minimal-specialized-linux-vms/)
 - [FOSDEM 2025 -- WASM devroom](https://fosdem.org/2025/schedule/event/fosdem-2025-6292-wasm-meets-unikernels-secure-and-efficient-cloud-native-deployments/)
 
+## Bug reporting
+
+Please use [github issues](https://github.com/urunc-dev/urunc/issues) to report any bug. For more info please check the [reporting bugs](https://urunc.io/developer-guide/contribute/#reporting-bugs) section in the [Contributing](https://urunc.io/developer-guide/contribute) guide.
+
+## Roadmap
+
+We track planned features, improvements, and milestones using [GitHub
+Issues](https://github.com/urunc-dev/urunc/issues).  You can view the
+[Roadmap](https://github.com/orgs/urunc-dev/projects/2) for each one of the
+next (or previous) releases by filtering based on the respective milestone.
+
+Have a feature in mind or want to contribute? Open an issue or fire-up a [discussion](https://github.com/urunc-dev/urunc/discussions)!
+
+## Community and Meetings
+
+Join us for our monthly open meetings, held every last Wednesday of the month.
+These sessions are a great opportunity to share ideas, ask questions, and stay
+connected with the project team and other contributors.
+
+- Meeting Frequency: Monthly (last Wednesday of the month)
+- Time: 15:00 UTC
+- Format: Open agenda + roadmap review [Minutes & Agenda](https://docs.google.com/document/d/1hyFtbIqN__O4epiot-avn5LPDXwOsAX_qAQc2cjhgTE)
+- Platform: [Zoom bridge](https://us06web.zoom.us/j/89153689019?pwd=WBNbWwwSkq4avfbPxzP18gamFLA0O9.1), [Calendar Invite](https://calendar.google.com/calendar/ical/c_c6b6a31ba97230209feae0f195e0fa581715e173dac169db7d4e50dc6289d16a%40group.calendar.google.com/public/basic.ics)
+- [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J)
+
 ## Contributing
 
 We will be very happy to receive any feedback and any kind of contributions for
@@ -176,9 +207,14 @@ document](https://urunc.io/developer-guide/contribute/).
 
 ## Security policy
 
-In acse of a security vulnerability, please refer to the
+In case of a security vulnerability, please refer to the
 [Security Policy document](https://urunc.io/developer-guide/security/).
 for guidelines on how to report it responsibly.
+
+## Changelog
+
+See [CHANGELOG.md](https://github.com/urunc-dev/urunc/blob/main/CHANGELOG.md)
+for more information on what changed in the latest and previous releases.
 
 ## License
 
