@@ -107,36 +107,34 @@ be utilized to install `urunc` runtime  on a running Kubernetes cluster.
 To install in a k3s cluster, first we need to create the RBAC:
 
 ```bash
-git clone https://github.com/urunc-dev/urunc.git
-cd urunc
-kubectl apply -f deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
 ```
 
 Then, we create the `urunc-deploy` Daemonset, followed by the k3s customization:
 
 ```bash
-kubectl apply -k deployment/urunc-deploy/urunc-deploy/overlays/k3s
+kubectl apply -k https://github.com/nubificus/urunc//deployment/urunc-deploy/urunc-deploy/overlays/k3s?ref=main
 ```
 
 Finally, we need to create the appropriate k8s runtime class:
 
 ```bash
-kubectl apply -f deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+kubectl apply -f https://raw.githubusercontent.com/nubificus/urunc/refs/heads/main/deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
 ```
 
 To uninstall:
 
 ```bash
-kubectl delete -k deployment/urunc-deploy/urunc-deploy/overlays/k3s
-kubectl apply -k deployment/urunc-deploy/urunc-cleanup/overlays/k3s
+kubectl delete -k https://github.com/nubificus/urunc//deployment/urunc-deploy/urunc-deploy/overlays/k3s?ref=main
+kubectl apply -k https://github.com/nubificus/urunc//deployment/urunc-deploy/urunc-cleanup/overlays/k3s?ref=main
 ```
 
 After the cleanup is completed and the `urunc-deploy` Pod is terminated:
 
 ```bash
-kubectl delete -k deployment/urunc-deploy/urunc-cleanup/overlays/k3s
-kubectl delete -f deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
-kubectl delete -f deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+kubectl delete -k https://github.com/nubificus/urunc//deployment/urunc-deploy/urunc-cleanup/overlays/k3s?ref=main
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/refs/heads/main/deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
 ```
 
 ### urunc-deploy in k8s with containerd
@@ -144,36 +142,34 @@ kubectl delete -f deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
 To install in a k8s cluster, first we need to create the RBAC:
 
 ```bash
-git clone https://github.com/urunc-dev/urunc.git
-cd urunc
-kubectl apply -f deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
 ```
 
 Then, we create the `urunc-deploy` Daemonset:
 
 ```bash
-kubectl apply -f deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
 ```
 
 Finally, we need to create the appropriate k8s runtime class:
 
 ```bash
-kubectl apply -f deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+kubectl apply -f https://raw.githubusercontent.com/nubificus/urunc/refs/heads/main/deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
 ```
 
 To uninstall:
 
 ```bash
-kubectl delete -f deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
-kubectl apply -f deployment/urunc-deploy/urunc-cleanup/base/urunc-cleanup.yaml
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-cleanup/base/urunc-cleanup.yaml
 ```
 
 After the cleanup is completed:
 
 ```bash
-kubectl delete -f deployment/urunc-deploy/urunc-cleanup/base/urunc-cleanup.yaml
-kubectl delete -f deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
-kubectl delete -f deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-cleanup/base/urunc-cleanup.yaml
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/refs/heads/main/deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+kubectl delete -f https://raw.githubusercontent.com/nubificus/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
 ```
 
 Now, we can create new `urunc` deployments using the [instruction provided in manual installation](#create-a-test-deployment).
