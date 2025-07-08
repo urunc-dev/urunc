@@ -12,7 +12,8 @@ connected with the project team and other contributors.
 - Meeting Frequency: Monthly (last Wednesday of the month)
 - Time: 15:00 UTC
 - Format: Open agenda + roadmap review [Minutes & Agenda](https://docs.google.com/document/d/1hyFtbIqN__O4epiot-avn5LPDXwOsAX_qAQc2cjhgTE)
-- Platform: [Zoom bridge](https://us06web.zoom.us/j/89153689019?pwd=WBNbWwwSkq4avfbPxzP18gamFLA0O9.1), [Calendar Invite](https://calendar.google.com/calendar/ical/c_c6b6a31ba97230209feae0f195e0fa581715e173dac169db7d4e50dc6289d16a%40group.calendar.google.com/public/basic.ics)
+- Platform: [LF meetings](https://zoom-lfx.platform.linuxfoundation.org/meeting/91431746302?password=92a8b698-8d9d-43d3-9037-450804362208)
+- Invitation: [link](https://zoom-lfx.platform.linuxfoundation.org/meeting/91431746302?password=92a8b698-8d9d-43d3-9037-450804362208&invite=true)
 - [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J)
 
 
