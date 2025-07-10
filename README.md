@@ -176,7 +176,10 @@ such as:
 
 ## Bug reporting
 
-Please use [github issues](https://github.com/urunc-dev/urunc/issues) to report any bug. For more info please check the [reporting bugs](https://urunc.io/developer-guide/contribute/#reporting-bugs) section in the [Contributing](https://urunc.io/developer-guide/contribute) guide.
+Please use [github issues](https://github.com/urunc-dev/urunc/issues) to report
+any bug. For more info please check the [reporting
+bugs](https://urunc.io/developer-guide/contribute/#reporting-bugs) section in
+the [Contributing](https://urunc.io/developer-guide/contribute) guide.
 
 ## Roadmap
 
