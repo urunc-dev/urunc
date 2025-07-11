@@ -24,18 +24,18 @@ const RumprunUnikernel string = "rumprun"
 const SubnetMask125 = "128.0.0.0"
 
 type Rumprun struct {
-	Command string     `json:"cmdline"`
-	Net     RumprunNet `json:"net"`
-	Blk     RumprunBlk `json:"blk"`
-}
-
-type RumprunNoNet struct {
-	Command string     `json:"cmdline"`
-	Blk     RumprunBlk `json:"blk"`
+	Command string
+	Envs    []string
+	Net     RumprunNet
+	Blk     RumprunBlk
 }
 
 type RumprunCmd struct {
-	Cmdline string `json:"cmdline"`
+	CmdLine string `json:"cmdline"`
+}
+
+type RumprunEnv struct {
+	Env string `json:"env"`
 }
 
 type RumprunNet struct {
@@ -56,25 +56,69 @@ type RumprunBlk struct {
 }
 
 func (r *Rumprun) CommandString() (string, error) {
-	// if EthDeviceMask is empty, there is no network support. omit every relevant field
-	if r.Net.Mask == "" {
-		tmp := RumprunNoNet{
-			Command: r.Command,
-			Blk:     r.Blk,
+	// Rumprun accepts a JSON string to configure the unikernel. However,
+	// Rumprun does not use a valid JSON format. Therefore, we manually
+	// construct the JSON instead of using Go's json Marshal.
+	// For more information check https://github.com/rumpkernel/rumprun/blob/master/doc/config.md
+	cmdJSONString := ""
+	envJSONString := ""
+	netJSONString := ""
+	blkJSONString := ""
+	cmd := RumprunCmd{
+		CmdLine: r.Command,
+	}
+	cmdJSON, err := json.Marshal(cmd)
+	if err != nil {
+		return "", fmt.Errorf("Could not Marshal cmdline: %v", err)
+	}
+	cmdJSONString = string(cmdJSON)
+	for i, eVar := range r.Envs {
+		eVar := RumprunEnv{
+			Env: eVar,
 		}
-		jsonData, err := json.Marshal(tmp)
+		oneVarJSON, err := json.Marshal(eVar)
+		if err != nil {
+			return "", fmt.Errorf("Could not Marshal environment variable: %v", err)
+		}
+		if i != 0 {
+			envJSONString += ","
+		}
+		oneVarJSONString := string(oneVarJSON)
+		oneVarJSONString = strings.TrimPrefix(oneVarJSONString, "{")
+		oneVarJSONString = strings.TrimSuffix(oneVarJSONString, "}")
+		envJSONString += oneVarJSONString
+	}
+	// if Address is empty, we will spawn the unikernel without networking
+	if r.Net.Address != "" {
+		netJSON, err := json.Marshal(r.Net)
 		if err != nil {
 			return "", err
 		}
-		jsonStr := string(jsonData)
-		return jsonStr, nil
+		netJSONString = "\"net\":"
+		netJSONString += string(netJSON)
 	}
-	jsonData, err := json.Marshal(r)
-	if err != nil {
-		return "", err
+	// if Source is empty, we will spawn the unikernel without a block device
+	if r.Blk.Source != "" {
+		blkJSON, err := json.Marshal(r.Blk)
+		if err != nil {
+			return "", err
+		}
+		blkJSONString = "\"blk\":"
+		blkJSONString += string(blkJSON)
 	}
-	jsonStr := string(jsonData)
-	return jsonStr, nil
+	finalJSONString := strings.TrimSuffix(cmdJSONString, "}")
+	if envJSONString != "" {
+		finalJSONString += "," + envJSONString
+	}
+	if netJSONString != "" {
+		finalJSONString += "," + netJSONString
+	}
+	if blkJSONString != "" {
+		finalJSONString += "," + blkJSONString
+	}
+	finalJSONString += "}"
+	fmt.Println(finalJSONString)
+	return finalJSONString, nil
 }
 
 func (r *Rumprun) SupportsBlock() bool {
@@ -117,9 +161,13 @@ func (r *Rumprun) MonitorCli(_ string) string {
 func (r *Rumprun) Init(data UnikernelParams) error {
 	// if EthDeviceMask is empty, there is no network support
 	if data.EthDeviceMask != "" {
-		// FIXME: in the case of rumprun & k8s, we need to explicitly set the mask
-		// to an inclusive value (eg 1 or 0), as NetBSD complains and does not set the default gw
-		// if it is not reachable from the IP address directly.
+		// FIXME: in the case of rumprun & k8s, we need to identofy
+		// the reason that networking is not working properly.
+		// One reason could be that the gw is in different subnet
+		// than the IP of the unikernel.
+		// For that reason, we might need to set the mask to an
+		// inclusive value (e.g. 0 or 1).
+		// However, further exploration of this issue is necessary.
 		mask, err := subnetMaskToCIDR(SubnetMask125)
 		if err != nil {
 			return err
@@ -131,14 +179,25 @@ func (r *Rumprun) Init(data UnikernelParams) error {
 		r.Net.Address = data.EthDeviceIP
 		r.Net.Mask = fmt.Sprintf("%d", mask)
 		r.Net.Gateway = data.EthDeviceGateway
+	} else {
+		// Set address to empty string so we can know that no network
+		// was specified.
+		r.Net.Address = ""
 	}
 
-	r.Blk.Source = "etfs"
-	r.Blk.Path = "/dev/ld0a"
-	r.Blk.FsType = "blk"
-	r.Blk.Mountpoint = "/data"
+	if data.BlockMntPoint != "" {
+		r.Blk.Source = "etfs"
+		r.Blk.Path = "/dev/ld0a"
+		r.Blk.FsType = "blk"
+		r.Blk.Mountpoint = data.BlockMntPoint
+	} else {
+		// Set source to empty string so we can know that no block
+		// was specified.
+		r.Blk.Source = ""
+	}
 
 	r.Command = strings.Join(data.CmdLine, " ")
+	r.Envs = data.EnvVars
 
 	return nil
 }

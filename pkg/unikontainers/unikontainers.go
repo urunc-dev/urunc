@@ -204,9 +204,10 @@ func (u *Unikontainer) Exec() error {
 
 	// populate unikernel params
 	unikernelParams := unikernels.UnikernelParams{
-		CmdLine: u.Spec.Process.Args,
-		EnvVars: u.Spec.Process.Env,
-		Version: unikernelVersion,
+		CmdLine:       u.Spec.Process.Args,
+		EnvVars:       u.Spec.Process.Env,
+		Version:       unikernelVersion,
+		BlockMntPoint: "",
 	}
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
@@ -287,6 +288,14 @@ func (u *Unikontainer) Exec() error {
 	if u.State.Annotations[annotBlock] != "" && unikernel.SupportsBlock() {
 		vmmArgs.BlockDevice = u.State.Annotations[annotBlock]
 		unikernelParams.RootFSType = "block"
+		if u.State.Annotations[annotBlockMntPoint] != "" {
+			unikernelParams.BlockMntPoint = u.State.Annotations[annotBlockMntPoint]
+		} else {
+			// NOTE: If the user has not specified the
+			// mount point for the block device, then we will
+			// use /data as a default mount point.
+			unikernelParams.RootFSType = "/data"
+		}
 		if withRootfsMount {
 			uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
 			withRootfsMount = false
@@ -328,6 +337,15 @@ func (u *Unikontainer) Exec() error {
 				}
 				vmmArgs.BlockDevice = rootFsDevice.Device
 				unikernelParams.RootFSType = "block"
+				// NOTE: Rumprun does not allow us to mount
+				// anything at '/'. As a result, we use the
+				// /data mount point for Rumprun. For all the
+				// other guests we use '/'.
+				if unikernelType == "rumprun" {
+					unikernelParams.BlockMntPoint = "/data"
+				} else {
+					unikernelParams.BlockMntPoint = "/"
+				}
 				dmPath = rootFsDevice.Device
 			}
 		}
