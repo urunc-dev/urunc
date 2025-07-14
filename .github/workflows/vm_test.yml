@@ -14,6 +14,27 @@ on:
       runner-arch-map:
         type: string
         default: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
+      runc_version:
+        required: true
+        type: string
+      containerd_version:
+        required: true
+        type: string
+      cni_version:
+        required: true
+        type: string
+      nerdctl_version:
+        required: true
+        type: string
+      crictl_version:
+        required: true
+        type: string
+      firecracker_version:
+        required: true
+        type: string
+      solo5_version:
+        required: true
+        type: string
     secrets:
       GIT_CLONE_PAT:
         required: false
@@ -57,22 +78,19 @@ jobs:
 
     - name: Install runc
       run: |
-        RUNC_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/opencontainers/runc/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-        wget -q https://github.com/opencontainers/runc/releases/download/v$RUNC_VERSION/runc.$(dpkg --print-architecture)
+        wget -q https://github.com/opencontainers/runc/releases/download/v${{ inputs.runc_version }}/runc.$(dpkg --print-architecture)
         sudo install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
         rm -f ./runc.$(dpkg --print-architecture)
 
     - name: Install containerd
       run: |
-        CONTAINERD_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/containerd/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-        wget -q https://github.com/containerd/containerd/releases/download/v$CONTAINERD_VERSION/containerd-$CONTAINERD_VERSION-linux-$(dpkg --print-architecture).tar.gz
-        sudo tar Cxzvf /usr/local containerd-$CONTAINERD_VERSION-linux-$(dpkg --print-architecture).tar.gz
-        rm -f containerd-$CONTAINERD_VERSION-linux-$(dpkg --print-architecture).tar.gz
+        wget -q https://github.com/containerd/containerd/releases/download/v${{ inputs.containerd_version }}/containerd-${{ inputs.containerd_version }}-linux-$(dpkg --print-architecture).tar.gz
+        sudo tar Cxzvf /usr/local containerd-${{ inputs.containerd_version }}-linux-$(dpkg --print-architecture).tar.gz
+        rm -f containerd-${{ inputs.containerd_version }}-linux-$(dpkg --print-architecture).tar.gz
 
     - name: Set up containerd service
       run: |
-        CONTAINERD_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/containerd/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-        wget -q https://raw.githubusercontent.com/containerd/containerd/v$CONTAINERD_VERSION/containerd.service
+        wget -q https://raw.githubusercontent.com/containerd/containerd/v${{ inputs.containerd_version }}/containerd.service
         sudo rm -f /lib/systemd/system/containerd.service
         sudo mv containerd.service /lib/systemd/system/containerd.service
         sudo systemctl daemon-reload
@@ -111,25 +129,22 @@ jobs:
 
     - name: Install CNI plugins
       run: |
-        CNI_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containernetworking/plugins/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-        wget -q https://github.com/containernetworking/plugins/releases/download/v$CNI_VERSION/cni-plugins-linux-$(dpkg --print-architecture)-v$CNI_VERSION.tgz
+        wget -q https://github.com/containernetworking/plugins/releases/download/v${{ inputs.cni_version }}/cni-plugins-linux-$(dpkg --print-architecture)-v${{ inputs.cni_version }}.tgz
         sudo mkdir -p /opt/cni/bin
-        sudo tar Cxzvf /opt/cni/bin cni-plugins-linux-$(dpkg --print-architecture)-v$CNI_VERSION.tgz
-        rm -f cni-plugins-linux-$(dpkg --print-architecture)-v$CNI_VERSION.tgz
+        sudo tar Cxzvf /opt/cni/bin cni-plugins-linux-$(dpkg --print-architecture)-v${{ inputs.cni_version }}.tgz
+        rm -f cni-plugins-linux-$(dpkg --print-architecture)-v${{ inputs.cni_version }}.tgz
 
     - name: Install nerdctl
       run: |
-        NERDCTL_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/nerdctl/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-        wget -q https://github.com/containerd/nerdctl/releases/download/v$NERDCTL_VERSION/nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
-        sudo tar Cxzvf /usr/local/bin nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
-        rm -f nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
+        wget -q https://github.com/containerd/nerdctl/releases/download/v${{ inputs.nerdctl_version }}/nerdctl-${{ inputs.nerdctl_version }}-linux-$(dpkg --print-architecture).tar.gz
+        sudo tar Cxzvf /usr/local/bin nerdctl-${{ inputs.nerdctl_version }}-linux-$(dpkg --print-architecture).tar.gz
+        rm -f nerdctl-${{ inputs.nerdctl_version }}-linux-$(dpkg --print-architecture).tar.gz
 
     - name: Install crictl
       run: |
-        VERSION="v1.30.0" # check latest version in /releases page
-        wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
-        sudo tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin
-        rm -f crictl-$VERSION-linux-amd64.tar.gz
+        wget https://github.com/kubernetes-sigs/cri-tools/releases/download/${{ inputs.crictl_version }}/crictl-${{ inputs.crictl_version }}-linux-amd64.tar.gz
+        sudo tar zxvf crictl-${{ inputs.crictl_version }}-linux-amd64.tar.gz -C /usr/local/bin
+        rm -f crictl-${{ inputs.crictl_version }}-linux-amd64.tar.gz
         sudo tee -a /etc/crictl.yaml > /dev/null <<'EOT'
         runtime-endpoint: unix:///run/containerd/containerd.sock
         image-endpoint: unix:///run/containerd/containerd.sock
@@ -140,16 +155,15 @@ jobs:
     - name: Install Firecracker
       run: |
         ARCH="$(uname -m)"
-        VERSION="v1.7.0"
         release_url="https://github.com/firecracker-microvm/firecracker/releases"
-        curl -L ${release_url}/download/${VERSION}/firecracker-${VERSION}-${ARCH}.tgz | tar -xz
+        curl -L ${release_url}/download/${{ inputs.firecracker_version }}/firecracker-${{ inputs.firecracker_version }}-${ARCH}.tgz | tar -xz
         # Rename the binary to "firecracker"
-        sudo mv release-${VERSION}-${ARCH}/firecracker-${VERSION}-${ARCH} /usr/local/bin/firecracker
-        rm -fr release-${VERSION}-${ARCH}
+        sudo mv release-${{ inputs.firecracker_version }}-${ARCH}/firecracker-${{ inputs.firecracker_version }}-${ARCH} /usr/local/bin/firecracker
+        rm -fr release-${{ inputs.firecracker_version }}-${ARCH}
 
     - name: Install solo5
       run: |
-        git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+        git clone -b ${{ inputs.solo5_version }} https://github.com/Solo5/solo5.git
         cd solo5
         ./configure.sh  && make -j$(nproc)
         sudo cp tenders/hvt/solo5-hvt /usr/local/bin
