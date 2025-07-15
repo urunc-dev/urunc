@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/nubificus/urunc/internal/constants"
-	m "github.com/nubificus/urunc/internal/metrics"
+	"github.com/urunc-dev/urunc/internal/constants"
+	m "github.com/urunc-dev/urunc/internal/metrics"
 )
 
 func BenchmarkZerologWriter(b *testing.B) {

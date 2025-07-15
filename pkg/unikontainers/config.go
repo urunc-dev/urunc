@@ -63,7 +63,7 @@ type UnikernelConfig struct {
 // GetUnikernelConfig tries to get the Unikernel config from the bundle annotations.
 // If that fails, it gets the Unikernel config from the urunc.json file inside the rootfs.
 // FIXME: custom annotations are unreachable, we need to investigate why to skip adding the urunc.json file
-// For more details, see: https://github.com/nubificus/urunc/issues/12
+// For more details, see: https://github.com/urunc-dev/urunc/issues/12
 func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, error) {
 	conf, err := getConfigFromSpec(spec)
 	if err == nil {

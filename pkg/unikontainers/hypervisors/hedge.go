@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	hedge "github.com/nubificus/hedge_cli/hedge_api"
-	"github.com/nubificus/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 const (

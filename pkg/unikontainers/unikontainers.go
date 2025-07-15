@@ -29,16 +29,16 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/nubificus/urunc/pkg/network"
-	"github.com/nubificus/urunc/pkg/unikontainers/hypervisors"
-	"github.com/nubificus/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/network"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
 
-	"github.com/nubificus/urunc/internal/constants"
-	m "github.com/nubificus/urunc/internal/metrics"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"github.com/urunc-dev/urunc/internal/constants"
+	m "github.com/urunc-dev/urunc/internal/metrics"
 )
 
 const (

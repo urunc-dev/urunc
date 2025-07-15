@@ -21,7 +21,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/nubificus/urunc/internal/constants"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/vishvananda/netlink"
 )
 

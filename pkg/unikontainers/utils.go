@@ -24,8 +24,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nubificus/urunc/internal/constants"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/urunc-dev/urunc/internal/constants"
 )
 
 const (

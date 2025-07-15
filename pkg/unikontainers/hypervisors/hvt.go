@@ -20,7 +20,7 @@ import (
 	"syscall"
 
 	seccomp "github.com/elastic/go-seccomp-bpf"
-	"github.com/nubificus/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 const (

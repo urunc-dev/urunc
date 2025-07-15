@@ -25,10 +25,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nubificus/urunc/internal/constants"
-	m "github.com/nubificus/urunc/internal/metrics"
 	"github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
+	"github.com/urunc-dev/urunc/internal/constants"
+	m "github.com/urunc-dev/urunc/internal/metrics"
 
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/urfave/cli"

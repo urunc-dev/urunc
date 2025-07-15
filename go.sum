@@ -143,6 +143,8 @@ github.com/mrunalp/fileutils v0.5.1 h1:F+S7ZlNKnrwHfSwdlgNSkKo67ReVf8o9fel6C3dkm
 github.com/mrunalp/fileutils v0.5.1/go.mod h1:M1WthSahJixYnrXQl/DFQuteStB1weuxD2QJNHXfbSQ=
 github.com/nubificus/hedge_cli v0.0.3 h1:psu0tXb9XbzREp1S6AW4VJytbgdKP7tZ+HOXcz4W8Xk=
 github.com/nubificus/hedge_cli v0.0.3/go.mod h1:YtvRtb7bUPF+Jd+np3gFoGs12Z+BZ2LWDnhsDvuh6ZA=
+github.com/nubificus/urunc v0.6.0 h1:mCou1AJHzOHDHgNm3U+L9R+1GJ8cEeGNC4RxMR/9shs=
+github.com/nubificus/urunc v0.6.0/go.mod h1:f+B/TBjxnbhEt0YGjCen0R6P6NMrIwJ4r0yHCT8+3pk=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=

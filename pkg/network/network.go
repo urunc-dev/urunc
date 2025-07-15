@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	DefaultInterface = "eth0" // FIXME: Discover the veth endpoint name instead of using default "eth0". See: https://github.com/nubificus/urunc/issues/14
+	DefaultInterface = "eth0" // FIXME: Discover the veth endpoint name instead of using default "eth0". See: https://github.com/urunc-dev/urunc/issues/14
 	DefaultTap       = "tapX_urunc"
 )
 

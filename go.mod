@@ -1,4 +1,4 @@
-module github.com/nubificus/urunc
+module github.com/urunc-dev/urunc
 
 go 1.23.0
 
@@ -13,6 +13,7 @@ require (
 	github.com/jackpal/gateway v1.0.16
 	github.com/moby/sys/mount v0.3.4
 	github.com/nubificus/hedge_cli v0.0.3
+	github.com/nubificus/urunc v0.6.0
 	github.com/opencontainers/runc v1.2.6
 	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/prometheus-community/pro-bing v0.7.0

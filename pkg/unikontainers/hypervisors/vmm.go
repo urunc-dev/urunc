@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/nubificus/urunc/pkg/unikontainers/unikernels"
 	"github.com/sirupsen/logrus"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 const DefaultMemory uint64 = 256 // The default memory for every hypervisor: 256 MB

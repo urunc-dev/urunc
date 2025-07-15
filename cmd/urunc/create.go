@@ -26,9 +26,9 @@ import (
 	"strconv"
 
 	"github.com/creack/pty"
-	"github.com/nubificus/urunc/pkg/unikontainers"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 	"golang.org/x/sys/unix"
 )
 
