@@ -30,7 +30,15 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: '1.24.1'
-          cache: false
+      - name: golangci-lint
+        uses: actions/cache@v4
+        with:
+          path: | 
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-$-{{ hashFiles('**/go.sum') }}
+          restore-keys: | 
+            ${{ runner.os }}-go-
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
@@ -38,3 +46,5 @@ jobs:
 
           # show only new issues if it's a pull request. The default value is `false`.
           only-new-issues: true
+          args: --out-format=github-actions
+
