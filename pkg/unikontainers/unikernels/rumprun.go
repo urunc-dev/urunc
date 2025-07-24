@@ -161,7 +161,7 @@ func (r *Rumprun) MonitorCli(_ string) string {
 func (r *Rumprun) Init(data UnikernelParams) error {
 	// if EthDeviceMask is empty, there is no network support
 	if data.EthDeviceMask != "" {
-		// FIXME: in the case of rumprun & k8s, we need to identofy
+		// FIXME: in the case of rumprun & k8s, we need to identify
 		// the reason that networking is not working properly.
 		// One reason could be that the gw is in different subnet
 		// than the IP of the unikernel.
