@@ -1,0 +1,343 @@
+name: Kubernetes test
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      runner:
+        type: string
+        default: '["base", "dind", "2204"]'
+      runner-archs:
+        type: string
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        type: string
+        default: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
+      firecracker_version:
+        type: string
+        required: true
+      solo5_version:
+        type: string
+        required: true
+      runc_version:
+        required: true
+        type: string
+    secrets:
+      GIT_CLONE_PAT:
+        required: false
+  workflow_dispatch:     
+jobs:
+  test:
+    name: Kubernetes test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+      fail-fast: false
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24.1'
+        cache: false
+
+    - name: Install base dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make 
+    - name: Install kind
+      run: |
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "x86_64" ]; then
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+        elif [ "$ARCH" = "aarch64" ]; then
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-arm64
+        else
+          echo "Unsupported architecture: $ARCH"
+          exit 1
+        fi
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/kind
+        
+    - name: Create kind configuration
+      run: |
+        if [ "${{ matrix.arch }}" = "amd64" ]; then
+        cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+              extraMounts:
+                - hostPath: /dev/kvm
+                  containerPath: /dev/kvm
+          networking:
+            apiServerPort: 6443
+        EOF
+        else
+        cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+          networking:
+            apiServerPort: 6443
+        EOF
+        fi
+
+    - name: Create kind cluster
+      run: |
+        sudo kind create cluster --name urunc-test --config kind-config.yaml
+    - name: Install dependencies inside kind node
+      run: |
+        docker exec urunc-test-control-plane apt-get update
+        docker exec urunc-test-control-plane apt-get install -y git wget build-essential libseccomp-dev pkg-config bc
+
+    - name: Install runc inside kind node
+      run: |
+        docker exec urunc-test-control-plane bash -c '
+          if ! which runc; then
+            wget -q https://github.com/opencontainers/runc/releases/download/v${{ inputs.runc_version }}/runc.$(dpkg --print-architecture)
+            install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
+            rm -f ./runc.$(dpkg --print-architecture)
+          fi
+        '
+
+    - name: Configure containerd inside kind node
+      run: |
+        docker exec urunc-test-control-plane bash -c '
+          systemctl status containerd || containerd &
+          mkdir -p /etc/containerd
+          containerd config default > /etc/containerd/config.toml
+        '
+    - name: Set snapshotter to overlayfs
+      run: |
+        docker exec urunc-test-control-plane bash -c \
+        'sed -i "s/snapshotter = \"devmapper\"/snapshotter = \"overlayfs\"/g" /etc/containerd/config.toml'
+
+    - name: Download urunc artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: urunc_${{ matrix.arch }}-${{ github.run_id }}
+        path: ./artifacts
+
+    - name: Download containerd-shim artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: containerd-shim-urunc-v2_${{ matrix.arch }}-${{ github.run_id }}
+        path: ./artifacts    
+    
+    - name: List artifacts dir
+      run: ls -lR ./artifacts
+
+    - name: Copy and install urunc binaries
+      run: |
+        docker exec urunc-test-control-plane mkdir -p /urunc-temp
+        
+        docker cp "$(pwd)/artifacts/urunc_static_${{ matrix.arch }}" urunc-test-control-plane:/urunc-temp/urunc
+        docker cp "$(pwd)/artifacts/containerd-shim-urunc-v2_static_${{ matrix.arch }}" urunc-test-control-plane:/urunc-temp/containerd-shim-urunc-v2
+        
+        docker exec urunc-test-control-plane bash -c '
+          set -ex
+          echo "=== Before installation ==="
+          ls -la /urunc-temp/
+          
+          chmod +x /urunc-temp/urunc /urunc-temp/containerd-shim-urunc-v2
+          mv -v /urunc-temp/urunc /usr/local/bin/
+          mv -v /urunc-temp/containerd-shim-urunc-v2 /usr/local/bin/
+          
+          echo "=== After installation ==="
+          ls -la /usr/local/bin/urunc /usr/local/bin/containerd-shim-urunc-v2
+          /usr/local/bin/urunc --version
+        '
+
+    - name: Install QEMU inside kind node (amd64 only)
+      if: matrix.arch == 'amd64'
+      run: |
+        docker exec urunc-test-control-plane apt-get install -y qemu-system
+
+
+    - name: Install Firecracker inside kind node
+      run: |      
+        FC_VERSION="${{ inputs.firecracker_version }}"
+        docker exec urunc-test-control-plane bash -c '
+          ARCH=$(uname -m)
+          echo "Downloading Firecracker version: '"$FC_VERSION"'"
+          curl -fsSL https://github.com/firecracker-microvm/firecracker/releases/download/'"$FC_VERSION"'/firecracker-'"$FC_VERSION"'-${ARCH}.tgz | tar -xz
+          install -m 755 release-'"$FC_VERSION"'-${ARCH}/firecracker-'"$FC_VERSION"'-${ARCH} /usr/local/bin/firecracker
+          firecracker --version
+        '
+
+    - name: Install Solo5 inside kind node
+      run: |
+        SOLO5_VERSION="${{ inputs.solo5_version }}"
+        docker exec urunc-test-control-plane bash -c '
+          git clone -b "'"$SOLO5_VERSION"'" https://github.com/Solo5/solo5.git
+          cd solo5
+          ./configure.sh && make -j$(nproc)
+          install -m 755 tenders/hvt/solo5-hvt /usr/local/bin/
+          install -m 755 tenders/spt/solo5-spt /usr/local/bin/
+          cd ..
+          rm -rf solo5
+          solo5-hvt --version
+        '
+
+    - name: Add urunc to containerd config
+      run: |
+        docker exec urunc-test-control-plane bash -c "cat <<'EOF' >> /etc/containerd/config.toml
+        [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.urunc]
+          runtime_type = \"io.containerd.urunc.v2\"
+          container_annotations = [\"com.urunc.unikernel.*\"]
+          pod_annotations = [\"com.urunc.unikernel.*\"]
+          snapshotter = \"overlayfs\"
+        EOF"
+    
+
+    - name: Restart containerd inside urunc-test-control-plane
+      run: |
+        docker exec urunc-test-control-plane bash -c "
+          systemctl stop containerd
+          rm -f /var/lib/containerd/io.containerd.metadata.v1.bolt/meta.db
+          systemctl restart containerd
+          sleep 10
+          systemctl status containerd
+        "
+    - name: Verify urunc installation
+      run: |
+        docker exec urunc-test-control-plane bash -c '
+        ls -la /usr/local/bin/urunc*
+        ls -la /usr/local/bin/containerd-shim-urunc-v2*
+        containerd --version
+        '
+
+    - name: Install kubectl
+      run: |
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "x86_64" ]; then
+          KUBECTL_ARCH="amd64"
+        elif [ "$ARCH" = "aarch64" ]; then
+          KUBECTL_ARCH="arm64"
+        else
+          echo "Unsupported architecture: $ARCH"
+          exit 1
+        fi
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBECTL_ARCH}/kubectl"
+        chmod +x kubectl
+        sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+    - name: Set up kubectl config
+      run: |
+        mkdir -p ~/.kube
+        kind get kubeconfig --name urunc-test > ~/.kube/config
+        chmod 600 ~/.kube/config
+        export KUBECONFIG=~/.kube/config
+        kubectl config use-context kind-urunc-test
+        kubectl wait --for=condition=Ready nodes --all --timeout=200s
+        kubectl cluster-info
+
+    - name: Create RuntimeClass
+      run: |
+        cat <<EOF | kubectl apply -f -
+          kind: RuntimeClass
+          apiVersion: node.k8s.io/v1
+          metadata:
+            name: urunc
+          handler: urunc
+        EOF
+    - name: Deploy hello world unikernel (amd64)
+      if: matrix.arch == 'amd64'
+      run: |
+        cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: hello-spt-rumprun-block
+              labels:
+                run: hello-spt-rumprun-block
+            spec:
+              runtimeClassName: urunc
+              restartPolicy: Never
+              containers:
+                - name: hello-spt-rumprun-block
+                  image: harbor.nbfc.io/nubificus/urunc/hello-spt-rumprun-block:latest
+                  imagePullPolicy: Always
+                  ports:
+                  - containerPort: 80
+                    protocol: TCP
+                  resources:
+                    requests:
+                      cpu: 10m
+        
+        
+    - name: Verify hello-spt-rumprun-block deployment
+      if: matrix.arch == 'amd64'
+      run: |
+        kubectl wait --for=condition=Succeeded pod/hello-spt-rumprun-block --timeout=180s || true
+        kubectl logs hello-spt-rumprun-block | tee /tmp/logs.txt
+        if ! grep "Hello world" /tmp/logs.txt; then
+          echo "=== LOGS ==="
+          cat /tmp/logs.txt
+          exit 1
+        fi
+        kubectl describe pod hello-spt-rumprun-block || true
+        
+
+    - name: Deploy hello world unikernel (arm64)
+      if: matrix.arch == 'arm64'
+      run: |
+        cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: hello-spt-rumprun-block
+              labels:
+                run: hello-spt-rumprun-block
+            spec:
+              runtimeClassName: urunc
+              restartPolicy: Never
+              containers:
+                - name: hello-spt-rumprun-block
+                  image: harbor.nbfc.io/nubificus/urunc/hello-spt-rumprun-block:latest
+                  imagePullPolicy: Always
+                  ports:
+                  - containerPort: 80
+                    protocol: TCP
+                  resources:
+                    requests:
+                      cpu: 10m
+        EOF
+
+    - name: Verify hello world deployment (arm64)
+      if: matrix.arch == 'arm64'
+      run: |
+        kubectl wait --for=condition=Succeeded pod/hello-spt-rumprun-block --timeout=180s  || true
+        kubectl logs hello-spt-rumprun-block | tee /tmp/logs.txt
+        grep "Hello world" /tmp/logs.txt
+        kubectl describe pod hello-spt-rumprun-block || true
+
+    - name: Debug pod failure
+      if: failure()
+      run: |
+        echo "=== Debugging failure ==="
+        echo "=== Describe Pod ==="
+        if [ "${{ matrix.arch }}" = "amd64" ]; then
+          echo "=== Debugging hello-spt-rumprun-block (amd64) ==="
+          kubectl describe pod hello-spt-rumprun-block || true
+          echo "=== Logs ==="
+          kubectl logs hello-spt-rumprun-block || true
+        else
+          echo "=== Debugging hello-spt-rumprun-block (arm64) ==="
+          kubectl describe pod hello-spt-rumprun-block || true
+          echo "=== Logs ==="
+          kubectl logs hello-spt-rumprun-block || true
+        fi
+        
