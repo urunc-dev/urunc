@@ -243,17 +243,19 @@ We can also install `urunc` from its latest
 
 ```bash
 URUNC_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/urunc-dev/urunc/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/urunc_$(dpkg --print-architecture)
-chmod +x urunc_$(dpkg --print-architecture)
-sudo mv urunc_$(dpkg --print-architecture) /usr/local/bin/urunc
+URUNC_BINARY_FILENAME="urunc_static_v${URUNC_VERSION}_$(dpkg --print-architecture)"
+wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/$URUNC_BINARY_FILENAME
+chmod +x $URUNC_BINARY_FILENAME
+sudo mv $URUNC_BINARY_FILENAME /usr/local/bin/urunc
 ```
 
 And for `containerd-shim-urunc-v2`:
 
 ```bash
-wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/containerd-shim-urunc-v2_$(dpkg --print-architecture)
-chmod +x containerd-shim-urunc-v2_$(dpkg --print-architecture)
-sudo mv containerd-shim-urunc-v2_$(dpkg --print-architecture) /usr/local/bin/containerd-shim-urunc-v2
+CONTAINERD_BINARY_FILENAME="containerd-shim-urunc-v2_static_v${URUNC_VERSION}_$(dpkg --print-architecture)"
+wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/$CONTAINERD_BINARY_FILENAME
+chmod +x $CONTAINERD_BINARY_FILENAME
+sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
 ```
 
 ### Add urunc runtime to containerd
