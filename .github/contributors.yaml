@@ -14,3 +14,9 @@ users:
   mgkeka-nbfc:
     name: Maria Gkeka
     email: mgkeka@nubificus.co.uk
+  zyfy29:
+    name: zyfy29
+    email: wasuremono127@gmail.com
+  copilot-pull-request-reviewerbot:
+    name: copilot[bot]
+    email: copilot[bot]@users.noreply.github.com
