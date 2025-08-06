@@ -203,6 +203,16 @@ jobs:
         sudo udevadm trigger --name-match=kvm
         sudo usermod -a -G kvm $USER
 
+    - name: Prepare urunc folder
+      id: prepare
+      if: ${{ !cancelled() }}
+      run: |
+        export GOROOT=$(go env GOROOT)
+        export PATH="$GOROOT/bin:$PATH"
+        go version
+        go env GOROOT
+        make prepare
+
     - name: Run ${{ matrix.test }}
       id: test
       if: ${{ !cancelled() }}
