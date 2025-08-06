@@ -24,7 +24,7 @@ jobs:
     continue-on-error: true
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: actions/setup-go@v5
