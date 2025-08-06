@@ -174,13 +174,13 @@ jobs:
         sudo cp tenders/spt/solo5-spt /usr/local/bin
 
     - name: Download urunc artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: urunc_${{ matrix.arch }}-${{ github.run_id }}
         path: ./
 
     - name: Download containerd-shim-urunc-v2 artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: containerd-shim-urunc-v2_${{ matrix.arch }}-${{ github.run_id }}
         path: ./

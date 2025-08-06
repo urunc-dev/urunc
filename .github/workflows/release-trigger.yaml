@@ -96,27 +96,27 @@ jobs:
           fetch-depth: 0
 
       - name: Download urunc amd64 build artifact 
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: urunc_static_amd64-${{ github.run_id }}
           path: ${{ env.ARTIFACTS_PATH }}
           merge-multiple: true
       - name: Download shim amd64 build artifact 
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: containerd-shim-urunc-v2_static_amd64-${{ github.run_id }}
           path: ${{ env.ARTIFACTS_PATH }}
           merge-multiple: true
 
       - name: Download urunc arm64 build artifact 
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: urunc_static_arm64-${{ github.run_id }}
           path: ${{ env.ARTIFACTS_PATH }}
           merge-multiple: true
 
       - name: Download shim arm64 build artifact 
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: containerd-shim-urunc-v2_static_arm64-${{ github.run_id }}
           path: ${{ env.ARTIFACTS_PATH }}
