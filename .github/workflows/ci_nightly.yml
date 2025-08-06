@@ -1,0 +1,68 @@
+name: urunc CI (nightly)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  validate-files-and-commits:
+    name: Lint Files & commits 
+    uses: ./.github/workflows/validate-files-and-commits.yml
+    with:
+      ref: ${{ github.sha }}
+
+  lint:
+    name: Lint code
+    uses: ./.github/workflows/lint.yml
+    with:
+      ref: ${{ github.sha }}
+
+  build:
+    name: Build
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.sha }}
+
+  unit_test:
+    name: Unit tests
+    uses: ./.github/workflows/unit_test.yml
+    with:
+      ref: ${{ github.sha }}
+      go_version: "1.24.6"
+
+  vm_test:
+    needs: [build]
+    name: E2E test
+    uses: ./.github/workflows/vm_test.yml
+    with:
+      runner-archs: '["amd64", "arm64"]'
+      runc_version: '1.3.0'
+      containerd_version: '2.1.3'
+      cni_version: '1.7.1'
+      nerdctl_version: '2.1.3'
+      crictl_version: 'v1.30.0'
+      firecracker_version: 'v1.7.0'
+      solo5_version: 'v0.9.3'
+
+  kind_test:
+    needs: [build]
+    name:  Kubernetes test
+    uses: ./.github/workflows/kind_test.yml
+    with:
+      firecracker_version: 'v1.7.0'
+      solo5_version: 'v0.9.3'
+      runc_version: '1.3.0'
