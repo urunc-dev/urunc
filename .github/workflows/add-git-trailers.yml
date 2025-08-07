@@ -8,6 +8,9 @@ on:
       URUNC_BOT_PRIVATE_KEY:
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   git-trailers:
     name: Add Git Trailers
@@ -22,6 +25,11 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
       - name: Exit if PR is not rebaseable
         if: ${{ github.event.pull_request.rebaseable != null && github.event.pull_request.rebaseable == false }}
         run: exit 1
