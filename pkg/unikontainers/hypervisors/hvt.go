@@ -149,7 +149,7 @@ func (h *HVT) Ok() error {
 
 func (h *HVT) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	hvtString := string(HvtVmm)
-	hvtMem := bytesToStringMB(args.MemSizeB)
+	hvtMem := BytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem
 	if args.TapDevice != "" {
 		cmdString += " "

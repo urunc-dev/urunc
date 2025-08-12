@@ -63,7 +63,7 @@ func (s *SPT) Ok() error {
 
 func (s *SPT) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	sptString := string(SptVmm)
-	sptMem := bytesToStringMB(args.MemSizeB)
+	sptMem := BytesToStringMB(args.MemSizeB)
 	cmdString := s.binaryPath + " --mem=" + sptMem
 	if args.TapDevice != "" {
 		cmdString += " "

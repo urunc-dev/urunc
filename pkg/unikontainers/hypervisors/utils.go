@@ -47,7 +47,7 @@ func bytesToMB(bytes uint64) uint64 {
 	return bytes / bytesInMB
 }
 
-func bytesToStringMB(argMem uint64) string {
+func BytesToStringMB(argMem uint64) string {
 	stringMem := strconv.FormatUint(DefaultMemory, 10)
 	if argMem != 0 {
 		userMem := bytesToMB(argMem)

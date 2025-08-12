@@ -57,7 +57,7 @@ func (q *Qemu) Path() string {
 
 func (q *Qemu) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	qemuString := string(QemuVmm)
-	qemuMem := bytesToStringMB(args.MemSizeB)
+	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"
 	cmdString += " -L /usr/share/qemu"   // Set the path for qemu bios/data
 	cmdString += " -cpu host"            // Choose CPU
