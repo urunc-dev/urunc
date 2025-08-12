@@ -44,7 +44,7 @@ func (s *SPT) UsesKVM() bool {
 }
 
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
-func (s *SPT) SupportsSharedfs() bool {
+func (s *SPT) SupportsSharedfs(_ string) bool {
 	return false
 }
 

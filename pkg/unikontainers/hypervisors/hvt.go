@@ -130,7 +130,7 @@ func (h *HVT) UsesKVM() bool {
 }
 
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
-func (h *HVT) SupportsSharedfs() bool {
+func (h *HVT) SupportsSharedfs(_ string) bool {
 	return false
 }
 

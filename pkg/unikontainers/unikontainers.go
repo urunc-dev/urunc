@@ -363,7 +363,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 		// If we could not use a block-based rootfs, check if we can use 9pfs
 		if unikernelParams.RootFSType == "" {
-			if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs() {
+			if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs("9p") {
 				vmmArgs.SharedfsPath = containerRootfsMountPath
 				unikernelParams.RootFSType = "9pfs"
 			}
