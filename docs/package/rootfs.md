@@ -93,7 +93,7 @@ rootfs. For this scenario we can use both
 [bunny](https://github.com/nubificus/bunny) and
 [bunix](https://github.com/nubificus/bunix).
 
-> **NOTE**: In case the unikernel does not supports shared-fs (e.g. 9pfs), we
+> **NOTE**: In case the unikernel does not supports shared-fs (e.g. 9pfs/virtiofs), we
 > can only use block devices and for that reason we need to create the unikernel
 > container using devmapper as a snapshotter. In that way,`urunc` will use the
 > snapshot of the container's image and directly attach it to the unikernel as  a

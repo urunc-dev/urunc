@@ -92,7 +92,7 @@ Another important aspect is preparing the root filesystem (rootfs). Since we're
 booting a full Linux virtual machine, a proper rootfs must be provided. There
 are three main ways to do this:
 
-1. Using directly the rootfs of the container's image (requires devmapper or 9pfs).
+1. Using directly the rootfs of the container's image (requires either a block based snapshotter or 9pfs/Virtiofs).
 2. Creating a block image out of a container's image rootfs.
 3. Creating a initrd.
 

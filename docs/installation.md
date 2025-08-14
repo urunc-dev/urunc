@@ -12,6 +12,7 @@ We will be installing and setting up:
 - [CNI plugins](https://github.com/containernetworking/plugins)
 - [nerdctl](https://github.com/containerd/nerdctl)
 - [devmapper](https://docs.docker.com/storage/storagedriver/device-mapper-driver/) or [blockfile](https://github.com/containerd/containerd/blob/main/docs/snapshotters/blockfile.md)
+- [virtiofs](https://virtio-fs.gitlab.io/)
 - [Go [[ versions.go ]]](https://go.dev/doc/install)
 - [urunc](https://github.com/urunc-dev/urunc)
 - [solo5-{hvt|spt}](https://github.com/Solo5/solo5)
@@ -206,7 +207,6 @@ sudo ctr plugin ls | grep devmapper
 io.containerd.snapshotter.v1              devmapper                linux/amd64    ok
 ```
 
-
 ### Option 2: Blockfile
 #### Using blockfile snapshotter (alternative to devmapper)
 
@@ -288,6 +288,20 @@ sudo containerd config migrate > /etc/containerd/config.toml
    ```bash
    io.containerd.snapshotter.v1           blockfile               linux/amd64    ok
    ```
+
+## Install virtiofs
+
+As an alternative to 9pfs, `urunc` is able to spawn guests using virtiofs. For that
+purpose, we need to install virtiofsd under `/usr/libexec` where `urunc` expects to find
+the statically linked binary of `virtiofsd`. For easier installation, we have uploaded
+the respective binary in `https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd`.
+Therefore, the installation can easily take place with the following instructions:
+
+```
+wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
+chmod +x virtiofsd
+sudo cp virtiofsd /usr/libexec/
+```
 
 ## Install urunc
 

@@ -35,7 +35,7 @@ supports [Qemu](https://www.qemu.org/) and [AWS
 Firecracker](https://github.com/firecracker-microvm/firecracker). In both
 cases, it gets network access through virtio-net. In the case of storage, to
 the best of our knowledge [Unikraft](https://unikraft.org/) supports two
-options: a) 9pFS sharing a directory between the host and the unikernel and b)
+options: a) 9pfs sharing a directory between the host and the unikernel and b)
 initrd and therefore an initial RamFS.
 
 ### Unikraft and `urunc`
@@ -314,13 +314,13 @@ Focusing on the single-application notion of using the
 both [Qemu](https://qemu.org) and
 [Firecracker](https://github.com/firecracker-microvm/firecracker). For network,
 `urunc` will make use of virtio-net either through PCI or MMIO, depending on
-the monitor. In the case of storage, `urunc` can use initrd, virtio-block or 9pfs. In
-particular, `urunc` takes advantage of the extensive filesystem support of
-[Linux](https://github.com/torvalds/linux) and can directly mount containerd's
-snapshot directly to a [Linux](https://github.com/torvalds/linux) VM. This is
-only possible using devmapper as a snapshotter in containerd. For more
-information on setting up devmapper, please take a look on our [installation
-guide](../installation#setup-thinpool-devmapper).
+the monitor. In the case of storage, `urunc` can use initrd, virtio-block ,9pfs
+or Virtiofs. In particular, `urunc` takes advantage of the extensive filesystem
+support of [Linux](https://github.com/torvalds/linux) and can directly mount
+containerd's snapshot directly to a [Linux](https://github.com/torvalds/linux)
+VM. This is only possible using devmapper as a snapshotter in containerd. For
+more information on setting up devmapper, please take a look on our
+[installation guide](../installation#setup-thinpool-devmapper).
 
 For more information on packaging applications and executing them on top of
 [Linux](https://github.com/torvalds/linux) with `urunc` take a look at our

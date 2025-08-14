@@ -53,7 +53,7 @@ device. In addition, `urunc` can leverage [Qemu](https://www.qemu.org/)'s
 initrd option in order to provide the Unikernel with an initial RamFS
 (initramfs). However, [Qemu](https://www.qemu.org/) supports various ways to
 provide storage in VMs such as block devices through virtio-blk,
-shared-fs through 9p and virtio-fs and initramfs.
+shared-fs through 9pfs, virtiofs and initramfs.
 
 We plan to add support for all the above options, but as previously mentioned
 only Initramfs is supported for the time being.
