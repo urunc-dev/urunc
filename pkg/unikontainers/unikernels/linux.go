@@ -72,6 +72,9 @@ func (l *Linux) CommandString() (string, error) {
 		rootParams := "root=fs0 rw rootfstype=9p rootflags="
 		rootParams += "trans=virtio,version=9p2000.L,msize=5000000,cache=mmap,posixacl"
 		bootParams += " " + rootParams
+	case "virtiofs":
+		rootParams := "root=fs0 rw rootfstype=virtiofs"
+		bootParams += " " + rootParams
 	}
 	if l.Net.Address != "" {
 		netParams := fmt.Sprintf("ip=%s::%s:%s:urunc:eth0:off",
@@ -107,6 +110,8 @@ func (l *Linux) SupportsFS(fsType string) bool {
 	case "ext4":
 		return true
 	case "9pfs":
+		return true
+	case "virtiofs":
 		return true
 	default:
 		return false

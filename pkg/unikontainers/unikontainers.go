@@ -302,7 +302,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 			// NOTE: If the user has not specified the
 			// mount point for the block device, then we will
 			// use /data as a default mount point.
-			unikernelParams.RootFSType = "/data"
+			unikernelParams.RootFSType = "block"
 		}
 		if withRootfsMount {
 			uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
@@ -363,27 +363,18 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 		// If we could not use a block-based rootfs, check if we can use 9pfs
 		if unikernelParams.RootFSType == "" {
-			if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs("9p") {
+			if unikernel.SupportsFS("virtiofs") && vmm.SupportsSharedfs("virtio") {
 				vmmArgs.SharedfsPath = containerRootfsMountPath
+				vmmArgs.SharedfsType = "virtiofs"
+				unikernelParams.RootFSType = "virtiofs"
+			} else if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs("9p") {
+				vmmArgs.SharedfsPath = containerRootfsMountPath
+				vmmArgs.SharedfsType = "9pfs"
 				unikernelParams.RootFSType = "9pfs"
 			}
 		}
 	}
 	metrics.Capture(u.State.ID, "TS17")
-
-	err = unikernel.Init(unikernelParams)
-	if err == unikernels.ErrUndefinedVersion || err == unikernels.ErrVersionParsing {
-		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
-	} else if err != nil {
-		return err
-	}
-
-	// build the unikernel command
-	unikernelCmd, err := unikernel.CommandString()
-	if err != nil {
-		return err
-	}
-	vmmArgs.Command = unikernelCmd
 
 	// update urunc.json state
 	// TODO: Move this somewhere else. We are not yet running and
@@ -411,14 +402,30 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	tmpMountMemStr := "65536k"
+	if unikernelParams.RootFSType == "virtiofs" {
+		// For virtiofs, Qemu and virtiofsd are using a host file
+		// to share the VM's RAM and hence the size of this file
+		// should be the same as guest's memory. This file will
+		// be placed under /tmp and we need to mount /tmp with enough
+		// memory for this.
+		tmpMountMem := vmmArgs.MemSizeB
+		if tmpMountMem == 0 {
+			tmpMountMem = hypervisors.DefaultMemory * 1024 * 1024
+		}
+		// However, since /tmp might be used from the monitors for other
+		// things too, we add one more MB extra.
+		tmpMountMem += 1024 * 1024
+		tmpMountMemStr = hypervisors.BytesToStringMB(tmpMountMem) + "m"
+	}
 	// Setup the rootfs for the the monitor execution, creating necessary
 	// devices and the monitor's binary.
-	err = prepareMonRootfs(monRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP)
+	err = prepareMonRootfs(monRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP, tmpMountMemStr)
 	if err != nil {
 		return err
 	}
 
-	if unikernelParams.RootFSType == "9pfs" {
+	if unikernelParams.RootFSType == "9pfs" || unikernelParams.RootFSType == "virtiofs" {
 		// Mount the container's image rootfs inside the monitor rootfs
 		err := fileFromHost(monRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
@@ -435,6 +442,29 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
 		}
 	}
+	if unikernelParams.RootFSType == "virtiofs" {
+		// Get the virtiofsd binary from host in monRootfs
+		err := fileFromHost(monRootfs, "/usr/libexec/virtiofsd", "", unix.MS_BIND|unix.MS_PRIVATE, false)
+		if err != nil {
+			uniklog.Warnf("Could not bind mount /usr/libexec/virtiofsd: %v , trying with 9pfs", err)
+			vmmArgs.SharedfsType = "9pfs"
+			unikernelParams.RootFSType = "9pfs"
+		}
+	}
+
+	err = unikernel.Init(unikernelParams)
+	if err == unikernels.ErrUndefinedVersion || err == unikernels.ErrVersionParsing {
+		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
+	} else if err != nil {
+		return err
+	}
+
+	// build the unikernel command
+	unikernelCmd, err := unikernel.CommandString()
+	if err != nil {
+		return err
+	}
+	vmmArgs.Command = unikernelCmd
 
 	withPivot := containsNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	err = changeRoot(monRootfs, withPivot)
@@ -447,6 +477,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
+
+	if unikernelParams.RootFSType == "virtiofs" {
+		// Start the virtiofsd process
+		err = spawnVirtiofsd(containerRootfsMountPath)
+		if err != nil {
+			return err
+		}
+	}
+
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(u.State.ID, "TS18")
 	// metrics.Wait()

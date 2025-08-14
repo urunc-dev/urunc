@@ -71,6 +71,7 @@ FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac
 COPY --from=solo5-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=qemu-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/share/kata-qemu/qemu /urunc-artifacts/opt/kata/share/kata-qemu/qemu
+COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/libexec/virtiofsd /urunc-artifacts/libexec/virtiofsd
 COPY --from=firecracker-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=urunc-builder /artifacts/dist /urunc-artifacts
 

@@ -348,3 +348,12 @@ DEFROUTE
 blockfile
 thinpool
 vcpus
+Virtiofs
+virtiofs
+virtiofsd
+numa
+memdev
+chardev
+vhostqemu
+vhost
+libexec

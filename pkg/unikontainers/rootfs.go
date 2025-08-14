@@ -116,7 +116,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 // prepareMonRootfs prepares the rootfs where the monitor will execute. It
 // essentially sets up the devices (KVM, snapshotter block device) that are required
 // for the guest execution and any other files (e.g. binaries).
-func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needsKVM bool, needsTAP bool) error {
+func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needsKVM bool, needsTAP bool, tmpSize string) error {
 	err := fileFromHost(monRootfs, monitorPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 	if err != nil {
 		return err
@@ -181,12 +181,12 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 		return err
 	}
 
-	err = createTmpfs(monRootfs, "/dev", unix.MS_NOSUID|unix.MS_STRICTATIME, "755")
+	err = createTmpfs(monRootfs, "/dev", unix.MS_NOSUID|unix.MS_STRICTATIME, "755", "65536k")
 	if err != nil {
 		return err
 	}
 
-	err = createTmpfs(monRootfs, "/tmp", unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME, "1777")
+	err = createTmpfs(monRootfs, "/tmp", unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME, "1777", tmpSize)
 	if err != nil {
 		return err
 	}
@@ -229,10 +229,10 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 // In particular, it is used for the creation of /tmp and /dev.
 // This is necessary to create the required devices for the monitor execution,
 // such as KVM, null, urandom etc.
-func createTmpfs(monRootfs string, path string, flags uint64, mode string) error {
+func createTmpfs(monRootfs string, path string, flags uint64, mode string, size string) error {
 	dstPath := filepath.Join(monRootfs, path)
 	mountType := "tmpfs"
-	data := "mode=" + mode + ",size=65536k"
+	data := "mode=" + mode + ",size=" + size
 
 	err := os.MkdirAll(dstPath, 0755)
 	if err != nil {

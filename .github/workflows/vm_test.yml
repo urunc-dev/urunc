@@ -78,6 +78,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system
+        wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
+        sudo chmod +x virtiofsd
+        sudo mv virtiofsd /usr/libexec/virtiofsd
 
     - name: Install runc
       run: |

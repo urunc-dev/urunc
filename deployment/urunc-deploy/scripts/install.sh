@@ -59,6 +59,7 @@ function install_artifacts() {
                 echo "QEMU is already installed."
             else
                 install_artifact /urunc-artifacts/hypervisors/qemu-system-$(uname -m) /host/usr/local/bin/qemu-system-$(uname -m)
+                install_artifact /urunc-artifacts/libexec/virtiofsd /host/usr/libexec/virtiofsd
                 mkdir -p /host/usr/local/share/qemu/
                 cp -r /urunc-artifacts/opt/kata/share/kata-qemu/qemu /host/usr/local/share
             fi

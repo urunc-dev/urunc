@@ -545,7 +545,7 @@ func TestCtr(t *testing.T) {
 		},
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/readfile-qemu-linux-raw:latest",
-			Name:           "Qemu-linux-read-file-9pfs",
+			Name:           "Qemu-linux-read-file-virtiofs",
 			Devmapper:      false,
 			Seccomp:        true,
 			UID:            0,

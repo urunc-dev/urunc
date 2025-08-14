@@ -113,9 +113,17 @@ func (q *Qemu) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	if args.InitrdPath != "" {
 		cmdString += " -initrd " + args.InitrdPath
 	}
-	if args.SharedfsPath != "" {
+	switch args.SharedfsType {
+	case "9pfs":
 		cmdString += " -fsdev local,id=rootfs9p,security_model=none,path=" + args.SharedfsPath
 		cmdString += " -device virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0"
+	case "virtiofs":
+		cmdString += " -object memory-backend-file,id=mem,size=" + qemuMem + "M,mem-path=/tmp,share=on"
+		cmdString += " -numa node,memdev=mem"
+		cmdString += " -chardev socket,id=char0,path=/tmp/vhostqemu"
+		cmdString += " -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0"
+	default:
+		// Nothing to add
 	}
 	cmdString += ukernel.MonitorCli(qemuString)
 	exArgs := strings.Split(cmdString, " ")
