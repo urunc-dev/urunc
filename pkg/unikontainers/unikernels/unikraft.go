@@ -84,7 +84,7 @@ func (u *Unikraft) SupportsFS(fsType string) bool {
 }
 
 // There is no need for any changes here yet.
-func (u *Unikraft) MonitorNetCli(_ string) string {
+func (u *Unikraft) MonitorNetCli(_ string, _ string, _ string) string {
 	return ""
 }
 

@@ -133,10 +133,12 @@ func (r *Rumprun) SupportsFS(fsType string) bool {
 	}
 }
 
-func (r *Rumprun) MonitorNetCli(monitor string) string {
+func (r *Rumprun) MonitorNetCli(monitor string, ifName string, mac string) string {
 	switch monitor {
 	case "hvt", "spt":
-		return "--net:tap="
+		netOption := "--net:tap=" + ifName
+		netOption += " --net-mac:tap=" + mac
+		return netOption
 	default:
 		return ""
 	}

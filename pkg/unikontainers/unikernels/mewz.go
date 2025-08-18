@@ -45,11 +45,11 @@ func (m *Mewz) SupportsFS(_ string) bool {
 	return false
 }
 
-func (m *Mewz) MonitorNetCli(monitor string) string {
+func (m *Mewz) MonitorNetCli(monitor string, ifName string, mac string) string {
 	switch monitor {
 	case "qemu":
-		ncli := " -device virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off"
-		ncli += " -netdev tap,script=no,downscript=no,id=net0,ifname="
+		ncli := " -device virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off,mac=" + mac
+		ncli += " -netdev tap,script=no,downscript=no,id=net0,ifname=" + ifName
 		return ncli
 	default:
 		return ""

@@ -151,7 +151,10 @@ func (h *HVT) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	hvtString := string(HvtVmm)
 	hvtMem := bytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem
-	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorNetCli(hvtString), args.TapDevice)
+	if args.TapDevice != "" {
+		cmdString += " "
+		cmdString += ukernel.MonitorNetCli(hvtString, args.TapDevice, args.GuestMAC)
+	}
 	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(hvtString), args.BlockDevice)
 	cmdString = appendNonEmpty(cmdString, " ", ukernel.MonitorCli(hvtString))
 	cmdString += " " + args.UnikernelPath + " " + args.Command

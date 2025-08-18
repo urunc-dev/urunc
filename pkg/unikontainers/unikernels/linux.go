@@ -100,7 +100,7 @@ func (l *Linux) SupportsFS(fsType string) bool {
 	}
 }
 
-func (l *Linux) MonitorNetCli(_ string) string {
+func (l *Linux) MonitorNetCli(_ string, _ string, _ string) string {
 	return ""
 }
 

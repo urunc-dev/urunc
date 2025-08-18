@@ -65,7 +65,10 @@ func (s *SPT) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	sptString := string(SptVmm)
 	sptMem := bytesToStringMB(args.MemSizeB)
 	cmdString := s.binaryPath + " --mem=" + sptMem
-	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorNetCli(sptString), args.TapDevice)
+	if args.TapDevice != "" {
+		cmdString += " "
+		cmdString += ukernel.MonitorNetCli(sptString, args.TapDevice, args.GuestMAC)
+	}
 	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(sptString), args.BlockDevice)
 	cmdString = appendNonEmpty(cmdString, " ", ukernel.MonitorCli(sptString))
 	cmdString += " " + args.UnikernelPath + " " + args.Command

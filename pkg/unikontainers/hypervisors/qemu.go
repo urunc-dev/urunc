@@ -85,12 +85,13 @@ func (q *Qemu) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 
 	cmdString += " -kernel " + args.UnikernelPath
 	if args.TapDevice != "" {
-		netcli := ukernel.MonitorNetCli(qemuString)
+		netcli := ukernel.MonitorNetCli(qemuString, args.TapDevice, args.GuestMAC)
 		if netcli == "" {
-			netcli += " -net nic,model=virtio"
+			netcli += " -net nic,model=virtio,macaddr="
+			netcli += args.GuestMAC
 			netcli += " -net tap,script=no,downscript=no,ifname="
+			netcli += args.TapDevice
 		}
-		netcli += args.TapDevice
 		cmdString += netcli
 	} else {
 		cmdString += " -nic none"
