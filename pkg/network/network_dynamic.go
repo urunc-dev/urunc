@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/vishvananda/netlink"
 )
 
@@ -49,9 +48,7 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 		return nil, err
 	}
 	newTapName := strings.ReplaceAll(DefaultTap, "X", strconv.Itoa(tapIndex))
-	ipTemplate := fmt.Sprintf("%s/24", constants.DynamicNetworkTapIP)
-	newIPAddr := strings.ReplaceAll(ipTemplate, "X", strconv.Itoa(tapIndex+1))
-	newTapDevice, err := networkSetup(newTapName, newIPAddr, redirectLink, true, uid, gid)
+	newTapDevice, err := networkSetup(newTapName, "", redirectLink, true, uid, gid)
 	if err != nil {
 		return nil, err
 	}

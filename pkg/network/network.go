@@ -245,13 +245,15 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 			return nil, err
 		}
 	}
-	ipn, err := netlink.ParseAddr(ipAddress)
-	if err != nil {
-		return nil, err
-	}
-	err = netlink.AddrReplace(newTapDevice, ipn)
-	if err != nil {
-		return nil, err
+	if ipAddress != "" {
+		ipn, err := netlink.ParseAddr(ipAddress)
+		if err != nil {
+			return nil, err
+		}
+		err = netlink.AddrReplace(newTapDevice, ipn)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = netlink.LinkSetUp(newTapDevice)
