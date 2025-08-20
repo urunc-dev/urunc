@@ -72,8 +72,8 @@ func (m *Mirage) MonitorBlockCli(monitor string) string {
 	}
 }
 
-func (m *Mirage) MonitorCli(_ string) string {
-	return ""
+func (m *Mirage) MonitorCli(_ string) types.MonitorCliArgs {
+	return types.MonitorCliArgs{}
 }
 
 func (m *Mirage) Init(data types.UnikernelParams) error {

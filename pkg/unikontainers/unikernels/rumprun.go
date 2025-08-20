@@ -157,8 +157,8 @@ func (r *Rumprun) MonitorBlockCli(monitor string) string {
 
 // Rumprun can execute only on top of Solo5 and currently there
 // are no generic Solo5-specific arguments that Rumprun requires
-func (r *Rumprun) MonitorCli(_ string) string {
-	return ""
+func (r *Rumprun) MonitorCli(_ string) types.MonitorCliArgs {
+	return types.MonitorCliArgs{}
 }
 
 func (r *Rumprun) Init(data types.UnikernelParams) error {

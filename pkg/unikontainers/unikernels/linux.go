@@ -154,16 +154,25 @@ func (l *Linux) MonitorBlockCli(monitor string) string {
 	}
 }
 
-func (l *Linux) MonitorCli(monitor string) string {
+func (l *Linux) MonitorCli(monitor string) types.MonitorCliArgs {
 	switch monitor {
 	case "qemu":
-		const baseArgs = " -no-reboot -serial stdio -nodefaults"
-		if l.InitrdConf && l.RootFsType != "initrd" {
-			return baseArgs + " -initrd " + urunitConfPath
+		extraCliArgs := types.MonitorCliArgs{
+			OtherArgs: " -no-reboot -serial stdio -nodefaults",
 		}
-		return baseArgs
+		if l.InitrdConf && l.RootFsType != "initrd" {
+			extraCliArgs.ExtraInitrd = urunitConfPath
+		}
+		return extraCliArgs
+	case "firecracker":
+		if l.InitrdConf && l.RootFsType != "initrd" {
+			return types.MonitorCliArgs{
+				ExtraInitrd: urunitConfPath,
+			}
+		}
+		return types.MonitorCliArgs{}
 	default:
-		return ""
+		return types.MonitorCliArgs{}
 	}
 }
 

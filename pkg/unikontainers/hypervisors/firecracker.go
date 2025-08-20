@@ -90,7 +90,7 @@ func (fc *Firecracker) Path() string {
 	return fc.binaryPath
 }
 
-func (fc *Firecracker) Execve(args types.ExecArgs, _ types.Unikernel) error {
+func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	// FIXME: Note for getting unikernel specific options.
 	// Due to the way FC operates, we have not encountered any guest specific
 	// options yet. However, we need to revisit how we can use guest specific
@@ -112,6 +112,16 @@ func (fc *Firecracker) Execve(args types.ExecArgs, _ types.Unikernel) error {
 		if fcMem == 0 {
 			fcMem = DefaultMemory
 		}
+	}
+	// NOTE: Firecracker supports only one initrd.
+	// Therefore, we depend on the guest/unikernel implementation
+	// to properly handle that case and concatenate the initrd
+	// files if there are more than one. Hence, always give priority
+	// to the initrd taken from args.
+	extraMonArgs := ukernel.MonitorCli(string(FirecrackerVmm))
+	initrdPath := args.InitrdPath
+	if initrdPath == "" {
+		initrdPath = extraMonArgs.ExtraInitrd
 	}
 	FCMachine := FirecrackerMachine{
 		VcpuCount:       args.VCPUs,
@@ -145,7 +155,7 @@ func (fc *Firecracker) Execve(args types.ExecArgs, _ types.Unikernel) error {
 	FCSource := FirecrackerBootSource{
 		ImagePath:  args.UnikernelPath,
 		BootArgs:   args.Command,
-		InitrdPath: args.InitrdPath,
+		InitrdPath: initrdPath,
 	}
 	FCConfig := &FirecrackerConfig{
 		Source:  FCSource,

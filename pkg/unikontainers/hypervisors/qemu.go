@@ -125,7 +125,11 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	default:
 		// Nothing to add
 	}
-	cmdString += ukernel.MonitorCli(qemuString)
+	extraMonArgs := ukernel.MonitorCli(qemuString)
+	if extraMonArgs.ExtraInitrd != "" {
+		cmdString += " -initrd " + extraMonArgs.ExtraInitrd
+	}
+	cmdString += extraMonArgs.OtherArgs
 	exArgs := strings.Split(cmdString, " ")
 	exArgs = append(exArgs, "-append", args.Command)
 	vmmLog.WithField("qemu command", exArgs).Debug("Ready to execve qemu")

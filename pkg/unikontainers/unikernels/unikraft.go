@@ -95,8 +95,8 @@ func (u *Unikraft) MonitorBlockCli(_ string) string {
 }
 
 // There are no generic CLI hypervisor options for Unikraft yet.
-func (u *Unikraft) MonitorCli(_ string) string {
-	return ""
+func (u *Unikraft) MonitorCli(_ string) types.MonitorCliArgs {
+	return types.MonitorCliArgs{}
 }
 
 func (u *Unikraft) Init(data types.UnikernelParams) error {

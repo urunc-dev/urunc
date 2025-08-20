@@ -21,7 +21,7 @@ type Unikernel interface {
 	SupportsFS(string) bool
 	MonitorNetCli(string, string, string) string
 	MonitorBlockCli(string) string
-	MonitorCli(string) string
+	MonitorCli(string) MonitorCliArgs
 }
 
 type VMM interface {
@@ -85,6 +85,11 @@ type ExecArgs struct {
 	Net           NetDevParams
 	Block         BlockDevParams
 	Sharedfs      SharedfsParams
+}
+
+type MonitorCliArgs struct {
+	ExtraInitrd string
+	OtherArgs   string
 }
 
 // HypervisorConfig struct is used to hold hypervisor specific configuration

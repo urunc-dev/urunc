@@ -64,12 +64,14 @@ func (m *Mewz) MonitorBlockCli(_ string) string {
 }
 
 // Mewz does not require any monitor specific cli option
-func (m *Mewz) MonitorCli(monitor string) string {
+func (m *Mewz) MonitorCli(monitor string) types.MonitorCliArgs {
 	switch monitor {
 	case "qemu":
-		return " -no-reboot -device isa-debug-exit,iobase=0x501,iosize=2"
+		return types.MonitorCliArgs{
+			OtherArgs: " -no-reboot -device isa-debug-exit,iobase=0x501,iosize=2",
+		}
 	default:
-		return ""
+		return types.MonitorCliArgs{}
 	}
 }
 

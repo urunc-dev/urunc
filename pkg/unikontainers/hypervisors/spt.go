@@ -70,7 +70,8 @@ func (s *SPT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 		cmdString += ukernel.MonitorNetCli(sptString, args.Net.TapDev, args.Net.MAC)
 	}
 	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(sptString), args.Block.Image)
-	cmdString = appendNonEmpty(cmdString, " ", ukernel.MonitorCli(sptString))
+	extraMonArgs := ukernel.MonitorCli(sptString)
+	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")
 	vmmLog.WithField("spt command", cmdString).Debug("Ready to execve spt")
