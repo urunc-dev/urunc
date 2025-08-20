@@ -45,7 +45,7 @@ func AddInitrdRecord(w *cpio.Writer, content []byte, fileInfo *syscall.Stat_t, n
 	return nil
 }
 
-func AddFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
+func CopyFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
 	// Get the info of the original file
 	fi, err := os.Stat(srcFile)
 	if err != nil {
@@ -78,11 +78,39 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 		if m.Type != "bind" {
 			continue
 		}
-		err = AddFileToInitrd(w, m.Source, m.Destination)
+		err = CopyFileToInitrd(w, m.Source, m.Destination)
 		if err != nil {
 			return fmt.Errorf("Could not add file %s to initrd: %v", m.Source, err)
 		}
 	}
+	err = w.Close()
+	if err != nil {
+		return fmt.Errorf("Could not close initrd %v", err)
+	}
+
+	return nil
+}
+
+func AddFileToInitrd(oldInitrd string, data string, name string) error {
+	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("could not open %s: %v", oldInitrd, err)
+	}
+	defer f.Close()
+
+	w := cpio.NewWriter(f)
+	fileInfo := syscall.Stat_t{
+		Mode: syscall.S_IFREG | 0400,
+		Size: int64(len(data)),
+		Mtim: syscall.Timespec{Sec: time.Now().Unix()},
+		Uid:  0,
+		Gid:  0,
+	}
+	err = AddInitrdRecord(w, []byte(data), &fileInfo, name)
+	if err != nil {
+		return fmt.Errorf("Could not add file %s to initrd: %v", name, err)
+	}
+
 	err = w.Close()
 	if err != nil {
 		return fmt.Errorf("Could not close initrd %v", err)

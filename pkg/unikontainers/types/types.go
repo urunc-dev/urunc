@@ -65,10 +65,10 @@ type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
 	EnvVars    []string // The environment variables provided by the image
 	Version    string   // The version of the unikernel
-	RootfsType string   // The rootfs type of the Unikernel
 	InitrdPath string   // The path to the initrd of the unikernel
 	Net        NetDevParams
 	Block      BlockDevParams
+	Rootfs     RootfsParams // Information about rootfs
 }
 
 // ExecArgs holds the data required by Execve to start the VMM

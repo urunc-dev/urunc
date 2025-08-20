@@ -363,7 +363,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	default:
 		uniklog.Debug("No rootfs for guest")
 	}
-	unikernelParams.RootfsType = rootfsParams.Type
+	unikernelParams.Rootfs = rootfsParams
 
 	err = createTmpfs(rootfsParams.MonRootfs, "/tmp",
 		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
@@ -443,7 +443,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// virtiofs
-	if unikernelParams.RootfsType == "virtiofs" {
+	if rootfsParams.Type == "virtiofs" {
 		// Start the virtiofsd process
 		err = spawnVirtiofsd(containerRootfsMountPath)
 		if err != nil {

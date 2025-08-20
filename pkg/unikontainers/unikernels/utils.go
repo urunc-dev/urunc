@@ -16,6 +16,7 @@ package unikernels
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -39,4 +40,19 @@ func subnetMaskToCIDR(subnetMask string) (int, error) {
 	}
 
 	return cidr, nil
+}
+
+func createFile(path string, content string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(content)
+	if err != nil {
+		return fmt.Errorf("failed to write content: %w", err)
+	}
+
+	return nil
 }
