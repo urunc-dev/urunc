@@ -5,6 +5,9 @@ on:
       ref:
         type: string
         default: ''
+      go_version:
+        required: true
+        type: string
       runner:
         type: string
         default: '["base", "dind", "2204"]'
@@ -68,7 +71,7 @@ jobs:
 
     - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
       with:
-        go-version: '1.24.1'
+        go-version: ${{ inputs.go_version }}
         cache: false
 
     - name: Install base dependencies
