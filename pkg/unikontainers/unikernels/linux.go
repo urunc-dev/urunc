@@ -19,6 +19,7 @@ import (
 	"net"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
@@ -31,6 +32,8 @@ const (
 	retainInitrdPath string = "/sys/firmware/initrd"
 	envStartMarker   string = "UES"
 	envEndMarker     string = "UEE"
+	lpcStartMarker   string = "UCS" // Linux process config start marker
+	lpcEndMarker     string = "UCE" // Linux process config end marker
 )
 
 type Linux struct {
@@ -40,6 +43,7 @@ type Linux struct {
 	Net        LinuxNet
 	RootFsType string
 	InitrdConf bool
+	ProcConfig types.ProcessConfig
 }
 
 type LinuxNet struct {
@@ -185,6 +189,7 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	l.configureNetwork(data.Net)
 	l.RootFsType = data.Rootfs.Type
 	l.Env = data.EnvVars
+	l.ProcConfig = data.ProcConf
 
 	// if the application contains urunit, then we assume
 	// that the init process is based on our urunit
@@ -238,15 +243,15 @@ func (l *Linux) configureNetwork(net types.NetDevParams) {
 
 // setupUrunitConfig creates the urunit configuration file with environment variables.
 func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
-	envConfig := l.buildEnvConfig()
+	urunitConfig := l.buildUrunitConfig()
 
 	var err error
 	if l.RootFsType == "initrd" {
 		initrdToUpdate := filepath.Join(rfs.MonRootfs, rfs.Path)
-		err = initrd.AddFileToInitrd(initrdToUpdate, envConfig, urunitConfPath)
+		err = initrd.AddFileToInitrd(initrdToUpdate, urunitConfig, urunitConfPath)
 	} else {
-		urunitConfig := filepath.Join(rfs.MonRootfs, urunitConfPath)
-		err = createFile(urunitConfig, envConfig)
+		urunitConfigFile := filepath.Join(rfs.MonRootfs, urunitConfPath)
+		err = createFile(urunitConfigFile, urunitConfig)
 	}
 
 	if err != nil {
@@ -257,7 +262,7 @@ func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
 }
 
 // buildEnvConfig creates the environment configuration content for urunit.
-func (l *Linux) buildEnvConfig() string {
+func (l *Linux) buildUrunitConfig() string {
 	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
 	var sb strings.Builder
 	sb.WriteString(envStartMarker)
@@ -267,6 +272,19 @@ func (l *Linux) buildEnvConfig() string {
 		sb.WriteString("\n")
 	}
 	sb.WriteString(envEndMarker)
+	sb.WriteString("\n")
+	sb.WriteString(lpcStartMarker)
+	sb.WriteString("\n")
+	sb.WriteString("UID:")
+	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.UID), 10))
+	sb.WriteString("\n")
+	sb.WriteString("GID:")
+	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.GID), 10))
+	sb.WriteString("\n")
+	sb.WriteString("WD:")
+	sb.WriteString(l.ProcConfig.WorkDir)
+	sb.WriteString("\n")
+	sb.WriteString(lpcEndMarker)
 	sb.WriteString("\n")
 	return sb.String()
 }

@@ -60,6 +60,13 @@ type RootfsParams struct {
 	MonRootfs   string // The rootfs for the monitor process
 }
 
+// Specific to Linux
+type ProcessConfig struct {
+	UID     uint32 // The uid of the process inside the guest
+	GID     uint32 // The gid of the process inside the guest
+	WorkDir string // The workdir of the process inside the guest
+}
+
 // UnikernelParams holds the data required to build the unikernels commandline
 type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
@@ -68,7 +75,8 @@ type UnikernelParams struct {
 	InitrdPath string   // The path to the initrd of the unikernel
 	Net        NetDevParams
 	Block      BlockDevParams
-	Rootfs     RootfsParams // Information about rootfs
+	Rootfs     RootfsParams  // Information about rootfs
+	ProcConf   ProcessConfig // Information for the process execution inside the guest
 }
 
 // ExecArgs holds the data required by Execve to start the VMM

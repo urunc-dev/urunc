@@ -268,12 +268,18 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		vmmArgs.Seccomp = false
 	}
 
+	procAttrs := types.ProcessConfig{
+		UID:     u.Spec.Process.User.UID,
+		GID:     u.Spec.Process.User.GID,
+		WorkDir: u.Spec.Process.Cwd,
+	}
 	// UnikernelParams
 	// populate unikernel params
 	unikernelParams := types.UnikernelParams{
-		CmdLine: u.Spec.Process.Args,
-		EnvVars: u.Spec.Process.Env,
-		Version: unikernelVersion,
+		CmdLine:  u.Spec.Process.Args,
+		EnvVars:  u.Spec.Process.Env,
+		Version:  unikernelVersion,
+		ProcConf: procAttrs,
 	}
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
