@@ -12,7 +12,7 @@ We will be installing and setting up:
 - [CNI plugins](https://github.com/containernetworking/plugins)
 - [nerdctl](https://github.com/containerd/nerdctl)
 - [devmapper](https://docs.docker.com/storage/storagedriver/device-mapper-driver/)
-- [Go 1.24.1](https://go.dev/doc/install)
+- [Go 1.24.6](https://go.dev/doc/install)
 - [urunc](https://github.com/urunc-dev/urunc)
 - [solo5-{hvt|spt}](https://github.com/Solo5/solo5)
 - [qemu](https://www.qemu.org/)
@@ -212,7 +212,7 @@ In order to build `urunc` from source, we need to install Go.
 Any version earlier than Go 1.20.6 will be sufficient.
 
 ```bash
-GO_VERSION=1.24.1
+GO_VERSION=1.24.6
 wget -q https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
 sudo mkdir /usr/local/go${GO_VERSION}
 sudo tar -C /usr/local/go${GO_VERSION} -xzf go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz

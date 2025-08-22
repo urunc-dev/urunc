@@ -78,7 +78,7 @@ CNTR_OPTS ?= run --rm -it
 # Linking variables
 LINT_CNTR_OPTS ?= $(CNTR_OPTS) -v $(CURDIR):/app -w /app
 #? LINT_CNTR_IMG The linter image to use (default: golangci/golangci-lint:v1.53.3)
-LINT_CNTR_IMG  ?= golangci/golangci-lint:v1.63
+LINT_CNTR_IMG  ?= golangci/golangci-lint:v1.64
 LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
 
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)

@@ -148,7 +148,7 @@ Install `urunc`, hypervisors, and dependencies inside the `kind` node container.
 
 6. **Install Go**:
    ```bash
-   GO_VERSION=1.24.1
+   GO_VERSION=1.24.6
    wget -q https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
    mkdir /usr/local/go${GO_VERSION}
    tar -C /usr/local/go${GO_VERSION} -xzf go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
