@@ -38,7 +38,7 @@ WORKDIR /artifacts
 RUN cp /app/tenders/hvt/solo5-hvt /artifacts/ && \
     cp /app/tenders/spt/solo5-spt /artifacts/
 
-FROM golang:1.24.6-alpine3.21@sha256:43c094ad24b6ac0546c62193baeb3e6e49ce14d3250845d166c77c25f64b0386 AS urunc-builder
+FROM golang:1.24.6-alpine3.21@sha256:50f8a10a46c0c26b5b816a80314f1999196c44c3e3571f41026b061339c29db6 AS urunc-builder
 RUN apk update && \
     apk add --no-cache git make build-base linux-headers
 WORKDIR /app
