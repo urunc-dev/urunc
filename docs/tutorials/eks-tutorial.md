@@ -68,7 +68,7 @@ The Kubernetes CLI used to interact with your EKS cluster.
 Install kubectl (replace version as needed):
 
 ```bash
-curl -LO "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/v[[ versions.kubectl ]]/bin/linux/amd64/kubectl"
 chmod +x kubectl
 sudo mv kubectl /usr/local/bin/
 ```
@@ -213,7 +213,7 @@ export SUBNETS="subnet-02bcaca5ac39eca7a,subnet-0d0667e2156169998"
 eksctl create cluster \
   --name ${CLUSTER_NAME} \
   --region $REGION \
-  --version 1.30 \
+  --version [[ versions.kubernetes ]] \
   --vpc-private-subnets $SUBNETS \
   --without-nodegroup
 ```
@@ -252,7 +252,7 @@ daemonset.apps "aws-node" deleted
 ##### Step 3: Add Calico CNI:
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v[[ versions.calico ]]/manifests/tigera-operator.yaml
 ```
 
 > Note: There are cases where a large set of manifests can cause a failure to

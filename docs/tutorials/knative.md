@@ -66,10 +66,10 @@ kubectl apply -f knative-custom.yaml
 
 Alternatively, you could use our latest build:
 ```bash
-kubectl apply -f https://s3.nbfc.io/knative/knative-v1.17.0-urunc-5220308.yaml
+kubectl apply -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml
 ```
 
-> Note: There are cases where due to the large manifests, kubectl fails. Try a second time, or use `kubectl create -f https://s3.nbfc.io/knative/knative-v1.17.0-urunc-5220308.yaml`
+> Note: There are cases where due to the large manifests, kubectl fails. Try a second time, or use `kubectl create -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml`
 
 ## Setup Networking (Kourier)
 

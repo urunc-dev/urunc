@@ -148,7 +148,7 @@ Install `urunc`, hypervisors, and dependencies inside the `kind` node container.
 
 6. **Install Go**:
    ```bash
-   GO_VERSION=1.24.6
+   GO_VERSION=[[ versions.go ]]
    wget -q https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
    mkdir /usr/local/go${GO_VERSION}
    tar -C /usr/local/go${GO_VERSION} -xzf go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
@@ -173,13 +173,13 @@ Install `urunc`, hypervisors, and dependencies inside the `kind` node container.
 
    # Firecracker
    ARCH="$(uname -m)"
-   VERSION="v1.7.0"
+   VERSION="v[[ versions.firecracker ]]"
    curl -L https://github.com/firecracker-microvm/firecracker/releases/download/${VERSION}/firecracker-${VERSION}-${ARCH}.tgz | tar -xz
    mv release-${VERSION}-${ARCH}/firecracker-${VERSION}-${ARCH} /usr/local/bin/firecracker
    rm -fr release-${VERSION}-${ARCH}
 
    # Solo5
-   git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+   git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
    cd solo5
    ./configure.sh && make -j$(nproc)
    cp tenders/hvt/solo5-hvt /usr/local/bin

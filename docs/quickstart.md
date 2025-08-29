@@ -240,7 +240,7 @@ Lets install `solo5-hvt`:
 
 ```bash
 sudo apt install make gcc pkg-config libseccomp-dev
-git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
 cd solo5
 ./configure.sh  && make -j$(nproc)
 sudo cp tenders/hvt/solo5-hvt /usr/local/bin

@@ -97,7 +97,7 @@ commands:
 
 ```bash
 ARCH="$(uname -m)" 
-VERSION="v1.7.0"
+VERSION="v[[ versions.firecracker ]]"
 release_url="https://github.com/firecracker-microvm/firecracker/releases"
 curl -L ${release_url}/download/${VERSION}/firecracker-${VERSION}-${ARCH}.tgz | tar -xz
 # Rename the binary to "firecracker"
@@ -109,7 +109,7 @@ It is important to note that `urunc` expects to find the `firecracker` binary
 located in the `$PATH` and named `firecracker`.
 
 > Note: Since only Unikraft can boot on top of Firecracker (from the supported
-unikernels in `urunc`) we use the v1.7.0 version of
+unikernels in `urunc`) we use the v[[ versions.firecracker ]] version of
 [Firecracker](https://firecracker-microvm.github.io/), due to some [booting
 issues](https://github.com/unikraft/unikraft/issues/1410) of Unikraft in newer
 versions.
@@ -164,7 +164,7 @@ sudo apt install libseccomp-dev pkg-config build-essential
 Next, we can clone and build `solo5-hvt`.
 
 ```bash
-git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
 cd solo5
 ./configure.sh && make -j$(nproc)
 ```
@@ -246,7 +246,7 @@ sudo apt install libseccomp-dev pkg-config build-essential
 Next, we can clone and build `solo5-spt`.
 
 ```bash
-git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
 cd solo5
 ./configure.sh && make -j$(nproc)
 ```

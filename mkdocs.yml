@@ -143,6 +143,7 @@ plugins:
   - section-index
   - literate-nav
   - macros:
+      include_yaml: [docs/variables/versions.yml]
       j2_block_start_string: "[%"
       j2_block_end_string: "%]"
       j2_variable_start_string: "[["

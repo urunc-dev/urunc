@@ -12,7 +12,7 @@ We will be installing and setting up:
 - [CNI plugins](https://github.com/containernetworking/plugins)
 - [nerdctl](https://github.com/containerd/nerdctl)
 - [devmapper](https://docs.docker.com/storage/storagedriver/device-mapper-driver/)
-- [Go 1.24.6](https://go.dev/doc/install)
+- [Go [[ versions.go ]]](https://go.dev/doc/install)
 - [urunc](https://github.com/urunc-dev/urunc)
 - [solo5-{hvt|spt}](https://github.com/Solo5/solo5)
 - [qemu](https://www.qemu.org/)
@@ -212,7 +212,7 @@ In order to build `urunc` from source, we need to install Go.
 Any version earlier than Go 1.20.6 will be sufficient.
 
 ```bash
-GO_VERSION=1.24.6
+GO_VERSION=[[ versions.go ]]
 wget -q https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
 sudo mkdir /usr/local/go${GO_VERSION}
 sudo tar -C /usr/local/go${GO_VERSION} -xzf go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz
@@ -295,7 +295,7 @@ sudo systemctl restart containerd
 We can clone, build and install both `Solo5-hvt` and `Solo5-spt` from their [common repository](https://github.com/Solo5/solo5)
 
 ```bash
-git clone -b v0.9.0 https://github.com/Solo5/solo5.git
+git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
 cd solo5
 ./configure.sh  && make -j$(nproc)
 sudo cp tenders/hvt/solo5-hvt /usr/local/bin
@@ -318,7 +318,7 @@ We choose to install version 1.7.0, since Unikraft has some
 
 ```bash
 ARCH="$(uname -m)"
-VERSION="v1.7.0"
+VERSION="v[[ versions.firecracker ]]"
 release_url="https://github.com/firecracker-microvm/firecracker/releases"
 curl -L ${release_url}/download/${VERSION}/firecracker-${VERSION}-${ARCH}.tgz | tar -xz
 # Rename the binary to "firecracker"
