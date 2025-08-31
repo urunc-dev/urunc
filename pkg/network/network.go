@@ -217,49 +217,72 @@ func addRedirectFilter(source netlink.Link, target netlink.Link) error {
 }
 
 func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32) (netlink.Link, error) {
+	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v",
+		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
+
+	// Sanity check: ensure eth0 exists in this namespace
 	err := ensureEth0Exists()
-	// if eth0 does not exist in the namespace, the unikernel was spawned using ctr, so we skip the network setup
 	if err != nil {
-		netlog.Warn("eth0 interface not found, assuming unikernel was spawned using ctr")
+		netlog.Warnf("eth0 interface not found in namespace (unikernel may have been spawned using ctr): %v", err)
 		return nil, nil
 	}
+
+	// Create TAP
+	netlog.Debugf("creating tap device %s (mtu=%d)", tapName, redirectLink.Attrs().MTU)
 	newTapDevice, err := createTapDevice(tapName, redirectLink.Attrs().MTU, uid, gid)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("createTapDevice(%s) failed: %w", tapName, err)
 	}
+	netlog.Debugf("created tap device %s (index=%d)", newTapDevice.Attrs().Name, newTapDevice.Attrs().Index)
+
+	// Bring TAP up before qdisc
+	if err = netlink.LinkSetUp(newTapDevice); err != nil {
+		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", newTapDevice.Attrs().Name, err)
+	}
+	netlog.Debugf("TAP %s is UP", newTapDevice.Attrs().Name)
+
+	// Bring redirectLink (eth0) up before using it in filters
+	if err = netlink.LinkSetUp(redirectLink); err != nil {
+		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", redirectLink.Attrs().Name, err)
+	}
+	netlog.Debugf("redirectLink %s is UP", redirectLink.Attrs().Name)
+
+	// Add qdisc + redirect filters
 	if addTCRules {
-		err = addIngressQdisc(newTapDevice)
-		if err != nil {
-			return nil, err
+		netlog.Debug("adding tc ingress qdisc + redirect filters")
+
+		if err = addIngressQdisc(newTapDevice); err != nil {
+			return nil, fmt.Errorf("addIngressQdisc(tap=%s) failed: %w",
+				newTapDevice.Attrs().Name, err)
 		}
-		err = addIngressQdisc(redirectLink)
-		if err != nil {
-			return nil, err
+		if err = addIngressQdisc(redirectLink); err != nil {
+			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
+				redirectLink.Attrs().Name, err)
 		}
-		err = addRedirectFilter(newTapDevice, redirectLink)
-		if err != nil {
-			return nil, err
+		if err = addRedirectFilter(newTapDevice, redirectLink); err != nil {
+			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
+				newTapDevice.Attrs().Name, redirectLink.Attrs().Name, err)
 		}
-		err = addRedirectFilter(redirectLink, newTapDevice)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if ipAddress != "" {
-		ipn, err := netlink.ParseAddr(ipAddress)
-		if err != nil {
-			return nil, err
-		}
-		err = netlink.AddrReplace(newTapDevice, ipn)
-		if err != nil {
-			return nil, err
+		if err = addRedirectFilter(redirectLink, newTapDevice); err != nil {
+			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
+				redirectLink.Attrs().Name, newTapDevice.Attrs().Name, err)
 		}
 	}
 
-	err = netlink.LinkSetUp(newTapDevice)
-	if err != nil {
-		return nil, err
+	// Optionally assign IP to TAP
+	if ipAddress != "" {
+		netlog.Debugf("assigning IP %s to %s", ipAddress, newTapDevice.Attrs().Name)
+		ipn, err := netlink.ParseAddr(ipAddress)
+		if err != nil {
+			return nil, fmt.Errorf("ParseAddr(%s) failed: %w", ipAddress, err)
+		}
+		if err = netlink.AddrReplace(newTapDevice, ipn); err != nil {
+			return nil, fmt.Errorf("AddrReplace(%s, %s) failed: %w",
+				newTapDevice.Attrs().Name, ipAddress, err)
+		}
 	}
+
+	netlog.Debugf("completed successfully (tap=%s, index=%d)", newTapDevice.Attrs().Name, newTapDevice.Attrs().Index)
 	return newTapDevice, nil
 }
 
