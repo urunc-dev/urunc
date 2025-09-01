@@ -44,7 +44,7 @@ header:
     - 'docs/assets/javascripts/**'
     - 'docs/hooks/**'
     - 'pkg/unikontainers/ipc_message.go'
-
+    - 'docs/variables/**'
   language:
     Go:
       extensions:
