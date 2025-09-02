@@ -18,12 +18,12 @@ require (
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.11.0
+	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.35.0
-	k8s.io/cri-api v0.33.4
+	k8s.io/cri-api v0.34.0
 )
 
 require (
