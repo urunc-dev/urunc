@@ -156,7 +156,7 @@ sudo chown root:root /usr/local/lib/systemd/system/dm_reload.service
 sudo systemctl daemon-reload
 sudo systemctl enable dm_reload.service
 ```
-
+### Option 1: Devmapper
 #### Configure containerd for devmapper
 
 - In containerd v2.x:
@@ -201,6 +201,65 @@ Before proceeding, make sure that the new snapshotter is properly configured:
 sudo ctr plugin ls | grep devmapper
 io.containerd.snapshotter.v1              devmapper                linux/amd64    ok
 ```
+
+
+### Option 2: Blockfile 
+#### Using blockfile snapshotter (alternative to devmapper)
+
+ `Urunc` can also use the [blockfile snapshotter](https://github.com/containerd/containerd/blob/main/docs/snapshotters/blockfile.md) as an alternative to devmapper for providing block device snapshots to unikernels.
+
+#### Enabling the Blockfile Snapshotter
+
+To configure the blockfile snapshotter, follow the steps below:
+
+-  **Create the blockfile scratch file**
+
+   First, create a directory and an appropriately-sized scratch file. For example:
+
+   ```bash
+   sudo mkdir -p /opt/containerd/blockfile
+   sudo dd if=/dev/zero of=/opt/containerd/blockfile/scratch bs=1M count=500
+   sudo mkfs.ext4 /opt/containerd/blockfile/scratch
+   sudo chown -R root:root /opt/containerd/blockfile
+   ```
+
+-  **Configure containerd**
+
+   Add or update the following section in your `/etc/containerd/config.toml` file:
+
+   ```toml
+   [plugins."io.containerd.snapshotter.v1.blockfile"]
+     fs_type = "ext4"
+     mount_options = []
+     recreate_scratch = true
+     root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.blockfile"
+     scratch_file = "/opt/containerd/blockfile/scratch"
+     supported_platforms = ["linux/amd64"]
+   ```
+	
+   Adjust scratch_file and root_path if different locations are required for your specific environment.
+
+-  **Restart the containerd service**
+
+   Restart containerd:
+
+   ```bash
+   sudo systemctl restart containerd
+   ```
+
+-  **Verify the blockfile snapshotter is available**
+
+   Confirm that the blockfile snapshotter is registered and ready:
+
+   ```bash
+   sudo ctr plugin ls | grep blockfile
+   ```
+
+   The output should include a line similar to:
+
+   ```
+   io.containerd.snapshotter.v1           blockfile               linux/amd64    ok
+   ```
 
 ## Install urunc
 
