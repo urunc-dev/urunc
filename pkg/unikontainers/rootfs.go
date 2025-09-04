@@ -350,9 +350,10 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 	dstPath := filepath.Join(monRootfs, target)
 
 	if (mode & unix.S_IFMT) != unix.S_IFDIR {
+		uniklog.Debugf("%s is a file", hostPath)
 		dstDir := filepath.Dir(dstPath)
 		if withCopy {
-			err = copyFile(hostPath, dstDir)
+			err = copyFile(hostPath, dstPath)
 			if err != nil {
 				return fmt.Errorf("failed to copy file %s: %w", hostPath, err)
 			}

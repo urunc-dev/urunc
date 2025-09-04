@@ -136,14 +136,15 @@ func TestCopyFile(t *testing.T) {
 
 		// Create a temporary target directory
 		targetDir := t.TempDir()
+		_, filename := filepath.Split(srcFile.Name())
+		copiedFilePath := filepath.Join(targetDir, filename)
+
 
 		// Call the function
-		err = copyFile(srcFile.Name(), targetDir)
+		err = copyFile(srcFile.Name(), copiedFilePath)
 		assert.NoError(t, err, "Expected no error in copying file")
 
 		// Verify the file was copied
-		_, filename := filepath.Split(srcFile.Name())
-		copiedFilePath := filepath.Join(targetDir, filename)
 		copiedContent, err := os.ReadFile(copiedFilePath)
 		assert.NoError(t, err, "Expected no error in reading copied file")
 		assert.Equal(t, content, string(copiedContent), "Expected copied content to match original")
@@ -202,7 +203,7 @@ func TestCopyFile(t *testing.T) {
 		targetFile.Close()
 
 		// Call the function
-		err = copyFile(srcFile.Name(), targetDir)
+		err = copyFile(srcFile.Name(), targetFilePath)
 		assert.Error(t, err, "Expected an error for read-only target file")
 	})
 }
