@@ -331,6 +331,10 @@ func (u *Unikontainer) Exec() error {
 				return err
 			}
 			if unikernel.SupportsFS(rootFsDevice.FsType) {
+				err = copyMountfiles(rootFsDevice.Path, u.Spec.Mounts)
+				if err != nil {
+					return err
+				}
 				err = prepareDMAsBlock(rootFsDevice.Path, monRootfs, unikernelPath, uruncJSONFilename, initrdPath)
 				if err != nil {
 					return err

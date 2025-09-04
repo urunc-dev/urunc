@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/moby/sys/mount"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -127,6 +128,20 @@ func prepareDMAsBlock(rootfsPath string, newRootfsPath string, unikernel string,
 	err = mount.Unmount(rootfsPath)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func copyMountfiles(targetPath string, mounts []specs.Mount) error {
+	for _, m := range mounts {
+		if m.Type != "bind" {
+			continue
+		}
+		err := fileFromHost(targetPath, m.Source, m.Destination, 0, true)
+		if (err != nil) && !errors.Is(err, ErrCopyDir) {
+			return err
+		}
 	}
 
 	return nil

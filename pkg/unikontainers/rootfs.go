@@ -20,6 +20,7 @@
 package unikontainers
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,6 +29,8 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
+
+var ErrCopyDir = errors.New("can not copy a directory")
 
 type mountFlagStruct struct {
 	clear bool
@@ -350,7 +353,6 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 	dstPath := filepath.Join(monRootfs, target)
 
 	if (mode & unix.S_IFMT) != unix.S_IFDIR {
-		uniklog.Debugf("%s is a file", hostPath)
 		dstDir := filepath.Dir(dstPath)
 		if withCopy {
 			err = copyFile(hostPath, dstPath)
@@ -364,6 +366,9 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 			}
 		}
 	} else {
+		if withCopy {
+			return ErrCopyDir
+		}
 		err = bindMountFile(hostPath, dstPath, "", 0, mFlags, true)
 		if err != nil {
 			return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
