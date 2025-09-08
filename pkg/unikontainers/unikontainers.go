@@ -278,6 +278,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	unikernelParams := types.UnikernelParams{
 		CmdLine:  u.Spec.Process.Args,
 		EnvVars:  u.Spec.Process.Env,
+		Monitor:  vmmType,
 		Version:  unikernelVersion,
 		ProcConf: procAttrs,
 	}
@@ -413,7 +414,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	unikernelParams.Block = blockArgs
 
 	// ExecArgs
-	vmmArgs.Block = blockArgs
 	vmmArgs.Sharedfs = sharedfsArgs
 
 	// unikernel
@@ -426,7 +426,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// unikernel
 	// build the unikernel command
-	unikernelCmd, err := unikernel.CommandString(vmmType)
+	unikernelCmd, err := unikernel.CommandString()
 	if err != nil {
 		return err
 	}

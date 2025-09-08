@@ -150,15 +150,15 @@ func (h *HVT) Ok() error {
 }
 
 func (h *HVT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
-	hvtString := string(HvtVmm)
 	hvtMem := BytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem
 	if args.Net.TapDev != "" {
 		cmdString += " "
-		cmdString += ukernel.MonitorNetCli(hvtString, args.Net.TapDev, args.Net.MAC)
+		cmdString += ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 	}
-	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(hvtString), args.Block.Image)
-	extraMonArgs := ukernel.MonitorCli(hvtString)
+	bArgs := ukernel.MonitorBlockCli()
+	cmdString = appendNonEmpty(cmdString, " --block:"+bArgs.ID+"=", bArgs.Path)
+	extraMonArgs := ukernel.MonitorCli()
 	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")

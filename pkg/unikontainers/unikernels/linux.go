@@ -39,8 +39,10 @@ const (
 type Linux struct {
 	App        string
 	Command    string
+	Monitor    string
 	Env        []string
 	Net        LinuxNet
+	Blk        types.BlockDevParams
 	RootFsType string
 	InitrdConf bool
 	ProcConfig types.ProcessConfig
@@ -61,7 +63,7 @@ func IsIPInSubnet(ln LinuxNet) bool {
 	return ip.Mask(mask).Equal(subnet)
 }
 
-func (l *Linux) CommandString(monitor string) (string, error) {
+func (l *Linux) CommandString() (string, error) {
 	rdinit := ""
 	bootParams := "panic=-1"
 
@@ -71,7 +73,7 @@ func (l *Linux) CommandString(monitor string) (string, error) {
 	// TODO: Check under which conditions console should be set to
 	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
 	// and Qemu ttyAMA0 for aarch64 while for amd64 both are fine with ttyS0
-	if runtime.GOARCH == "arm64" && monitor == "qemu" {
+	if runtime.GOARCH == "arm64" && l.Monitor == "qemu" {
 		consoleStr = "console=ttyAMA0"
 	} else {
 		consoleStr = "console=ttyS0"
@@ -146,23 +148,34 @@ func (l *Linux) SupportsFS(fsType string) bool {
 	}
 }
 
-func (l *Linux) MonitorNetCli(_ string, _ string, _ string) string {
+func (l *Linux) MonitorNetCli(_ string, _ string) string {
 	return ""
 }
 
-func (l *Linux) MonitorBlockCli(monitor string) string {
-	switch monitor {
+func (l *Linux) MonitorBlockCli() types.MonitorBlockArgs {
+	if l.Blk.Image == "" {
+		return types.MonitorBlockArgs{}
+	}
+	switch l.Monitor {
 	case "qemu":
 		bcli := " -device virtio-blk-pci,id=blk0,drive=hd0"
 		bcli += " -drive format=raw,if=none,id=hd0,file="
-		return bcli
+		bcli += l.Blk.Image
+		return types.MonitorBlockArgs{
+			ExactArgs: bcli,
+		}
+	case "firecracker":
+		return types.MonitorBlockArgs{
+			ID:   "rootfs",
+			Path: l.Blk.Image,
+		}
 	default:
-		return ""
+		return types.MonitorBlockArgs{}
 	}
 }
 
-func (l *Linux) MonitorCli(monitor string) types.MonitorCliArgs {
-	switch monitor {
+func (l *Linux) MonitorCli() types.MonitorCliArgs {
+	switch l.Monitor {
 	case "qemu":
 		extraCliArgs := types.MonitorCliArgs{
 			OtherArgs: " -no-reboot -serial stdio -nodefaults",
@@ -190,8 +203,10 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	}
 
 	l.configureNetwork(data.Net)
+	l.Blk = data.Block
 	l.RootFsType = data.Rootfs.Type
 	l.Env = data.EnvVars
+	l.Monitor = data.Monitor
 	l.ProcConfig = data.ProcConf
 
 	// if the application contains urunit, then we assume

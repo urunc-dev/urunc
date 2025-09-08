@@ -27,6 +27,7 @@ const SubnetMask125 = "128.0.0.0"
 
 type Rumprun struct {
 	Command string
+	Monitor string
 	Envs    []string
 	Net     RumprunNet
 	Blk     RumprunBlk
@@ -51,13 +52,14 @@ type RumprunNet struct {
 }
 
 type RumprunBlk struct {
+	HostPath   string `json:"-"`
 	Source     string `json:"source"`
 	Path       string `json:"path"`
 	FsType     string `json:"fstype"`
 	Mountpoint string `json:"mountpoint"`
 }
 
-func (r *Rumprun) CommandString(_ string) (string, error) {
+func (r *Rumprun) CommandString() (string, error) {
 	// Rumprun accepts a JSON string to configure the unikernel. However,
 	// Rumprun does not use a valid JSON format. Therefore, we manually
 	// construct the JSON instead of using Go's json Marshal.
@@ -135,8 +137,8 @@ func (r *Rumprun) SupportsFS(fsType string) bool {
 	}
 }
 
-func (r *Rumprun) MonitorNetCli(monitor string, ifName string, mac string) string {
-	switch monitor {
+func (r *Rumprun) MonitorNetCli(ifName string, mac string) string {
+	switch r.Monitor {
 	case "hvt", "spt":
 		netOption := "--net:tap=" + ifName
 		netOption += " --net-mac:tap=" + mac
@@ -146,18 +148,21 @@ func (r *Rumprun) MonitorNetCli(monitor string, ifName string, mac string) strin
 	}
 }
 
-func (r *Rumprun) MonitorBlockCli(monitor string) string {
-	switch monitor {
+func (r *Rumprun) MonitorBlockCli() types.MonitorBlockArgs {
+	switch r.Monitor {
 	case "hvt", "spt":
-		return "--block:rootfs="
+		return types.MonitorBlockArgs{
+			ID:   "rootfs",
+			Path: r.Blk.HostPath,
+		}
 	default:
-		return ""
+		return types.MonitorBlockArgs{}
 	}
 }
 
 // Rumprun can execute only on top of Solo5 and currently there
 // are no generic Solo5-specific arguments that Rumprun requires
-func (r *Rumprun) MonitorCli(_ string) types.MonitorCliArgs {
+func (r *Rumprun) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{}
 }
 
@@ -193,6 +198,7 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 		r.Blk.Path = "/dev/ld0a"
 		r.Blk.FsType = "blk"
 		r.Blk.Mountpoint = data.Block.MountPoint
+		r.Blk.HostPath = data.Block.Image
 	} else {
 		// Set source to empty string so we can know that no block
 		// was specified.
@@ -200,6 +206,7 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 	}
 
 	r.Command = strings.Join(data.CmdLine, " ")
+	r.Monitor = data.Monitor
 	r.Envs = data.EnvVars
 
 	return nil

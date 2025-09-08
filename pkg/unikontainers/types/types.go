@@ -16,12 +16,12 @@ package types
 
 type Unikernel interface {
 	Init(UnikernelParams) error
-	CommandString(string) (string, error)
+	CommandString() (string, error)
 	SupportsBlock() bool
 	SupportsFS(string) bool
-	MonitorNetCli(string, string, string) string
-	MonitorBlockCli(string) string
-	MonitorCli(string) MonitorCliArgs
+	MonitorNetCli(string, string) string
+	MonitorBlockCli() MonitorBlockArgs
+	MonitorCli() MonitorCliArgs
 }
 
 type VMM interface {
@@ -71,6 +71,7 @@ type ProcessConfig struct {
 type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
 	EnvVars    []string // The environment variables provided by the image
+	Monitor    string   // The monitor where guest will execute
 	Version    string   // The version of the unikernel
 	InitrdPath string   // The path to the initrd of the unikernel
 	Net        NetDevParams
@@ -91,13 +92,18 @@ type ExecArgs struct {
 	UnikernelPath string   // The path of the unikernel inside rootfs
 	InitrdPath    string   // The path to the initrd of the unikernel
 	Net           NetDevParams
-	Block         BlockDevParams
 	Sharedfs      SharedfsParams
 }
 
 type MonitorCliArgs struct {
 	ExtraInitrd string
 	OtherArgs   string
+}
+
+type MonitorBlockArgs struct {
+	ID        string
+	Path      string
+	ExactArgs string
 }
 
 // HypervisorConfig struct is used to hold hypervisor specific configuration

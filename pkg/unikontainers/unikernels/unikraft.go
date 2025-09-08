@@ -32,6 +32,7 @@ var ErrVersionParsing = errors.New("failed to parse provided version, using defa
 
 type Unikraft struct {
 	AppName string
+	Monitor string
 	Command string
 	Env     []string
 	Net     UnikraftNet
@@ -49,7 +50,7 @@ type UnikraftVFS struct {
 	RootFS string
 }
 
-func (u *Unikraft) CommandString(_ string) (string, error) {
+func (u *Unikraft) CommandString() (string, error) {
 	envVarString := ""
 	consoleStr := ""
 
@@ -85,17 +86,17 @@ func (u *Unikraft) SupportsFS(fsType string) bool {
 }
 
 // There is no need for any changes here yet.
-func (u *Unikraft) MonitorNetCli(_ string, _ string, _ string) string {
+func (u *Unikraft) MonitorNetCli(_ string, _ string) string {
 	return ""
 }
 
 // We have not managed to make Unikraft run with block yet.
-func (u *Unikraft) MonitorBlockCli(_ string) string {
-	return ""
+func (u *Unikraft) MonitorBlockCli() types.MonitorBlockArgs {
+	return types.MonitorBlockArgs{}
 }
 
 // There are no generic CLI hypervisor options for Unikraft yet.
-func (u *Unikraft) MonitorCli(_ string) types.MonitorCliArgs {
+func (u *Unikraft) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{}
 }
 
@@ -103,6 +104,7 @@ func (u *Unikraft) Init(data types.UnikernelParams) error {
 	u.Env = data.EnvVars
 	u.Version = data.Version
 	u.AppName = "Unikraft"
+	u.Monitor = data.Monitor
 	u.Command = strings.Join(data.CmdLine, " ")
 
 	return u.configureUnikraftArgs(data.Rootfs.Type, data.Net.IP, data.Net.Gateway, data.Net.Mask)

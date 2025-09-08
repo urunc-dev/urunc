@@ -118,7 +118,7 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 	// to properly handle that case and concatenate the initrd
 	// files if there are more than one. Hence, always give priority
 	// to the initrd taken from args.
-	extraMonArgs := ukernel.MonitorCli(string(FirecrackerVmm))
+	extraMonArgs := ukernel.MonitorCli()
 	initrdPath := args.InitrdPath
 	if initrdPath == "" {
 		initrdPath = extraMonArgs.ExtraInitrd
@@ -143,12 +143,13 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 	// TODO: Add support for block devices in FIrecracker
 	FCDrives := make([]FirecrackerDrive, 0)
 
-	if args.Block.Image != "" {
+	bArgs := ukernel.MonitorBlockCli()
+	if bArgs.ID != "" {
 		aBlock := FirecrackerDrive{
-			DriveID:   "rootfs",
+			DriveID:   bArgs.ID,
 			IsRO:      false,
 			IsRootDev: true,
-			HostPath:  args.Block.Image,
+			HostPath:  bArgs.Path,
 		}
 		FCDrives = append(FCDrives, aBlock)
 	}

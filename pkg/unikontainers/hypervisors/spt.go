@@ -62,15 +62,15 @@ func (s *SPT) Ok() error {
 }
 
 func (s *SPT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
-	sptString := string(SptVmm)
 	sptMem := BytesToStringMB(args.MemSizeB)
 	cmdString := s.binaryPath + " --mem=" + sptMem
 	if args.Net.TapDev != "" {
 		cmdString += " "
-		cmdString += ukernel.MonitorNetCli(sptString, args.Net.TapDev, args.Net.MAC)
+		cmdString += ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 	}
-	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(sptString), args.Block.Image)
-	extraMonArgs := ukernel.MonitorCli(sptString)
+	bArgs := ukernel.MonitorBlockCli()
+	cmdString = appendNonEmpty(cmdString, " --block:"+bArgs.ID+"=", bArgs.Path)
+	extraMonArgs := ukernel.MonitorCli()
 	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")

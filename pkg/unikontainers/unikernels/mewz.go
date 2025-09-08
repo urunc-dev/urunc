@@ -25,6 +25,7 @@ const MewzUnikernel string = "mewz"
 
 type Mewz struct {
 	Command string
+	Monitor string
 	Net     MewzNet
 }
 
@@ -34,7 +35,7 @@ type MewzNet struct {
 	Gateway string
 }
 
-func (m *Mewz) CommandString(_ string) (string, error) {
+func (m *Mewz) CommandString() (string, error) {
 	return fmt.Sprintf("ip=%s/%d gateway=%s ", m.Net.Address, m.Net.Mask,
 		m.Net.Gateway), nil
 }
@@ -47,8 +48,8 @@ func (m *Mewz) SupportsFS(_ string) bool {
 	return false
 }
 
-func (m *Mewz) MonitorNetCli(monitor string, ifName string, mac string) string {
-	switch monitor {
+func (m *Mewz) MonitorNetCli(ifName string, mac string) string {
+	switch m.Monitor {
 	case "qemu":
 		ncli := " -device virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off,mac=" + mac
 		ncli += " -netdev tap,script=no,downscript=no,id=net0,ifname=" + ifName
@@ -59,13 +60,13 @@ func (m *Mewz) MonitorNetCli(monitor string, ifName string, mac string) string {
 }
 
 // Mewz does not seem to support virtio block or anu other kind of block/fs.
-func (m *Mewz) MonitorBlockCli(_ string) string {
-	return ""
+func (m *Mewz) MonitorBlockCli() types.MonitorBlockArgs {
+	return types.MonitorBlockArgs{}
 }
 
 // Mewz does not require any monitor specific cli option
-func (m *Mewz) MonitorCli(monitor string) types.MonitorCliArgs {
-	switch monitor {
+func (m *Mewz) MonitorCli() types.MonitorCliArgs {
+	switch m.Monitor {
 	case "qemu":
 		return types.MonitorCliArgs{
 			OtherArgs: " -no-reboot -device isa-debug-exit,iobase=0x501,iosize=2",
@@ -87,6 +88,7 @@ func (m *Mewz) Init(data types.UnikernelParams) error {
 		mask = 24
 	}
 	m.Command = strings.Join(data.CmdLine, " ")
+	m.Monitor = data.Monitor
 	m.Net.Address = data.Net.IP
 	m.Net.Gateway = data.Net.Gateway
 	m.Net.Mask = mask

@@ -25,6 +25,7 @@ const MirageUnikernel string = "mirage"
 
 type Mirage struct {
 	Command string
+	Monitor string
 	Net     MirageNet
 	Block   MirageBlock
 }
@@ -35,10 +36,10 @@ type MirageNet struct {
 }
 
 type MirageBlock struct {
-	RootFS string
+	HostPath string
 }
 
-func (m *Mirage) CommandString(_ string) (string, error) {
+func (m *Mirage) CommandString() (string, error) {
 	return fmt.Sprintf("%s %s %s", m.Net.Address,
 		m.Net.Gateway,
 		m.Command), nil
@@ -52,8 +53,8 @@ func (m *Mirage) SupportsFS(_ string) bool {
 	return false
 }
 
-func (m *Mirage) MonitorNetCli(monitor string, ifName string, mac string) string {
-	switch monitor {
+func (m *Mirage) MonitorNetCli(ifName string, mac string) string {
+	switch m.Monitor {
 	case "hvt", "spt":
 		netOption := "--net:service=" + ifName
 		netOption += " --net-mac:service=" + mac
@@ -63,16 +64,19 @@ func (m *Mirage) MonitorNetCli(monitor string, ifName string, mac string) string
 	}
 }
 
-func (m *Mirage) MonitorBlockCli(monitor string) string {
-	switch monitor {
+func (m *Mirage) MonitorBlockCli() types.MonitorBlockArgs {
+	switch m.Monitor {
 	case "hvt", "spt":
-		return "--block:storage="
+		return types.MonitorBlockArgs{
+			ID:   "storage",
+			Path: m.Block.HostPath,
+		}
 	default:
-		return ""
+		return types.MonitorBlockArgs{}
 	}
 }
 
-func (m *Mirage) MonitorCli(_ string) types.MonitorCliArgs {
+func (m *Mirage) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{}
 }
 
@@ -82,8 +86,12 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 		m.Net.Address = "--ipv4=" + data.Net.IP + "/24"
 		m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 	}
+	if data.Block.MountPoint != "" {
+		m.Block.HostPath = data.Block.Image
+	}
 
 	m.Command = strings.Join(data.CmdLine, " ")
+	m.Monitor = data.Monitor
 
 	return nil
 }

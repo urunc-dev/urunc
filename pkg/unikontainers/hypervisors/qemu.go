@@ -56,7 +56,6 @@ func (q *Qemu) Path() string {
 }
 
 func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
-	qemuString := string(QemuVmm)
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"
 	cmdString += " -L /usr/share/qemu"   // Set the path for qemu bios/data
@@ -90,7 +89,7 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 
 	cmdString += " -kernel " + args.UnikernelPath
 	if args.Net.TapDev != "" {
-		netcli := ukernel.MonitorNetCli(qemuString, args.Net.TapDev, args.Net.MAC)
+		netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 		if netcli == "" {
 			netcli += " -net nic,model=virtio,macaddr="
 			netcli += args.Net.MAC
@@ -101,15 +100,15 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	} else {
 		cmdString += " -nic none"
 	}
-	if args.Block.Image != "" {
-		blockCli := ukernel.MonitorBlockCli(qemuString)
-		if blockCli == "" {
-			blockCli += " -device virtio-blk-pci,id=blk0,drive=hd0,scsi=off"
-			blockCli += " -drive format=raw,if=none,id=hd0,file="
-		}
-		blockCli += args.Block.Image
-		cmdString += blockCli
+	blockArgs := ukernel.MonitorBlockCli()
+	blockCli := blockArgs.ExactArgs
+	if blockCli == "" && blockArgs.ID != "" && blockArgs.Path != "" {
+		blockCli = " -device virtio-blk-pci,drive=" + blockArgs.ID
+		blockCli += ",serial=" + blockArgs.ID + ",scsi=off"
+		blockCli += " -drive format=raw,if=none,id=" + blockArgs.ID
+		blockCli += ",file=" + blockArgs.Path
 	}
+	cmdString += blockCli
 	if args.InitrdPath != "" {
 		cmdString += " -initrd " + args.InitrdPath
 	}
@@ -125,7 +124,7 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	default:
 		// Nothing to add
 	}
-	extraMonArgs := ukernel.MonitorCli(qemuString)
+	extraMonArgs := ukernel.MonitorCli()
 	if extraMonArgs.ExtraInitrd != "" {
 		cmdString += " -initrd " + extraMonArgs.ExtraInitrd
 	}
