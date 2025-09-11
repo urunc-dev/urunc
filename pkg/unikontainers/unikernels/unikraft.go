@@ -91,8 +91,8 @@ func (u *Unikraft) MonitorNetCli(_ string, _ string) string {
 }
 
 // We have not managed to make Unikraft run with block yet.
-func (u *Unikraft) MonitorBlockCli() types.MonitorBlockArgs {
-	return types.MonitorBlockArgs{}
+func (u *Unikraft) MonitorBlockCli() []types.MonitorBlockArgs {
+	return nil
 }
 
 // There are no generic CLI hypervisor options for Unikraft yet.

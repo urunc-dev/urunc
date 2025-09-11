@@ -30,12 +30,13 @@ import (
 
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
-// getBlockDevice checks if a path is a block-based mount point
-// If the path is indeed a mount point then it returns the information of this
-// block device in the form of types.BlockDevParams
-// If path is not a mount point of a block device or in case of error,
-// it returns an empty types.BlockDevParams struct and an error.
-func getBlockDevice(path string) (types.BlockDevParams, error) {
+// getMountInfo checks if the path (given as argument) is a mountpoint
+// looking at /proc/self/mountinfo.
+// If the path is indeed a mount point then getMountInfo stores and returns
+// the respective info in a BlockDevParams struct.
+// If the path is not a mount point (not present in /proc/self/mountinfo)
+// then getMountInfo returns an empty BlockDevParams struct and ErrMountpoint error.
+func getMountInfo(path string) (types.BlockDevParams, error) {
 	selfProcMountInfo := "/proc/self/mountinfo"
 
 	file, err := os.Open(selfProcMountInfo)
@@ -68,10 +69,10 @@ func getBlockDevice(path string) (types.BlockDevParams, error) {
 		}).Debug("Found container rootfs mount")
 
 		return types.BlockDevParams{
-			Image:      fields[1],
+			Source:     fields[1],
 			FsType:     fields[0],
-			MountPoint: "/",
-			ID:         0,
+			MountPoint: path,
+			ID:         "",
 		}, nil
 	}
 
@@ -156,14 +157,13 @@ func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDe
 		return types.BlockDevParams{}, fmt.Errorf("annotation for block device was set without a mountpoint")
 	}
 
-	var id uint
-	id = 1
+	id := ""
 	if mountPoint == "/" {
-		id = 0
+		id = "rootfs"
 	}
 
 	return types.BlockDevParams{
-		Image:      blockImg,
+		Source:     blockImg,
 		MountPoint: mountPoint,
 		ID:         id,
 	}, nil
@@ -195,24 +195,71 @@ func handleCntrRootfsAsBlock(rfs types.RootfsParams, unikernelType string, unike
 	}
 
 	return types.BlockDevParams{
-		Image:      rfs.Path,
+		Source:     rfs.Path,
 		MountPoint: mp,
-		ID:         0,
+		ID:         "rootfs",
 	}, nil
 }
 
-func handleBlockBasedRootfs(rfs types.RootfsParams, unikernelType string, unikernelPath string, uruncJSONFilename string, initrdPath string, mounts []specs.Mount) (types.BlockDevParams, error) {
-	var blockArgs types.BlockDevParams
+// Search all the mount entries in the container's config and
+// find the ones that come from a block.
+func getBlockVolumes(monRootfs string, mounts []specs.Mount, ukernel types.Unikernel) ([]types.BlockDevParams, error) {
+	blkImgs := []types.BlockDevParams{}
+	for i, m := range mounts {
+		// We check only bind mounts
+		if m.Type != "bind" {
+			continue
+		}
+		// Get the information of the source path
+		// from /proc/self/mountinfo
+		mInfo, err := getMountInfo(m.Source)
+		if errors.Is(err, ErrMountpoint) {
+			// ErrMountpoint means we did not find any
+			// such mount and hence we can skip it.
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if ukernel.SupportsFS(mInfo.FsType) {
+			err = mount.Unmount(mInfo.MountPoint)
+			if err != nil {
+				return nil, err
+			}
+			err = setupDev(monRootfs, mInfo.Source)
+			if err != nil {
+				return nil, err
+			}
+			mInfo.ID = fmt.Sprintf("vol%d", i)
+			mInfo.MountPoint = m.Destination
+			blkImgs = append(blkImgs, mInfo)
+		}
+	}
+
+	return blkImgs, nil
+}
+
+func handleBlockBasedRootfs(rfs types.RootfsParams, ukernel types.Unikernel, unikernelType string, unikernelPath string, uruncJSONFilename string, initrdPath string, mounts []specs.Mount) ([]types.BlockDevParams, error) {
+	var blockArgs []types.BlockDevParams
+	var rootfsBlock types.BlockDevParams
 	var err error
 	if rfs.MountedPath == "" {
-		// If we got here then the mountpoint in the annotation was "/"
-		blockArgs, err = handleExplicitBlockImage(rfs.Path, "/")
+		// The Mountpoint in the annotation was "/" and hence the rootfs
+		// of the guest is a block Image inside the container's image.
+		rootfsBlock, err = handleExplicitBlockImage(rfs.Path, "/")
 	} else {
-		blockArgs, err = handleCntrRootfsAsBlock(rfs, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, mounts)
+		rootfsBlock, err = handleCntrRootfsAsBlock(rfs, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, mounts)
 	}
 	if err != nil {
-		return types.BlockDevParams{}, err
+		return nil, err
 	}
+	rootfsBlock.ID = "rootfs"
+	blockArgs = append(blockArgs, rootfsBlock)
+	blockFromMounts, err := getBlockVolumes(rfs.MonRootfs, mounts, ukernel)
+	if err != nil {
+		return nil, err
+	}
+	blockArgs = append(blockArgs, blockFromMounts...)
 
 	return blockArgs, nil
 }

@@ -24,16 +24,16 @@ import (
 func TestGetBlockDevice(t *testing.T) {
 	// Create a mock partition
 	tmpMnt := types.BlockDevParams{
-		Image:      "proc",
-		MountPoint: "/",
+		Source:     "proc",
+		MountPoint: "/proc",
 		FsType:     "proc",
-		ID:         0,
+		ID:         "",
 	}
 
-	rootFs, err := getBlockDevice("/proc")
+	rootFs, err := getMountInfo("/proc")
 	assert.NoError(t, err, "Expected no error in getting block device")
-	assert.Equal(t, tmpMnt.Image, rootFs.Image, "Incorrect image")
+	assert.Equal(t, tmpMnt.Source, rootFs.Source, "Incorrect image")
 	assert.Equal(t, tmpMnt.MountPoint, rootFs.MountPoint, "Incorrect mountpoint")
 	assert.Equal(t, tmpMnt.FsType, rootFs.FsType, "Expected filesystem type to be proc")
-	assert.Equal(t, tmpMnt.ID, rootFs.ID, "Expected ID to be 0")
+	assert.Equal(t, tmpMnt.ID, rootFs.ID, "Expected ID to be empty")
 }

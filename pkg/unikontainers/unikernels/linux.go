@@ -42,7 +42,7 @@ type Linux struct {
 	Monitor    string
 	Env        []string
 	Net        LinuxNet
-	Blk        types.BlockDevParams
+	Blk        []types.BlockDevParams
 	RootFsType string
 	InitrdConf bool
 	ProcConfig types.ProcessConfig
@@ -152,26 +152,32 @@ func (l *Linux) MonitorNetCli(_ string, _ string) string {
 	return ""
 }
 
-func (l *Linux) MonitorBlockCli() types.MonitorBlockArgs {
-	if l.Blk.Image == "" {
-		return types.MonitorBlockArgs{}
+func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
+	if len(l.Blk) == 0 {
+		return nil
 	}
+	blkArgs := make([]types.MonitorBlockArgs, 0, len(l.Blk))
 	switch l.Monitor {
 	case "qemu":
-		bcli := " -device virtio-blk-pci,id=blk0,drive=hd0"
-		bcli += " -drive format=raw,if=none,id=hd0,file="
-		bcli += l.Blk.Image
-		return types.MonitorBlockArgs{
-			ExactArgs: bcli,
+		for _, aBlock := range l.Blk {
+			bcli1 := fmt.Sprintf(" -device virtio-blk-pci,serial=%s,drive=%s", aBlock.ID, aBlock.ID)
+			bcli2 := fmt.Sprintf(" -drive format=raw,if=none,id=%s,file=%s", aBlock.ID, aBlock.Source)
+			blkArgs = append(blkArgs, types.MonitorBlockArgs{
+				ExactArgs: bcli1 + bcli2,
+			})
 		}
 	case "firecracker":
-		return types.MonitorBlockArgs{
-			ID:   "rootfs",
-			Path: l.Blk.Image,
+		for _, aBlock := range l.Blk {
+			blkArgs = append(blkArgs, types.MonitorBlockArgs{
+				ID:   aBlock.ID,
+				Path: aBlock.Source,
+			})
 		}
 	default:
-		return types.MonitorBlockArgs{}
+		return nil
 	}
+
+	return blkArgs
 }
 
 func (l *Linux) MonitorCli() types.MonitorCliArgs {

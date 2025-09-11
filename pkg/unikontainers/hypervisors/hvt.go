@@ -156,9 +156,12 @@ func (h *HVT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 		cmdString += " "
 		cmdString += ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 	}
-	bArgs := ukernel.MonitorBlockCli()
-	cmdString = appendNonEmpty(cmdString, " --block:"+bArgs.ID+"=", bArgs.Path)
 	extraMonArgs := ukernel.MonitorCli()
+	bArgs := ukernel.MonitorBlockCli()
+	for _, blockArg := range bArgs {
+		cmdString = appendNonEmpty(cmdString, " --block:"+blockArg.ID+"=",
+			blockArg.Path)
+	}
 	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")

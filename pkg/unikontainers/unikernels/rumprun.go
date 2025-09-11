@@ -148,15 +148,25 @@ func (r *Rumprun) MonitorNetCli(ifName string, mac string) string {
 	}
 }
 
-func (r *Rumprun) MonitorBlockCli() types.MonitorBlockArgs {
+func (r *Rumprun) MonitorBlockCli() []types.MonitorBlockArgs {
 	switch r.Monitor {
 	case "hvt", "spt":
-		return types.MonitorBlockArgs{
-			ID:   "rootfs",
-			Path: r.Blk.HostPath,
+		// TODO: Explore options for multiple block devices in Rumprun
+		// over Solo5-spt and Solo5-hvt. Solo5 expects to use as an ID
+		// a specific name which the guest is also aware of in order to
+		// attach the respective block. As a result, urunc needs to know
+		// the correct ID to set, which is not straightforward. Therefore,
+		// there are two options. Either we read the Solo5 manifest or,
+		// we require specific IDs. Till we decide about that, we will
+		// use a single block device only for the rootfs of Rumprun.
+		return []types.MonitorBlockArgs{
+			{
+				ID:   "rootfs",
+				Path: r.Blk.HostPath,
+			},
 		}
 	default:
-		return types.MonitorBlockArgs{}
+		return nil
 	}
 }
 
@@ -193,12 +203,12 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 		r.Net.Address = ""
 	}
 
-	if data.Block.MountPoint != "" {
+	if len(data.Block) > 0 {
 		r.Blk.Source = "etfs"
 		r.Blk.Path = "/dev/ld0a"
 		r.Blk.FsType = "blk"
-		r.Blk.Mountpoint = data.Block.MountPoint
-		r.Blk.HostPath = data.Block.Image
+		r.Blk.Mountpoint = data.Block[0].MountPoint
+		r.Blk.HostPath = data.Block[0].Source
 	} else {
 		// Set source to empty string so we can know that no block
 		// was specified.

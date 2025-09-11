@@ -101,14 +101,15 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 		cmdString += " -nic none"
 	}
 	blockArgs := ukernel.MonitorBlockCli()
-	blockCli := blockArgs.ExactArgs
-	if blockCli == "" && blockArgs.ID != "" && blockArgs.Path != "" {
-		blockCli = " -device virtio-blk-pci,drive=" + blockArgs.ID
-		blockCli += ",serial=" + blockArgs.ID + ",scsi=off"
-		blockCli += " -drive format=raw,if=none,id=" + blockArgs.ID
-		blockCli += ",file=" + blockArgs.Path
+	for _, blockArg := range blockArgs {
+		blockCli := blockArg.ExactArgs
+		if blockCli == "" && blockArg.ID != "" && blockArg.Path != "" {
+			blockCli1 := fmt.Sprintf(" -device virtio-blk-pci,serial=%s,drive=%s,scsi=off", blockArg.ID, blockArg.ID)
+			blockCli2 := fmt.Sprintf(" -drive format=raw,if=none,id=%s,file=%s", blockArg.ID, blockArg.Path)
+			blockCli = blockCli1 + blockCli2
+		}
+		cmdString += blockCli
 	}
-	cmdString += blockCli
 	if args.InitrdPath != "" {
 		cmdString += " -initrd " + args.InitrdPath
 	}

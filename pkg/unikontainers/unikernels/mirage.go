@@ -27,7 +27,7 @@ type Mirage struct {
 	Command string
 	Monitor string
 	Net     MirageNet
-	Block   MirageBlock
+	Block   []MirageBlock
 }
 
 type MirageNet struct {
@@ -36,6 +36,7 @@ type MirageNet struct {
 }
 
 type MirageBlock struct {
+	ID       string
 	HostPath string
 }
 
@@ -64,15 +65,30 @@ func (m *Mirage) MonitorNetCli(ifName string, mac string) string {
 	}
 }
 
-func (m *Mirage) MonitorBlockCli() types.MonitorBlockArgs {
+func (m *Mirage) MonitorBlockCli() []types.MonitorBlockArgs {
+	if len(m.Block) == 0 {
+		return nil
+	}
 	switch m.Monitor {
 	case "hvt", "spt":
-		return types.MonitorBlockArgs{
-			ID:   "storage",
-			Path: m.Block.HostPath,
+		// TODO: Explore options for multiple block devices in MirageOS
+		// over Solo5-spt and Solo5-hvt. Solo5 expects to use as an ID
+		// a specific name which the guest is also aware of in order to
+		// attach the respective block. As a result, urunc needs to know
+		// the correct ID to set, which is not straightforward. Therefore,
+		// there are two options. Either we read the Solo5 manifest or,
+		// we require specific IDs. Till we decide about that, we will
+		// use a single block device. We also need to find some use cases
+		// where multiple block devices are configured in MirageOS and check
+		// how MirageOS handles/configures them.
+		return []types.MonitorBlockArgs{
+			{
+				ID:   "storage",
+				Path: m.Block[0].HostPath,
+			},
 		}
 	default:
-		return types.MonitorBlockArgs{}
+		return nil
 	}
 }
 
@@ -86,8 +102,13 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 		m.Net.Address = "--ipv4=" + data.Net.IP + "/24"
 		m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 	}
-	if data.Block.MountPoint != "" {
-		m.Block.HostPath = data.Block.Image
+	m.Block = make([]MirageBlock, 0, len(data.Block))
+	for _, blk := range data.Block {
+		newBlk := MirageBlock{
+			ID:       blk.ID,
+			HostPath: blk.Source,
+		}
+		m.Block = append(m.Block, newBlk)
 	}
 
 	m.Command = strings.Join(data.CmdLine, " ")

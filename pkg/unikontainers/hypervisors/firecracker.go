@@ -144,12 +144,15 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 	FCDrives := make([]FirecrackerDrive, 0)
 
 	bArgs := ukernel.MonitorBlockCli()
-	if bArgs.ID != "" {
+	for _, blockArg := range bArgs {
 		aBlock := FirecrackerDrive{
-			DriveID:   bArgs.ID,
+			DriveID:   blockArg.ID,
 			IsRO:      false,
-			IsRootDev: true,
-			HostPath:  bArgs.Path,
+			IsRootDev: false,
+			HostPath:  blockArg.Path,
+		}
+		if blockArg.ID == "rootfs" {
+			aBlock.IsRootDev = true
 		}
 		FCDrives = append(FCDrives, aBlock)
 	}

@@ -20,7 +20,7 @@ type Unikernel interface {
 	SupportsBlock() bool
 	SupportsFS(string) bool
 	MonitorNetCli(string, string) string
-	MonitorBlockCli() MonitorBlockArgs
+	MonitorBlockCli() []MonitorBlockArgs
 	MonitorCli() MonitorCliArgs
 }
 
@@ -42,10 +42,10 @@ type NetDevParams struct {
 }
 
 type BlockDevParams struct {
-	Image      string
+	Source     string
 	MountPoint string
 	FsType     string
-	ID         uint
+	ID         string
 }
 
 type SharedfsParams struct {
@@ -75,7 +75,7 @@ type UnikernelParams struct {
 	Version    string   // The version of the unikernel
 	InitrdPath string   // The path to the initrd of the unikernel
 	Net        NetDevParams
-	Block      BlockDevParams
+	Block      []BlockDevParams
 	Rootfs     RootfsParams  // Information about rootfs
 	ProcConf   ProcessConfig // Information for the process execution inside the guest
 }

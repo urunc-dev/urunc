@@ -337,12 +337,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// and an auxiliary block image placed in the container's image
 	// Currently if a block Image is present in the container's image, then
 	// we will just use this image.
-	blockArgs := types.BlockDevParams{}
+	blockArgs := []types.BlockDevParams{}
 	sharedfsArgs := types.SharedfsParams{}
 	tmpfsSize := "65536k"
 	switch rootfsParams.Type {
 	case "block":
-		blockArgs, err = handleBlockBasedRootfs(rootfsParams, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, u.Spec.Mounts)
+		blockArgs, err = handleBlockBasedRootfs(rootfsParams, unikernel, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, u.Spec.Mounts)
 		if err != nil {
 			uniklog.Errorf("could not setup block based rootfs: %v", err)
 			return err
@@ -380,14 +380,16 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 	metrics.Capture(u.State.ID, "TS17")
 
-	if blockArgs.Image == "" && unikernelType == "rumprun" {
-		// Special handling for Rumprun to keep compatibility with older
-		// images. We should revisit this and maybe remove it in the future.
-		blockArgs, err = handleExplicitBlockImage(u.State.Annotations[annotBlock],
-			u.State.Annotations[annotBlockMntPoint])
-		if err != nil {
-			return err
-		}
+	blockFromAnnot, err := handleExplicitBlockImage(u.State.Annotations[annotBlock],
+		u.State.Annotations[annotBlockMntPoint])
+	if err != nil {
+		return err
+	}
+	if blockFromAnnot.Source != "" {
+		// TODO: Add proper support for multiple block Images from the container's
+		// image. This requires adding more annotations too.
+		blockFromAnnot.ID = "annot_vol"
+		blockArgs = append(blockArgs, blockFromAnnot)
 	}
 
 	// State

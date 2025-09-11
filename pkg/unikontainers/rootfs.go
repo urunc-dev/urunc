@@ -92,7 +92,7 @@ func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	rootFsDevice, err := getBlockDevice(rs.cntrRootfs)
+	rootFsDevice, err := getMountInfo(rs.cntrRootfs)
 	if err != nil {
 		uniklog.Errorf("failed to get container's rootfs mount info: %v", err)
 		return types.RootfsParams{}, false
@@ -102,7 +102,7 @@ func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("block", rootFsDevice.Image, rs.cntrRootfs, rs.cntrRootfs), true
+	return newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs, rs.cntrRootfs), true
 }
 
 // tryVirtiofs checks if virtiofs can be used

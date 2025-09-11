@@ -69,7 +69,10 @@ func (s *SPT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 		cmdString += ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 	}
 	bArgs := ukernel.MonitorBlockCli()
-	cmdString = appendNonEmpty(cmdString, " --block:"+bArgs.ID+"=", bArgs.Path)
+	for _, blockArg := range bArgs {
+		cmdString = appendNonEmpty(cmdString, " --block:"+blockArg.ID+"=",
+			blockArg.Path)
+	}
 	extraMonArgs := ukernel.MonitorCli()
 	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
