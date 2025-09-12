@@ -34,6 +34,8 @@ const (
 	envEndMarker     string = "UEE"
 	lpcStartMarker   string = "UCS" // Linux process config start marker
 	lpcEndMarker     string = "UCE" // Linux process config end marker
+	blkStartMarker   string = "UBS" // Block-based mounts start marker
+	blkEndMarker     string = "UBE" // Block-based mounts end marker
 )
 
 type Linux struct {
@@ -168,8 +170,12 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 		}
 	case "firecracker":
 		for _, aBlock := range l.Blk {
+			id := aBlock.ID
+			if l.Monitor == "firecracker" {
+				id = "FC" + aBlock.ID
+			}
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
-				ID:   aBlock.ID,
+				ID:   id,
 				Path: aBlock.Source,
 			})
 		}
@@ -309,6 +315,24 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString(l.ProcConfig.WorkDir)
 	sb.WriteString("\n")
 	sb.WriteString(lpcEndMarker)
+	sb.WriteString("\n")
+	sb.WriteString(blkStartMarker)
+	sb.WriteString("\n")
+	for _, b := range l.Blk {
+		if b.ID == "rootfs" {
+			continue
+		}
+		sb.WriteString("ID:")
+		if l.Monitor == "firecracker" {
+			sb.WriteString("FC")
+		}
+		sb.WriteString(b.ID)
+		sb.WriteString("\n")
+		sb.WriteString("MP:")
+		sb.WriteString(b.MountPoint)
+		sb.WriteString("\n")
+	}
+	sb.WriteString(blkEndMarker)
 	sb.WriteString("\n")
 	return sb.String()
 }

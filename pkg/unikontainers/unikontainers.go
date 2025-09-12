@@ -385,7 +385,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
-	if blockFromAnnot.Source != "" {
+	if blockFromAnnot.Source != "" && blockFromAnnot.MountPoint != "/" {
 		// TODO: Add proper support for multiple block Images from the container's
 		// image. This requires adding more annotations too.
 		blockFromAnnot.ID = "annot_vol"
