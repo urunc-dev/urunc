@@ -60,41 +60,64 @@ type UnikernelConfig struct {
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 }
 
+// validate checks if the mandatory configuration fields are present.
+func (c *UnikernelConfig) validate() error {
+	if c.UnikernelType == "" {
+		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotType)
+	}
+	if c.Hypervisor == "" {
+		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotHypervisor)
+	}
+	if c.UnikernelBinary == "" {
+		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotBinary)
+	}
+	return nil
+}
+
 // GetUnikernelConfig tries to get the Unikernel config from the bundle annotations.
 // If that fails, it gets the Unikernel config from the urunc.json file inside the rootfs.
 // FIXME: custom annotations are unreachable, we need to investigate why to skip adding the urunc.json file
 // For more details, see: https://github.com/urunc-dev/urunc/issues/12
+// GetUnikernelConfig tries to get a valid Unikernel config from the bundle annotations.
+// If the annotations do not provide a valid config, it falls back to the urunc.json file.
 func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, error) {
-	conf, err := getConfigFromSpec(spec)
+
+	conf := getConfigFromSpec(spec)
+
+	err := conf.validate()
 	if err == nil {
-		err1 := conf.decode()
-		if err1 != nil {
-			return nil, err1
+
+		if err := conf.decode(); err != nil {
+			return nil, err
 		}
 		return conf, nil
 	}
-	rootFSDir := spec.Root.Path
 
+	rootFSDir := spec.Root.Path
 	var jsonFilePath string
 	if filepath.IsAbs(rootFSDir) {
 		jsonFilePath = filepath.Join(rootFSDir, uruncJSONFilename)
 	} else {
 		jsonFilePath = filepath.Join(bundleDir, rootFSDir, uruncJSONFilename)
 	}
-	conf, err = getConfigFromJSON(jsonFilePath)
-	if err == nil {
-		err1 := conf.decode()
-		if err1 != nil {
-			return nil, err1
-		}
-		return conf, nil
+
+	jsonConf, err := getConfigFromJSON(jsonFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("config not found in spec annotations or in %s: %w", uruncJSONFilename, err)
 	}
 
-	return nil, errors.New("failed to retrieve Unikernel config")
+	if err := jsonConf.validate(); err != nil {
+		return nil, fmt.Errorf("invalid unikernel config from %s: %w", uruncJSONFilename, err)
+	}
+
+	if err := jsonConf.decode(); err != nil {
+		return nil, err
+	}
+	return jsonConf, nil
 }
 
 // getConfigFromSpec retrieves the urunc specific annotations from the spec and populates the Unikernel config.
-func getConfigFromSpec(spec *specs.Spec) (*UnikernelConfig, error) {
+func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	unikernelType := spec.Annotations[annotType]
 	unikernelVersion := spec.Annotations[annotVersion]
 	unikernelCmd := spec.Annotations[annotCmdLine]
@@ -116,11 +139,6 @@ func getConfigFromSpec(spec *specs.Spec) (*UnikernelConfig, error) {
 		"mountRootfs":      tryDecode(MountRootfs),
 	}).WithField("source", "spec").Debug("urunc annotations")
 
-	// TODO: We need to use a better check to see if annotations were empty
-	conf := fmt.Sprintf("%s%s%s%s%s%s%s%s", unikernelType, unikernelVersion, unikernelCmd, unikernelBinary, hypervisor, initrd, block, blkMntPoint)
-	if conf == "" {
-		return nil, ErrEmptyAnnotations
-	}
 	return &UnikernelConfig{
 		UnikernelBinary:  unikernelBinary,
 		UnikernelVersion: unikernelVersion,
@@ -131,7 +149,7 @@ func getConfigFromSpec(spec *specs.Spec) (*UnikernelConfig, error) {
 		Block:            block,
 		BlkMntPoint:      blkMntPoint,
 		MountRootfs:      MountRootfs,
-	}, nil
+	}
 }
 
 // getConfigFromJSON retrieves the Unikernel config parameters from the urunc.json file inside the rootfs.
