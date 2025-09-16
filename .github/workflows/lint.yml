@@ -24,7 +24,6 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-22.04
-    continue-on-error: true
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
