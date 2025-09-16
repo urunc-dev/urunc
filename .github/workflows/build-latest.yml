@@ -41,7 +41,6 @@ jobs:
             runner: ubuntu-22.04
           - arch: arm64
             runner: ubuntu-22.04-arm
-    continue-on-error: true
 
     env:
       REGISTRY: ${{ inputs.registry }}

@@ -18,7 +18,6 @@ jobs:
           - arch: amd64
             runner: ubuntu-22.04
       fail-fast: false
-    continue-on-error: true
     defaults:
       run:
         working-directory: .github/linters
@@ -53,7 +52,6 @@ jobs:
           - arch: amd64
             runner: ubuntu-22.04
       fail-fast: false
-    continue-on-error: true
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -85,7 +83,6 @@ jobs:
           - arch: amd64
             runner: ubuntu-22.04
       fail-fast: false
-    continue-on-error: true
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
