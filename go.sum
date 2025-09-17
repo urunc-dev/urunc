@@ -307,5 +307,5 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
 honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
-k8s.io/cri-api v0.34.0 h1:erzXelLqzDbNdryR7eVqxmR/1JfQeurE9U+HdKTgSpU=
-k8s.io/cri-api v0.34.0/go.mod h1:4qVUjidMg7/Z9YGZpqIDygbkPWkg3mkS1PvOx/kpHTE=
+k8s.io/cri-api v0.34.1 h1:n2bU++FqqJq0CNjP/5pkOs0nIx7aNpb1Xa053TecQkM=
+k8s.io/cri-api v0.34.1/go.mod h1:4qVUjidMg7/Z9YGZpqIDygbkPWkg3mkS1PvOx/kpHTE=

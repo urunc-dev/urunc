@@ -23,7 +23,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.36.0
-	k8s.io/cri-api v0.34.0
+	k8s.io/cri-api v0.34.1
 )
 
 require (
