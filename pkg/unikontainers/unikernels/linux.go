@@ -16,6 +16,7 @@ package unikernels
 
 import (
 	"fmt"
+	"net"
 	"runtime"
 	"strings"
 )
@@ -34,6 +35,15 @@ type LinuxNet struct {
 	Address string
 	Gateway string
 	Mask    string
+}
+
+func IsIPInSubnet(ln LinuxNet) bool {
+	ip := net.ParseIP(ln.Address)
+	gw := net.ParseIP(ln.Gateway)
+	mask := net.IPMask(net.ParseIP(ln.Mask).To4())
+	subnet := gw.Mask(mask)
+
+	return ip.Mask(mask).Equal(subnet)
 }
 
 func (l *Linux) CommandString() (string, error) {
@@ -69,6 +79,9 @@ func (l *Linux) CommandString() (string, error) {
 			l.Net.Gateway,
 			l.Net.Mask)
 		bootParams += " " + netParams
+	}
+	if !IsIPInSubnet(l.Net) {
+		bootParams += " URUNIT_DEFROUTE=1"
 	}
 	for _, eVar := range l.Env {
 		bootParams += " " + eVar
