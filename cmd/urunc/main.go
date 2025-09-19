@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"log/syslog"
 	"os"
 	"path/filepath"
@@ -28,8 +27,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
-	"github.com/urunc-dev/urunc/internal/constants"
 	m "github.com/urunc-dev/urunc/internal/metrics"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/urfave/cli/v3"
@@ -59,6 +58,8 @@ value for "bundle" is the current directory.`
 
 var version string
 
+var metrics m.Writer
+
 type FatalWriter struct {
 	cliErrWriter io.Writer
 }
@@ -70,9 +71,6 @@ func (f *FatalWriter) Write(p []byte) (n int, err error) {
 	}
 	return len(p), nil
 }
-
-// FIXME: We need to find a way to set the output file
-var metrics = m.NewZerologMetrics(constants.TimestampTargetFile)
 
 func main() {
 	root := "/run/urunc"
@@ -123,9 +121,14 @@ func main() {
 			if err := reviseRootDir(cmd); err != nil {
 				return nil, err
 			}
-			if err := configLogrus(cmd); err != nil {
+			// ignore error since ParseLogMetricsConfig will print a warning and return default values
+			cfg, _ := unikontainers.ParseLogMetricsConfig(unikontainers.UruncConfigPath)
+			err := configLogrus(cmd, cfg.Log)
+			if err != nil {
 				return nil, err
 			}
+			metrics = m.NewZerologMetrics(cfg.Timestamps.Enabled, cfg.Timestamps.Destination)
+
 			return nil, nil
 		},
 	}
@@ -162,13 +165,42 @@ func reviseRootDir(cmd *cli.Command) error {
 	return cmd.Set("root", root)
 }
 
-func configLogrus(cmd *cli.Command) error {
+func configLogrus(cmd *cli.Command, cfg unikontainers.UruncLog) error {
+	// Determine the highest log level between CLI flag and config (TRACE is 6, PANIC is 0)
+	getLogLevel := func(levelStr, fallback string) (logrus.Level, error) {
+		if levelStr == "" {
+			levelStr = fallback
+		}
+		level, err := logrus.ParseLevel(levelStr)
+		if err == nil {
+			return level, nil
+		}
+		return logrus.ParseLevel(fallback)
+	}
+
+	cliLogLevelStr := "info"
 	if cmd.Bool("debug") {
-		logrus.SetLevel(logrus.DebugLevel)
+		cliLogLevelStr = "debug"
+	}
+	cliLogLevel, err := getLogLevel(cliLogLevelStr, "info")
+	if err != nil {
+		return err
+	}
+
+	cfgLogLevel, err := getLogLevel(cfg.Level, "info")
+	if err != nil {
+		return err
+	}
+
+	logLevel := max(cfgLogLevel, cliLogLevel)
+	logrus.SetLevel(logLevel)
+
+	// If loglevel is debug or lower, enable report caller with prettyfier for text format
+	if logLevel >= logrus.DebugLevel {
 		logrus.SetReportCaller(true)
 		// Shorten function and file names reported by the logger, by
-		// trimming common "github.com/opencontainers/runc" prefix.
-		// This is only done for text formatter.
+		// trimming common "github.com/urunc-dev/urunc" prefix.
+		// This is only done for text formatter
 		_, file, _, _ := runtime.Caller(0)
 		prefix := filepath.Dir(file) + "/"
 		logrus.SetFormatter(&logrus.TextFormatter{
@@ -178,25 +210,28 @@ func configLogrus(cmd *cli.Command) error {
 				return function, fileLine
 			},
 		})
-		// If debug is enabled, add a syslog hook for easier debugging
+	}
+
+	// Syslog hook if enabled
+	if cfg.Syslog {
 		hook, err := lSyslog.NewSyslogHook("", "", syslog.LOG_DEBUG, "")
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		logrus.AddHook(hook)
 	}
 
+	// Set log format
 	switch f := cmd.String("log-format"); f {
-	case "":
-		// do nothing
-	case "text":
-		// do nothing
+	case "", "text":
+		// do nothing, already set above if debug
 	case "json":
 		logrus.SetFormatter(new(logrus.JSONFormatter))
 	default:
 		return errors.New("invalid log-format: " + f)
 	}
 
+	// Log file output if set
 	if file := cmd.String("log"); file != "" {
 		f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_SYNC, 0o644)
 		if err != nil {

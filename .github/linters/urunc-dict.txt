@@ -347,3 +347,4 @@ govet
 DEFROUTE
 blockfile
 thinpool
+vcpus

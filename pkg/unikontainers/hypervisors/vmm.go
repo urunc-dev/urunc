@@ -23,6 +23,16 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
+// we declare HypervisorConfig struct here to avoid import cycles
+
+// HypervisorConfig struct is used to hold hypervisor specific configuration
+// that is parsed from the urunc config file or state.json annotations
+type HypervisorConfig struct {
+	DefaultMemoryMB uint   `toml:"default_memory_mb"`
+	DefaultVCPUs    uint   `toml:"default_vcpus"`
+	BinaryPath      string `toml:"binary_path,omitempty"` // Optional path to the hypervisor binary
+}
+
 const DefaultMemory uint64 = 256 // The default memory for every hypervisor: 256 MB
 
 // ExecArgs holds the data required by Execve to start the VMM
@@ -39,6 +49,7 @@ type ExecArgs struct {
 	GuestMAC      string   // The MAC address of the guest network device
 	Seccomp       bool     // Enable or disable seccomp filters for the VMM
 	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
+	VCPUs         uint     // The number of vCPUs to allocate
 	Environment   []string // Environment
 }
 
@@ -56,7 +67,7 @@ type VMM interface {
 	Ok() error
 }
 
-func NewVMM(vmmType VmmType) (vmm VMM, err error) {
+func NewVMM(vmmType VmmType, hypervisors map[string]HypervisorConfig) (vmm VMM, err error) {
 	defer func() {
 		if err != nil {
 			vmmLog.Error(err.Error())
@@ -64,27 +75,39 @@ func NewVMM(vmmType VmmType) (vmm VMM, err error) {
 	}()
 	switch vmmType {
 	case SptVmm:
-		vmmPath, err := exec.LookPath(SptBinary)
-		if err != nil {
-			return nil, ErrVMMNotInstalled
+		vmmPath := hypervisors[string(SptVmm)].BinaryPath
+		if vmmPath == "" {
+			vmmPath, err = exec.LookPath(SptBinary)
+			if err != nil {
+				return nil, ErrVMMNotInstalled
+			}
 		}
 		return &SPT{binary: SptBinary, binaryPath: vmmPath}, nil
 	case HvtVmm:
-		vmmPath, err := exec.LookPath(HvtBinary)
-		if err != nil {
-			return nil, ErrVMMNotInstalled
+		vmmPath := hypervisors[string(HvtVmm)].BinaryPath
+		if vmmPath == "" {
+			vmmPath, err = exec.LookPath(HvtBinary)
+			if err != nil {
+				return nil, ErrVMMNotInstalled
+			}
 		}
 		return &HVT{binary: HvtBinary, binaryPath: vmmPath}, nil
 	case QemuVmm:
-		vmmPath, err := exec.LookPath(QemuBinary + cpuArch())
-		if err != nil {
-			return nil, ErrVMMNotInstalled
+		vmmPath := hypervisors[string(QemuVmm)].BinaryPath
+		if vmmPath == "" {
+			vmmPath, err = exec.LookPath(QemuBinary + cpuArch())
+			if err != nil {
+				return nil, ErrVMMNotInstalled
+			}
 		}
 		return &Qemu{binary: QemuBinary, binaryPath: vmmPath}, nil
 	case FirecrackerVmm:
-		vmmPath, err := exec.LookPath(FirecrackerBinary)
-		if err != nil {
-			return nil, ErrVMMNotInstalled
+		vmmPath := hypervisors[string(FirecrackerVmm)].BinaryPath
+		if vmmPath == "" {
+			vmmPath, err = exec.LookPath(FirecrackerBinary)
+			if err != nil {
+				return nil, ErrVMMNotInstalled
+			}
 		}
 		return &Firecracker{binary: FirecrackerBinary, binaryPath: vmmPath}, nil
 	case HedgeVmm:

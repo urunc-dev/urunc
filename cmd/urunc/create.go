@@ -73,9 +73,9 @@ var createCommand = &cli.Command{
 		if err := checkArgs(cmd, 1, exactArgs); err != nil {
 			return err
 		}
-
 		if !cmd.Bool("reexec") {
-			return createUnikontainer(cmd)
+			uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.UruncConfigPath) // ignore the error and use default config
+			return createUnikontainer(cmd, uruncCfg)
 		}
 
 		return reexecUnikontainer(cmd)
@@ -87,7 +87,7 @@ var createCommand = &cli.Command{
 // setups terminal if required and spawns reexec process,
 // waits for reexec process to notify, executes CreateRuntime hooks,
 // sends ACK to reexec process and executes CreateContainer hooks
-func createUnikontainer(cmd *cli.Command) (err error) {
+func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
 	err = nil
 	containerID := cmd.Args().First()
 	if containerID == "" {
@@ -110,7 +110,7 @@ func createUnikontainer(cmd *cli.Command) (err error) {
 	}
 
 	// new unikernel from bundle
-	unikontainer, err := unikontainers.New(bundlePath, containerID, rootDir)
+	unikontainer, err := unikontainers.New(bundlePath, containerID, rootDir, uruncCfg)
 	if err != nil {
 		if errors.Is(err, unikontainers.ErrQueueProxy) ||
 			errors.Is(err, unikontainers.ErrNotUnikernel) {
@@ -416,5 +416,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	}
 
 	// execve
-	return unikontainer.Exec()
+	// we need to pass metrics to Exec() function, as the unikontainer
+	// struct does not have the part of urunc config that configures metrics
+	return unikontainer.Exec(metrics)
 }

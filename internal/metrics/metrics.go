@@ -20,8 +20,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-var enableTimestamps = os.Getenv("URUNC_TIMESTAMPS")
-
 type Writer interface {
 	Capture(containerID string, timestampID string)
 }
@@ -34,8 +32,8 @@ func (z *zerologMetrics) Capture(containerID string, timestampID string) {
 	z.logger.Log().Str("containerID", containerID).Str("timestampID", timestampID).Msg("")
 }
 
-func NewZerologMetrics(target string) Writer {
-	if enableTimestamps == "1" {
+func NewZerologMetrics(enabled bool, target string) Writer {
+	if enabled {
 		file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return nil

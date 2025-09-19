@@ -114,7 +114,7 @@ func (fc *Firecracker) Execve(args ExecArgs, _ unikernels.Unikernel) error {
 		}
 	}
 	FCMachine := FirecrackerMachine{
-		VcpuCount:       1, // TODO: Use value from configuration or Environment variable
+		VcpuCount:       args.VCPUs,
 		MemSizeMiB:      fcMem,
 		Smt:             false,
 		TrackDirtyPages: false,

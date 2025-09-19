@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,7 +38,6 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
-	"github.com/urunc-dev/urunc/internal/constants"
 	m "github.com/urunc-dev/urunc/internal/metrics"
 )
 
@@ -53,14 +53,15 @@ var ErrNotUnikernel = errors.New("this is not a unikernel container")
 
 // Unikontainer holds the data necessary to create, manage and delete unikernel containers
 type Unikontainer struct {
-	State   *specs.State
-	Spec    *specs.Spec
-	BaseDir string
-	RootDir string
+	State    *specs.State
+	Spec     *specs.Spec
+	BaseDir  string
+	RootDir  string
+	UruncCfg *UruncConfig
 }
 
 // New parses the bundle and creates a new Unikontainer object
-func New(bundlePath string, containerID string, rootDir string) (*Unikontainer, error) {
+func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig) (*Unikontainer, error) {
 	spec, err := loadSpec(bundlePath)
 	if err != nil {
 		return nil, err
@@ -83,8 +84,9 @@ func New(bundlePath string, containerID string, rootDir string) (*Unikontainer, 
 	}
 
 	confMap := config.Map()
-	containerDir := filepath.Join(rootDir, containerID)
 
+	maps.Copy(confMap, cfg.Map())
+	containerDir := filepath.Join(rootDir, containerID)
 	state := &specs.State{
 		Version:     spec.Version,
 		ID:          containerID,
@@ -94,10 +96,11 @@ func New(bundlePath string, containerID string, rootDir string) (*Unikontainer, 
 		Annotations: confMap,
 	}
 	return &Unikontainer{
-		BaseDir: containerDir,
-		RootDir: rootDir,
-		Spec:    spec,
-		State:   state,
+		BaseDir:  containerDir,
+		RootDir:  rootDir,
+		Spec:     spec,
+		State:    state,
+		UruncCfg: cfg,
 	}, nil
 }
 
@@ -122,6 +125,7 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	u.BaseDir = containerDir
 	u.RootDir = rootDir
 	u.Spec = spec
+	u.UruncCfg = UruncConfigFromMap(state.Annotations)
 	return u, nil
 }
 
@@ -150,9 +154,7 @@ func (u *Unikontainer) Create(pid int) error {
 	return u.saveContainerState()
 }
 
-func (u *Unikontainer) Exec() error {
-	// FIXME: We need to find a way to set the output file
-	var metrics = m.NewZerologMetrics(constants.TimestampTargetFile)
+func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(u.State.ID, "TS15")
 
 	vmmType := u.State.Annotations[annotHypervisor]
@@ -176,18 +178,23 @@ func (u *Unikontainer) Exec() error {
 		}
 	}
 
-	// populate vmm args
+	defaultVCPUs := u.UruncCfg.Hypervisors[vmmType].DefaultVCPUs
+	if defaultVCPUs < 1 {
+		defaultVCPUs = 1
+	}
+	defaultMemSizeMB := u.UruncCfg.Hypervisors[vmmType].DefaultMemoryMB
 	vmmArgs := hypervisors.ExecArgs{
 		Container:     u.State.ID,
 		UnikernelPath: unikernelPath,
 		InitrdPath:    initrdPath,
 		BlockDevice:   "",
 		Seccomp:       true, // Enable Seccomp by default
-		MemSizeB:      0,
+		MemSizeB:      uint64(defaultMemSizeMB * 1024 * 1024),
+		VCPUs:         uint(defaultVCPUs),
 		Environment:   os.Environ(),
 	}
 
-	// Check if memory limit was not set
+	// If memory limit is set in spec, use it instead of the config default value
 	if u.Spec.Linux.Resources.Memory != nil {
 		if u.Spec.Linux.Resources.Memory.Limit != nil {
 			if *u.Spec.Linux.Resources.Memory.Limit > 0 {
@@ -303,7 +310,7 @@ func (u *Unikontainer) Exec() error {
 	}
 
 	// get a new vmm
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType))
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
 	if err != nil {
 		return err
 	}
@@ -473,7 +480,8 @@ func setupUser(user specs.User) error {
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {
 	vmmType := u.State.Annotations[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType))
+	// get a new vmm
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
 	if err != nil {
 		return err
 	}

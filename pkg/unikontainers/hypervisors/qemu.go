@@ -15,6 +15,7 @@
 package hypervisors
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 	"syscall"
@@ -62,6 +63,10 @@ func (q *Qemu) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
 	cmdString += " -cpu host"            // Choose CPU
 	cmdString += " -enable-kvm"          // Enable KVM to use CPU virt extensions
 	cmdString += " -nographic -vga none" // Disable graphic output
+
+	if args.VCPUs > 0 {
+		cmdString += fmt.Sprintf(" -smp %d", args.VCPUs)
+	}
 
 	if args.Seccomp {
 		// Enable Seccomp in QEMU
