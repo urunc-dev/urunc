@@ -13,7 +13,6 @@
 # limitations under the License.
 
 site_name: urunc Documentation
-site_name: urunc Documentation
 site_url: https://urunc.io/
 site_author: urunc, a Series of LF Projects, LLC
 
@@ -26,6 +25,7 @@ nav:
   - Overview: index.md
   - Quickstart: quickstart.md
   - Installation: installation.md
+  - Configuration: configuration.md
   - VMM/Sandbox Support: hypervisor-support.md
   - Unikernel Support: unikernel-support.md
   - Building/Packaging unikernels:
