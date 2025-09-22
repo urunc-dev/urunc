@@ -343,3 +343,4 @@ zerolog
 overlayfs
 macaddr
 copyMountfiles
+govet

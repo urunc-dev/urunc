@@ -139,7 +139,6 @@ func TestCopyFile(t *testing.T) {
 		_, filename := filepath.Split(srcFile.Name())
 		copiedFilePath := filepath.Join(targetDir, filename)
 
-
 		// Call the function
 		err = copyFile(srcFile.Name(), copiedFilePath)
 		assert.NoError(t, err, "Expected no error in copying file")
