@@ -165,8 +165,7 @@ jobs:
 
     - name: Install solo5
       run: |
-        ## TODO: Revert when PR gets merged or Solo5 fixes aarch64 building
-        git clone -b fix_hvt_build_aarch64 https://github.com/nubificus/solo5.git
+        git clone -b ${{ inputs.solo5_version }} https://github.com/Solo5/solo5.git
         cd solo5
         ./configure.sh && make -j$(nproc)
         sudo cp tenders/hvt/solo5-hvt /usr/local/bin
