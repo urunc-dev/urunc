@@ -67,57 +67,72 @@ type VMM interface {
 	Ok() error
 }
 
+type VMMFactory struct {
+	binary     string
+	createFunc func(binary, binaryPath string) VMM
+}
+
+var vmmFactories = map[VmmType]VMMFactory{
+	SptVmm: {
+		binary:     SptBinary,
+		createFunc: func(binary, binaryPath string) VMM { return &SPT{binary: binary, binaryPath: binaryPath} },
+	},
+	HvtVmm: {
+		binary:     HvtBinary,
+		createFunc: func(binary, binaryPath string) VMM { return &HVT{binary: binary, binaryPath: binaryPath} },
+	},
+	QemuVmm: {
+		binary:     QemuBinary,
+		createFunc: func(binary, binaryPath string) VMM { return &Qemu{binary: binary, binaryPath: binaryPath} },
+	},
+	FirecrackerVmm: {
+		binary:     FirecrackerBinary,
+		createFunc: func(binary, binaryPath string) VMM { return &Firecracker{binary: binary, binaryPath: binaryPath} },
+	},
+}
+
 func NewVMM(vmmType VmmType, hypervisors map[string]HypervisorConfig) (vmm VMM, err error) {
 	defer func() {
 		if err != nil {
 			vmmLog.Error(err.Error())
 		}
 	}()
-	switch vmmType {
-	case SptVmm:
-		vmmPath := hypervisors[string(SptVmm)].BinaryPath
-		if vmmPath == "" {
-			vmmPath, err = exec.LookPath(SptBinary)
-			if err != nil {
-				return nil, ErrVMMNotInstalled
-			}
-		}
-		return &SPT{binary: SptBinary, binaryPath: vmmPath}, nil
-	case HvtVmm:
-		vmmPath := hypervisors[string(HvtVmm)].BinaryPath
-		if vmmPath == "" {
-			vmmPath, err = exec.LookPath(HvtBinary)
-			if err != nil {
-				return nil, ErrVMMNotInstalled
-			}
-		}
-		return &HVT{binary: HvtBinary, binaryPath: vmmPath}, nil
-	case QemuVmm:
-		vmmPath := hypervisors[string(QemuVmm)].BinaryPath
-		if vmmPath == "" {
-			vmmPath, err = exec.LookPath(QemuBinary + cpuArch())
-			if err != nil {
-				return nil, ErrVMMNotInstalled
-			}
-		}
-		return &Qemu{binary: QemuBinary, binaryPath: vmmPath}, nil
-	case FirecrackerVmm:
-		vmmPath := hypervisors[string(FirecrackerVmm)].BinaryPath
-		if vmmPath == "" {
-			vmmPath, err = exec.LookPath(FirecrackerBinary)
-			if err != nil {
-				return nil, ErrVMMNotInstalled
-			}
-		}
-		return &Firecracker{binary: FirecrackerBinary, binaryPath: vmmPath}, nil
-	case HedgeVmm:
+
+	// Handle Hedge separately since it is not in vmmFactories
+	if vmmType == HedgeVmm {
 		hedge := Hedge{}
-		err := hedge.Ok()
-		if err != nil {
+		if err := hedge.Ok(); err != nil {
 			return nil, ErrVMMNotInstalled
 		}
 		return &hedge, nil
-	default:
+	}
+
+	factory, exists := vmmFactories[vmmType]
+	if !exists {
 		return nil, fmt.Errorf("vmm \"%s\" is not supported", vmmType)
 	}
+
+	vmmPath, err := getVMMPath(vmmType, factory.binary, hypervisors)
+	if err != nil {
+		return nil, err
+	}
+
+	return factory.createFunc(factory.binary, vmmPath), nil
+}
+
+func getVMMPath(vmmType VmmType, binary string, hypervisors map[string]HypervisorConfig) (string, error) {
+	if vmmPath := hypervisors[string(vmmType)].BinaryPath; vmmPath != "" {
+		return vmmPath, nil
+	}
+
+	lookupBinary := binary
+	if vmmType == QemuVmm {
+		lookupBinary = binary + cpuArch()
+	}
+
+	vmmPath, err := exec.LookPath(lookupBinary)
+	if err != nil {
+		return "", ErrVMMNotInstalled
+	}
+	return vmmPath, nil
 }
