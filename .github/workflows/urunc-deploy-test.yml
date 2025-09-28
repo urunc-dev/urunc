@@ -1,0 +1,256 @@
+name: urunc-deploy test
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+      runner-archs:
+        type: string
+        default: '["amd64", "arm64"]'
+      runner-arch-map:
+        type: string
+        default: '[{"amd64":"x86_64","arm64":"aarch64"}]'
+      runc_version:
+        required: true
+        type: string
+    secrets:
+      GIT_CLONE_PAT:
+        required: false
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  urunc-deploy:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget build-essential pkg-config
+
+      - name: Install kind
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then
+            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+          elif [ "$ARCH" = "aarch64" ]; then
+            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-arm64
+          else
+            echo "Unsupported architecture: $ARCH"
+            exit 1
+          fi
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Create kind cluster
+        run: |
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+          cat <<EOF > kind-config.yaml
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+              - role: control-plane
+                extraMounts:
+                  - hostPath: /dev/kvm
+                    containerPath: /dev/kvm
+            networking:
+              apiServerPort: 6443
+          EOF
+          else
+          cat <<EOF > kind-config.yaml
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+              - role: control-plane
+            networking:
+              apiServerPort: 6443
+          EOF
+          fi
+
+          kind create cluster --name urunc-deploy-test --config kind-config.yaml
+
+      - name: Setup kubectl
+        run: |
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+            KUBECTL_ARCH="amd64"
+          elif [ "${{ matrix.arch }}" = "arm64" ]; then
+            KUBECTL_ARCH="arm64"
+          else
+            echo "Unsupported architecture: ${{ matrix.arch }}"
+            exit 1
+          fi
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBECTL_ARCH}/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          chmod +x kubectl
+          mkdir -p ~/.local/bin
+          mv ./kubectl ~/.local/bin/kubectl
+          kubectl version --client
+
+      - name: Install dependencies inside kind node
+        run: |
+          docker exec urunc-deploy-test-control-plane apt-get update
+          docker exec urunc-deploy-test-control-plane apt-get install -y git wget build-essential libseccomp-dev pkg-config bc
+
+      - name: Install runc inside kind node
+        run: |
+          docker exec urunc-deploy-test-control-plane bash -c '
+            if ! which runc; then
+              wget -q https://github.com/opencontainers/runc/releases/download/v${{ inputs.runc_version }}/runc.$(dpkg --print-architecture)
+              install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
+              rm -f ./runc.$(dpkg --print-architecture)
+            fi
+          '
+      - name: Install urunc-deploy RBAC inside kind node
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
+
+      - name: Create urunc-deploy DaemonSet inside kind node
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
+
+      - name: Create urunc RuntimeClass inside kind node
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/refs/heads/main/deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml
+
+      - name: Wait for urunc-deploy to be ready
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl rollout status daemonset/urunc-deploy -n kube-system --timeout=120s
+
+      - name: Verify Node label
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            bash -c "kubectl get nodes -o json | jq '.items[].metadata.labels' | grep urunc.io/urunc-runtime=true || exit 1"
+
+      - name: Verify RuntimeClass exists
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl get runtimeclass urunc || exit 1
+
+      - name: Verify urunc binaries
+        run: |
+          docker exec urunc-deploy-test-control-plane ls -la /usr/local/bin/urunc || exit 1
+          docker exec urunc-deploy-test-control-plane ls -la /usr/local/bin/containerd-shim-urunc-v2 || exit 1
+
+      - name: Deploy nginx-spt unikernel (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: nginx-spt-arm64
+              labels:
+                run: nginx-spt-arm64
+            spec:
+              runtimeClassName: urunc
+              containers:
+                - name: nginx-spt
+                  image: harbor.nbfc.io/nubificus/urunc/nginx-spt-rumprun-block:latest
+                  imagePullPolicy: Always
+                  ports:
+                    - containerPort: 80
+                      protocol: TCP
+                  resources:
+                    requests:
+                      cpu: 10m
+          EOF
+
+      - name: Verify nginx-spt deployment (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          kubectl wait --for=condition=Ready pod/nginx-spt-arm64 --timeout=180s || true
+          kubectl logs nginx-spt-arm64 | tee /tmp/logs.txt
+          echo "=== LOGS ==="
+          cat /tmp/logs.txt
+          kubectl describe pod nginx-spt-arm64 || true
+
+      - name: Deploy httpreply-fc unikernel (amd64)
+        if: matrix.arch == 'amd64'
+        run: |
+          cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: httpreply-fc-amd64
+              labels:
+                run: httpreply-fc-amd64
+            spec:
+              runtimeClassName: urunc
+              containers:
+                - name: httpreply-fc
+                  image: harbor.nbfc.io/nubificus/knative-example-functions/httpreply-fc:latest
+                  imagePullPolicy: Always
+                  ports:
+                    - containerPort: 8080
+                      protocol: TCP
+                  resources:
+                    requests:
+                      cpu: 10m
+          EOF
+
+      - name: Verify httpreply-fc deployment (amd64)
+        if: matrix.arch == 'amd64'
+        run: |
+          kubectl wait --for=condition=Ready pod/httpreply-fc-amd64 --timeout=180s || true
+          kubectl logs httpreply-fc-amd64 | tee /tmp/logs.txt
+          echo "=== LOGS ==="
+          cat /tmp/logs.txt
+          kubectl describe pod httpreply-fc-amd64 || true
+
+      - name: Uninstall urunc-deploy DaemonSet
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl delete -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml || true
+
+      - name: Apply urunc cleanup
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-cleanup/base/urunc-cleanup.yaml
+
+      - name: Wait for cleanup to complete
+        run: |
+          docker exec urunc-deploy-test-control-plane \
+            kubectl wait --for=delete daemonset/urunc-deploy -n kube-system --timeout=120s || true
+
+      - name: Remove cleanup resources
+        run: |
+          docker exec urunc-deploy-test-control-plane bash -c "
+            kubectl delete -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-cleanup/base/urunc-cleanup.yaml || true
+            kubectl delete -f https://raw.githubusercontent.com/urunc-dev/urunc/refs/heads/main/deployment/urunc-deploy/runtimeclasses/runtimeclass.yaml || true
+            kubectl delete -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml || true
+          "
+
+      - name: Verify cleanup
+        run: |
+          docker exec urunc-deploy-test-control-plane test ! -f /usr/local/bin/urunc || exit 1
+          docker exec urunc-deploy-test-control-plane test ! -f /usr/local/bin/containerd-shim-urunc-v2 || exit 1
+
+          docker exec urunc-deploy-test-control-plane bash -c '
+            kubectl get nodes -o json | jq ".items[].metadata.labels" | grep urunc.io/urunc-runtime=true && exit 1 || echo "Node label removed"
+          '
+          docker exec urunc-deploy-test-control-plane bash -c '
+            kubectl get runtimeclass urunc && exit 1 || echo "RuntimeClass removed"
+          '
