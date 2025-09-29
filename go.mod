@@ -7,6 +7,7 @@ toolchain go1.24.6
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
+	github.com/cavaliergopher/cpio v1.0.1
 	github.com/containerd/containerd v1.7.27
 	github.com/creack/pty v1.1.24
 	github.com/elastic/go-seccomp-bpf v1.6.0
@@ -55,6 +56,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect

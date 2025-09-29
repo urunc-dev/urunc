@@ -33,6 +33,7 @@ import (
 
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 	"github.com/vishvananda/netlink/nl"
@@ -337,6 +338,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		blockArgs, err = handleBlockBasedRootfs(rootfsParams, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, u.Spec.Mounts)
 		if err != nil {
 			uniklog.Errorf("could not setup block based rootfs: %v", err)
+			return err
+		}
+	case "initrd":
+		initrdHostFullPath := filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path)
+		err = initrd.CopyFileMountsToInitrd(initrdHostFullPath, u.Spec.Mounts)
+		if err != nil {
+			uniklog.Errorf("could not update guest's initrd: %v", err)
 			return err
 		}
 	case "virtiofs":

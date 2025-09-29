@@ -69,6 +69,7 @@ URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/hypervisors/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/unikernels/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/types/*.go)
+URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/initrd/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/network/*.go)
 SHIM_SRC       := $(wildcard $(CURDIR)/cmd/containerd-shim-urunc-v2/*.go)
 
