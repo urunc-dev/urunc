@@ -11,7 +11,7 @@ We will be installing and setting up:
 - [containerd](https://github.com/containerd/containerd/)
 - [CNI plugins](https://github.com/containernetworking/plugins)
 - [nerdctl](https://github.com/containerd/nerdctl)
-- [devmapper](https://docs.docker.com/storage/storagedriver/device-mapper-driver/)
+- [devmapper](https://docs.docker.com/storage/storagedriver/device-mapper-driver/) or [blockfile](https://github.com/containerd/containerd/blob/main/docs/snapshotters/blockfile.md)
 - [Go [[ versions.go ]]](https://go.dev/doc/install)
 - [urunc](https://github.com/urunc-dev/urunc)
 - [solo5-{hvt|spt}](https://github.com/Solo5/solo5)
@@ -21,6 +21,10 @@ We will be installing and setting up:
 Let's go.
 
 > Note: Be aware that some instructions might override existing tools and services.
+
+`urunc` offers two snapshotter options for unikernel block device snapshots: **devmapper** and **blockfile**.
+Devmapper uses a thinpool for flexible management, while blockfile relies on a pre-allocated scratch file,
+though it lacks ext2 support and thus isn’t compatible with Rumprun unikernels.
 
 ## Install required dependencies
 
@@ -113,8 +117,8 @@ wget -q https://github.com/containerd/nerdctl/releases/download/v$NERDCTL_VERSIO
 sudo tar Cxzvf /usr/local/bin nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
 rm -f nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
 ```
-
-### Setup thinpool devmapper
+### Option 1: Devmapper
+#### Setup thinpool devmapper
 
 In order to make use of directly passing the container's snapshot as block
 device in the unikernel, we will need to setup the devmapper snapshotter. We can
@@ -201,6 +205,89 @@ Before proceeding, make sure that the new snapshotter is properly configured:
 sudo ctr plugin ls | grep devmapper
 io.containerd.snapshotter.v1              devmapper                linux/amd64    ok
 ```
+
+
+### Option 2: Blockfile
+#### Using blockfile snapshotter (alternative to devmapper)
+
+ `Urunc` can also use the [blockfile snapshotter](https://github.com/containerd/containerd/blob/main/docs/snapshotters/blockfile.md) as an alternative to devmapper for providing block device snapshots to unikernels.
+
+#### Enabling the Blockfile Snapshotter
+
+To configure the blockfile snapshotter, follow the steps below:
+
+-  Create the blockfile scratch file
+
+   First, create a directory and an appropriately-sized scratch file. For example:
+
+   ```bash
+   sudo mkdir -p /opt/containerd/blockfile
+   sudo dd if=/dev/zero of=/opt/containerd/blockfile/scratch bs=1M count=500
+   sudo mkfs.ext4 /opt/containerd/blockfile/scratch
+   sudo chown -R root:root /opt/containerd/blockfile
+   ```
+
+#### Configure containerd for blockfile
+
+-  In containerd v2.x:
+
+   ```bash
+   [plugins.'io.containerd.snapshotter.v1.blockfile']
+     fs_type = "ext4"
+     mount_options = []
+     recreate_scratch = true
+     root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.blockfile"
+     scratch_file = "/opt/containerd/blockfile/scratch"
+     supported_platforms = ["linux/amd64"]
+   ```
+
+-  In containerd 1.x:
+
+   ```bash
+   [plugins."io.containerd.snapshotter.v1.blockfile"]
+     fs_type = "ext4"
+     mount_options = []
+     recreate_scratch = true
+     root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.blockfile"
+     scratch_file = "/opt/containerd/blockfile/scratch"
+     supported_platforms = ["linux/amd64"]
+   ```
+
+- Blockfile configuration options:
+   - `root_path`: Directory for storing block files (must be writable by containerd).
+   - `fs_type`: Filesystem type for block files (supported: ext4)
+   - `scratch_file`: The path to the empty file that will be used as the base for the block files.
+   - `recreate_scratch`: If set to true, the snapshotter will recreate the scratch file if it is missing.
+
+- Migrating configuration
+
+Older syntax can be automatically converted to the latest version using the following command:
+
+```bash
+sudo containerd config migrate > /etc/containerd/config.toml
+```
+
+-  Restart the containerd service
+
+   Restart containerd:
+
+   ```bash
+   sudo systemctl restart containerd
+   ```
+
+-  Verify the blockfile snapshotter is available
+
+   Confirm that the blockfile snapshotter is registered and ready:
+
+   ```bash
+   sudo ctr plugin ls | grep blockfile
+   ```
+
+   The output should include a line similar to:
+
+   ```bash
+   io.containerd.snapshotter.v1           blockfile               linux/amd64    ok
+   ```
 
 ## Install urunc
 

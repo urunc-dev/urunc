@@ -345,3 +345,5 @@ macaddr
 copyMountfiles
 govet
 DEFROUTE
+blockfile
+thinpool
