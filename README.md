@@ -81,7 +81,7 @@ $ sudo apt install -y qemu-kvm
 Now we are ready to run nginx as a Unikraft unikernel using Docker and `urunc`:
 
 ```bash
-$ docker run --rm -d --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft:latest
+$ docker run --rm -d --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft-initrd:latest 
 67bec5ab9a748e35faf7c2079002177b9bdc806220e59b6b413836db1d6e4018
 ```
 

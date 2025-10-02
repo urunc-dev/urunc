@@ -60,7 +60,7 @@ sudo apt install -y qemu-system
 Now we are ready to run Nginx as a Unikraft unikernel using [docker](https://docs.docker.com/engine/install/ubuntu/) and `urunc`:
 
 ```console
-$ docker run --rm -d --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft:latest
+$ docker run --rm -d --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft-initrd:latest
 67bec5ab9a748e35faf7c2079002177b9bdc806220e59b6b413836db1d6e4018
 ```
 
