@@ -5,7 +5,7 @@ go 1.24.2
 toolchain go1.24.6
 
 require (
-	github.com/BurntSushi/toml v0.3.1
+	github.com/BurntSushi/toml v1.5.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/containerd/containerd v1.7.27
 	github.com/creack/pty v1.1.24
