@@ -20,7 +20,7 @@ import (
 	"os/exec"
 
 	"github.com/sirupsen/logrus"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 // we declare HypervisorConfig struct here to avoid import cycles
@@ -60,7 +60,7 @@ var ErrVMMNotInstalled = errors.New("vmm not found")
 var vmmLog = logrus.WithField("subsystem", "hypervisors")
 
 type VMM interface {
-	Execve(args ExecArgs, ukernel unikernels.Unikernel) error
+	Execve(args ExecArgs, ukernel types.Unikernel) error
 	Stop(t string) error
 	Path() string
 	UsesKVM() bool

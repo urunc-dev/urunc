@@ -20,7 +20,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
@@ -55,7 +55,7 @@ func (q *Qemu) Path() string {
 	return q.binaryPath
 }
 
-func (q *Qemu) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
+func (q *Qemu) Execve(args ExecArgs, ukernel types.Unikernel) error {
 	qemuString := string(QemuVmm)
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"

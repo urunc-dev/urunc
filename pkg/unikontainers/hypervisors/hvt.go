@@ -20,7 +20,7 @@ import (
 	"syscall"
 
 	seccomp "github.com/elastic/go-seccomp-bpf"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
@@ -147,7 +147,7 @@ func (h *HVT) Ok() error {
 	return nil
 }
 
-func (h *HVT) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
+func (h *HVT) Execve(args ExecArgs, ukernel types.Unikernel) error {
 	hvtString := string(HvtVmm)
 	hvtMem := BytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem

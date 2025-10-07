@@ -17,6 +17,8 @@ package unikernels
 import (
 	"fmt"
 	"strings"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const MewzUnikernel string = "mewz"
@@ -71,7 +73,7 @@ func (m *Mewz) MonitorCli(monitor string) string {
 	}
 }
 
-func (m *Mewz) Init(data UnikernelParams) error {
+func (m *Mewz) Init(data types.UnikernelParams) error {
 	var mask int
 	if data.EthDeviceMask != "" {
 		var err error

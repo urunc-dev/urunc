@@ -17,6 +17,8 @@ package unikernels
 import (
 	"fmt"
 	"strings"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const MirageUnikernel string = "mirage"
@@ -74,7 +76,7 @@ func (m *Mirage) MonitorCli(_ string) string {
 	return ""
 }
 
-func (m *Mirage) Init(data UnikernelParams) error {
+func (m *Mirage) Init(data types.UnikernelParams) error {
 	// if EthDeviceMask is empty, there is no network support
 	if data.EthDeviceMask != "" {
 		m.Net.Address = "--ipv4=" + data.EthDeviceIP + "/24"

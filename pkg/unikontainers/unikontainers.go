@@ -33,6 +33,7 @@ import (
 
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
@@ -211,7 +212,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// populate unikernel params
-	unikernelParams := unikernels.UnikernelParams{
+	unikernelParams := types.UnikernelParams{
 		CmdLine:       u.Spec.Process.Args,
 		EnvVars:       u.Spec.Process.Env,
 		Version:       unikernelVersion,

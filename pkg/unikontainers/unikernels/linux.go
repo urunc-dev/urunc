@@ -19,6 +19,8 @@ import (
 	"net"
 	"runtime"
 	"strings"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const LinuxUnikernel string = "linux"
@@ -142,7 +144,7 @@ func (l *Linux) MonitorCli(monitor string) string {
 	}
 }
 
-func (l *Linux) Init(data UnikernelParams) error {
+func (l *Linux) Init(data types.UnikernelParams) error {
 	// Handling of args with spaces:
 	// In Linux boot parameters we can not pass multi-word cli arguments
 	// in init, because they are treated as separate cli arguments.

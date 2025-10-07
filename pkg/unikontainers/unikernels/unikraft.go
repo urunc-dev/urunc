@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	version "github.com/hashicorp/go-version"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const UnikraftUnikernel string = "unikraft"
@@ -98,7 +99,7 @@ func (u *Unikraft) MonitorCli(_ string) string {
 	return ""
 }
 
-func (u *Unikraft) Init(data UnikernelParams) error {
+func (u *Unikraft) Init(data types.UnikernelParams) error {
 	u.Env = data.EnvVars
 	u.Version = data.Version
 	u.AppName = "Unikraft"

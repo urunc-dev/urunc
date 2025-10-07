@@ -19,7 +19,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
@@ -61,7 +61,7 @@ func (s *SPT) Ok() error {
 	return nil
 }
 
-func (s *SPT) Execve(args ExecArgs, ukernel unikernels.Unikernel) error {
+func (s *SPT) Execve(args ExecArgs, ukernel types.Unikernel) error {
 	sptString := string(SptVmm)
 	sptMem := BytesToStringMB(args.MemSizeB)
 	cmdString := s.binaryPath + " --mem=" + sptMem

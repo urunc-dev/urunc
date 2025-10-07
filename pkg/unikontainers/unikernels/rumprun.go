@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const RumprunUnikernel string = "rumprun"
@@ -159,7 +161,7 @@ func (r *Rumprun) MonitorCli(_ string) string {
 	return ""
 }
 
-func (r *Rumprun) Init(data UnikernelParams) error {
+func (r *Rumprun) Init(data types.UnikernelParams) error {
 	// if EthDeviceMask is empty, there is no network support
 	if data.EthDeviceMask != "" {
 		// FIXME: in the case of rumprun & k8s, we need to identify

@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	hedge "github.com/nubificus/hedge_cli/hedge_api"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
@@ -50,7 +50,7 @@ func (h *Hedge) Path() string {
 	return ""
 }
 
-func (h *Hedge) Execve(_ ExecArgs, _ unikernels.Unikernel) error {
+func (h *Hedge) Execve(_ ExecArgs, _ types.Unikernel) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 
