@@ -55,7 +55,7 @@ func (q *Qemu) Path() string {
 	return q.binaryPath
 }
 
-func (q *Qemu) Execve(args ExecArgs, ukernel types.Unikernel) error {
+func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	qemuString := string(QemuVmm)
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"

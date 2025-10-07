@@ -61,7 +61,7 @@ func (s *SPT) Ok() error {
 	return nil
 }
 
-func (s *SPT) Execve(args ExecArgs, ukernel types.Unikernel) error {
+func (s *SPT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	sptString := string(SptVmm)
 	sptMem := BytesToStringMB(args.MemSizeB)
 	cmdString := s.binaryPath + " --mem=" + sptMem

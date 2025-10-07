@@ -185,7 +185,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Hypervisors[vmmType].DefaultMemoryMB
-	vmmArgs := hypervisors.ExecArgs{
+	vmmArgs := types.ExecArgs{
 		Container:     u.State.ID,
 		UnikernelPath: unikernelPath,
 		InitrdPath:    initrdPath,

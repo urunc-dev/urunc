@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const UruncConfigPath = "/etc/urunc/config.toml"
@@ -38,7 +38,7 @@ type UruncConfig struct {
 	Log        UruncLog        `toml:"log"`
 	Timestamps UruncTimestamps `toml:"timestamps"`
 
-	Hypervisors map[string]hypervisors.HypervisorConfig `toml:"hypervisors"`
+	Hypervisors map[string]types.HypervisorConfig `toml:"hypervisors"`
 }
 
 // this struct is used to parse only the log and timestamp section of the urunc config file
@@ -77,8 +77,8 @@ func defaultTimestampsConfig() UruncTimestamps {
 	}
 }
 
-func defaultHypervisorsConfig() map[string]hypervisors.HypervisorConfig {
-	return map[string]hypervisors.HypervisorConfig{
+func defaultHypervisorsConfig() map[string]types.HypervisorConfig {
+	return map[string]types.HypervisorConfig{
 		"qemu":        {DefaultMemoryMB: 256, DefaultVCPUs: 1},
 		"hvt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
 		"spt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
@@ -137,11 +137,11 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 		}
 		hv := parts[2]
 		if cfg.Hypervisors == nil {
-			cfg.Hypervisors = make(map[string]hypervisors.HypervisorConfig)
+			cfg.Hypervisors = make(map[string]types.HypervisorConfig)
 		}
 		hvCfg, exists := cfg.Hypervisors[hv]
 		if !exists {
-			hvCfg = hypervisors.HypervisorConfig{}
+			hvCfg = types.HypervisorConfig{}
 		}
 		switch parts[3] {
 		case "default_memory_mb":

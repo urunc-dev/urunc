@@ -147,7 +147,7 @@ func (h *HVT) Ok() error {
 	return nil
 }
 
-func (h *HVT) Execve(args ExecArgs, ukernel types.Unikernel) error {
+func (h *HVT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	hvtString := string(HvtVmm)
 	hvtMem := BytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem

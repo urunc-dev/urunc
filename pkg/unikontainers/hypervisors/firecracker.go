@@ -90,7 +90,7 @@ func (fc *Firecracker) Path() string {
 	return fc.binaryPath
 }
 
-func (fc *Firecracker) Execve(args ExecArgs, _ types.Unikernel) error {
+func (fc *Firecracker) Execve(args types.ExecArgs, _ types.Unikernel) error {
 	// FIXME: Note for getting unikernel specific options.
 	// Due to the way FC operates, we have not encountered any guest specific
 	// options yet. However, we need to revisit how we can use guest specific

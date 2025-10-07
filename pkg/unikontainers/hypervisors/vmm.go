@@ -23,76 +23,38 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
-// we declare HypervisorConfig struct here to avoid import cycles
-
-// HypervisorConfig struct is used to hold hypervisor specific configuration
-// that is parsed from the urunc config file or state.json annotations
-type HypervisorConfig struct {
-	DefaultMemoryMB uint   `toml:"default_memory_mb"`
-	DefaultVCPUs    uint   `toml:"default_vcpus"`
-	BinaryPath      string `toml:"binary_path,omitempty"` // Optional path to the hypervisor binary
-}
-
 const DefaultMemory uint64 = 256 // The default memory for every hypervisor: 256 MB
-
-// ExecArgs holds the data required by Execve to start the VMM
-// FIXME: add extra fields if required by additional VMM's
-type ExecArgs struct {
-	Container     string   // The container ID
-	UnikernelPath string   // The path of the unikernel inside rootfs
-	TapDevice     string   // The TAP device name
-	BlockDevice   string   // The block device path
-	InitrdPath    string   // The path to the initrd of the unikernel
-	SharedfsType  string   // The type of shared-fs 9p or virtiofs
-	SharedfsPath  string   // The path in the host to share with guest
-	Command       string   // The unikernel's command line
-	IPAddress     string   // The IP address of the TAP device
-	GuestMAC      string   // The MAC address of the guest network device
-	Seccomp       bool     // Enable or disable seccomp filters for the VMM
-	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
-	VCPUs         uint     // The number of vCPUs to allocate
-	Environment   []string // Environment
-}
 
 type VmmType string
 
 var ErrVMMNotInstalled = errors.New("vmm not found")
 var vmmLog = logrus.WithField("subsystem", "hypervisors")
 
-type VMM interface {
-	Execve(args ExecArgs, ukernel types.Unikernel) error
-	Stop(t string) error
-	Path() string
-	UsesKVM() bool
-	SupportsSharedfs(string) bool
-	Ok() error
-}
-
 type VMMFactory struct {
 	binary     string
-	createFunc func(binary, binaryPath string) VMM
+	createFunc func(binary, binaryPath string) types.VMM
 }
 
 var vmmFactories = map[VmmType]VMMFactory{
 	SptVmm: {
 		binary:     SptBinary,
-		createFunc: func(binary, binaryPath string) VMM { return &SPT{binary: binary, binaryPath: binaryPath} },
+		createFunc: func(binary, binaryPath string) types.VMM { return &SPT{binary: binary, binaryPath: binaryPath} },
 	},
 	HvtVmm: {
 		binary:     HvtBinary,
-		createFunc: func(binary, binaryPath string) VMM { return &HVT{binary: binary, binaryPath: binaryPath} },
+		createFunc: func(binary, binaryPath string) types.VMM { return &HVT{binary: binary, binaryPath: binaryPath} },
 	},
 	QemuVmm: {
 		binary:     QemuBinary,
-		createFunc: func(binary, binaryPath string) VMM { return &Qemu{binary: binary, binaryPath: binaryPath} },
+		createFunc: func(binary, binaryPath string) types.VMM { return &Qemu{binary: binary, binaryPath: binaryPath} },
 	},
 	FirecrackerVmm: {
 		binary:     FirecrackerBinary,
-		createFunc: func(binary, binaryPath string) VMM { return &Firecracker{binary: binary, binaryPath: binaryPath} },
+		createFunc: func(binary, binaryPath string) types.VMM { return &Firecracker{binary: binary, binaryPath: binaryPath} },
 	},
 }
 
-func NewVMM(vmmType VmmType, hypervisors map[string]HypervisorConfig) (vmm VMM, err error) {
+func NewVMM(vmmType VmmType, hypervisors map[string]types.HypervisorConfig) (vmm types.VMM, err error) {
 	defer func() {
 		if err != nil {
 			vmmLog.Error(err.Error())
@@ -121,7 +83,7 @@ func NewVMM(vmmType VmmType, hypervisors map[string]HypervisorConfig) (vmm VMM, 
 	return factory.createFunc(factory.binary, vmmPath), nil
 }
 
-func getVMMPath(vmmType VmmType, binary string, hypervisors map[string]HypervisorConfig) (string, error) {
+func getVMMPath(vmmType VmmType, binary string, hypervisors map[string]types.HypervisorConfig) (string, error) {
 	if vmmPath := hypervisors[string(vmmType)].BinaryPath; vmmPath != "" {
 		return vmmPath, nil
 	}

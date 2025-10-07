@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 // Constants for test configuration keys and values
@@ -246,7 +246,7 @@ func TestUruncConfigMap(t *testing.T) {
 	t.Run("custom config produces expected map", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
-			Hypervisors: map[string]hypervisors.HypervisorConfig{
+			Hypervisors: map[string]types.HypervisorConfig{
 				"custom": {
 					DefaultMemoryMB: 2048,
 					DefaultVCPUs:    4,
@@ -266,7 +266,7 @@ func TestUruncConfigMap(t *testing.T) {
 	t.Run("empty hypervisors map produces empty result", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
-			Hypervisors: map[string]hypervisors.HypervisorConfig{},
+			Hypervisors: map[string]types.HypervisorConfig{},
 		}
 
 		cfgMap := config.Map()
