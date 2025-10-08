@@ -151,11 +151,11 @@ func (h *HVT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	hvtString := string(HvtVmm)
 	hvtMem := BytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem
-	if args.TapDevice != "" {
+	if args.Net.TapDev != "" {
 		cmdString += " "
-		cmdString += ukernel.MonitorNetCli(hvtString, args.TapDevice, args.GuestMAC)
+		cmdString += ukernel.MonitorNetCli(hvtString, args.Net.TapDev, args.Net.MAC)
 	}
-	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(hvtString), args.BlockDevice)
+	cmdString = appendNonEmpty(cmdString, " "+ukernel.MonitorBlockCli(hvtString), args.Block.Image)
 	cmdString = appendNonEmpty(cmdString, " ", ukernel.MonitorCli(hvtString))
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")

@@ -162,8 +162,8 @@ func (r *Rumprun) MonitorCli(_ string) string {
 }
 
 func (r *Rumprun) Init(data types.UnikernelParams) error {
-	// if EthDeviceMask is empty, there is no network support
-	if data.EthDeviceMask != "" {
+	// if Net.Mask is empty, there is no network support
+	if data.Net.Mask != "" {
 		// FIXME: in the case of rumprun & k8s, we need to identify
 		// the reason that networking is not working properly.
 		// One reason could be that the gw is in different subnet
@@ -179,20 +179,20 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 		r.Net.Cloner = "True"
 		r.Net.Type = "inet"
 		r.Net.Method = "static"
-		r.Net.Address = data.EthDeviceIP
+		r.Net.Address = data.Net.IP
 		r.Net.Mask = fmt.Sprintf("%d", mask)
-		r.Net.Gateway = data.EthDeviceGateway
+		r.Net.Gateway = data.Net.Gateway
 	} else {
 		// Set address to empty string so we can know that no network
 		// was specified.
 		r.Net.Address = ""
 	}
 
-	if data.BlockMntPoint != "" {
+	if data.Block.MountPoint != "" {
 		r.Blk.Source = "etfs"
 		r.Blk.Path = "/dev/ld0a"
 		r.Blk.FsType = "blk"
-		r.Blk.Mountpoint = data.BlockMntPoint
+		r.Blk.Mountpoint = data.Block.MountPoint
 	} else {
 		// Set source to empty string so we can know that no block
 		// was specified.

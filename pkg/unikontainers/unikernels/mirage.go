@@ -77,10 +77,10 @@ func (m *Mirage) MonitorCli(_ string) string {
 }
 
 func (m *Mirage) Init(data types.UnikernelParams) error {
-	// if EthDeviceMask is empty, there is no network support
-	if data.EthDeviceMask != "" {
-		m.Net.Address = "--ipv4=" + data.EthDeviceIP + "/24"
-		m.Net.Gateway = "--ipv4-gateway=" + data.EthDeviceGateway
+	// if Mask is empty, there is no network support
+	if data.Net.Mask != "" {
+		m.Net.Address = "--ipv4=" + data.Net.IP + "/24"
+		m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 	}
 
 	m.Command = strings.Join(data.CmdLine, " ")

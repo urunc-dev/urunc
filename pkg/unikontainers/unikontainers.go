@@ -186,10 +186,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 	defaultMemSizeMB := u.UruncCfg.Hypervisors[vmmType].DefaultMemoryMB
 	vmmArgs := types.ExecArgs{
-		Container:     u.State.ID,
+		ContainerID:   u.State.ID,
 		UnikernelPath: unikernelPath,
 		InitrdPath:    initrdPath,
-		BlockDevice:   "",
 		Seccomp:       true, // Enable Seccomp by default
 		MemSizeB:      uint64(defaultMemSizeMB * 1024 * 1024),
 		VCPUs:         uint(defaultVCPUs),
@@ -213,10 +212,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// populate unikernel params
 	unikernelParams := types.UnikernelParams{
-		CmdLine:       u.Spec.Process.Args,
-		EnvVars:       u.Spec.Process.Env,
-		Version:       unikernelVersion,
-		BlockMntPoint: "",
+		CmdLine: u.Spec.Process.Args,
+		EnvVars: u.Spec.Process.Env,
+		Version: unikernelVersion,
 	}
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
@@ -224,9 +222,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	if initrdPath != "" {
-		unikernelParams.RootFSType = "initrd"
+		unikernelParams.RootfsType = "initrd"
 	} else {
-		unikernelParams.RootFSType = ""
+		unikernelParams.RootfsType = ""
 	}
 
 	// handle network
@@ -244,27 +242,23 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(u.State.ID, "TS16")
 
 	withTUNTAP := false
+	netArgs := types.NetDevParams{}
 	// if network info is nil, we didn't find eth0, so we are running with ctr
 	if networkInfo != nil {
 		withTUNTAP = true
-		vmmArgs.TapDevice = networkInfo.TapDevice
-		vmmArgs.IPAddress = networkInfo.EthDevice.IP
+		netArgs.TapDev = networkInfo.TapDevice
+		netArgs.IP = networkInfo.EthDevice.IP
+		netArgs.Mask = networkInfo.EthDevice.Mask
+		netArgs.Gateway = networkInfo.EthDevice.DefaultGateway
 		// The MAC address for the guest network device is the same as the
-		// ethernet device inside the namespace
-		vmmArgs.GuestMAC = networkInfo.EthDevice.MAC
-		unikernelParams.EthDeviceIP = networkInfo.EthDevice.IP
-		unikernelParams.EthDeviceMask = networkInfo.EthDevice.Mask
-		unikernelParams.EthDeviceGateway = networkInfo.EthDevice.DefaultGateway
-	} else {
-		vmmArgs.TapDevice = ""
-		vmmArgs.IPAddress = ""
-		unikernelParams.EthDeviceIP = ""
-		unikernelParams.EthDeviceMask = ""
-		unikernelParams.EthDeviceGateway = ""
+		// virtual ethernet interface inside the namespace
+		netArgs.MAC = networkInfo.EthDevice.MAC
 	}
+	unikernelParams.Net = netArgs
+	vmmArgs.Net = netArgs
 
 	if initrdPath != "" {
-		unikernelParams.RootFSType = "initrd"
+		unikernelParams.RootfsType = "initrd"
 	}
 
 	unikernelParams.Version = unikernelVersion
@@ -293,19 +287,31 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		withRootfsMount = false
 	}
 
+	blockArgs := types.BlockDevParams{}
+	sharedfsArgs := types.SharedfsParams{}
 	// TODO: Support both mounting the rootfs and another block device.
 	if u.State.Annotations[annotBlock] != "" && unikernel.SupportsBlock() {
-		vmmArgs.BlockDevice = u.State.Annotations[annotBlock]
-		unikernelParams.RootFSType = "block"
+		blockArgs.Image = u.State.Annotations[annotBlock]
 		if u.State.Annotations[annotBlockMntPoint] != "" {
-			unikernelParams.BlockMntPoint = u.State.Annotations[annotBlockMntPoint]
+			blockArgs.MountPoint = u.State.Annotations[annotBlockMntPoint]
 		} else {
-			// NOTE: If the user has not specified the
-			// mount point for the block device, then we will
-			// use /data as a default mount point.
-			unikernelParams.RootFSType = "block"
+			// NOTE: Rumprun does not allow us to mount
+			// anything at '/'. As a result, we use the
+			// /data mount point for Rumprun. For all the
+			// other guests we use '/'.
+			if unikernelType == "rumprun" {
+				blockArgs.MountPoint = "/data"
+			} else {
+				blockArgs.MountPoint = "/"
+			}
+		}
+		if blockArgs.MountPoint == "/" {
+			unikernelParams.RootfsType = "block"
 		}
 		if withRootfsMount {
+			// TODO: Add support for using both an existing
+			// block based snapshot of the container's rootfs
+			// and an auxiliary block image placed in the container's image
 			uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
 			withRootfsMount = false
 		}
@@ -348,30 +354,30 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 				if err != nil {
 					return err
 				}
-				vmmArgs.BlockDevice = rootFsDevice.Device
-				unikernelParams.RootFSType = "block"
+				blockArgs.Image = rootFsDevice.Device
+				unikernelParams.RootfsType = "block"
 				// NOTE: Rumprun does not allow us to mount
 				// anything at '/'. As a result, we use the
 				// /data mount point for Rumprun. For all the
 				// other guests we use '/'.
 				if unikernelType == "rumprun" {
-					unikernelParams.BlockMntPoint = "/data"
+					blockArgs.MountPoint = "/data"
 				} else {
-					unikernelParams.BlockMntPoint = "/"
+					blockArgs.MountPoint = "/"
 				}
 				dmPath = rootFsDevice.Device
 			}
 		}
-		// If we could not use a block-based rootfs, check if we can use 9pfs
-		if unikernelParams.RootFSType == "" {
+		// If we could not use a block-based rootfs, check if we can use shared-fs
+		if unikernelParams.RootfsType == "" {
 			if unikernel.SupportsFS("virtiofs") && vmm.SupportsSharedfs("virtio") {
-				vmmArgs.SharedfsPath = containerRootfsMountPath
-				vmmArgs.SharedfsType = "virtiofs"
-				unikernelParams.RootFSType = "virtiofs"
+				sharedfsArgs.Path = containerRootfsMountPath
+				sharedfsArgs.Type = "virtiofs"
+				unikernelParams.RootfsType = "virtiofs"
 			} else if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs("9p") {
-				vmmArgs.SharedfsPath = containerRootfsMountPath
-				vmmArgs.SharedfsType = "9pfs"
-				unikernelParams.RootFSType = "9pfs"
+				sharedfsArgs.Path = containerRootfsMountPath
+				sharedfsArgs.Type = "9pfs"
+				unikernelParams.RootfsType = "9pfs"
 			}
 		}
 	}
@@ -404,7 +410,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	tmpMountMemStr := "65536k"
-	if unikernelParams.RootFSType == "virtiofs" {
+	if unikernelParams.RootfsType == "virtiofs" {
 		// For virtiofs, Qemu and virtiofsd are using a host file
 		// to share the VM's RAM and hence the size of this file
 		// should be the same as guest's memory. This file will
@@ -426,7 +432,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	if unikernelParams.RootFSType == "9pfs" || unikernelParams.RootFSType == "virtiofs" {
+	if unikernelParams.RootfsType == "9pfs" || unikernelParams.RootfsType == "virtiofs" {
 		// Mount the container's image rootfs inside the monitor rootfs
 		err := fileFromHost(monRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
@@ -443,16 +449,19 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
 		}
 	}
-	if unikernelParams.RootFSType == "virtiofs" {
+	if unikernelParams.RootfsType == "virtiofs" {
 		// Get the virtiofsd binary from host in monRootfs
 		err := fileFromHost(monRootfs, "/usr/libexec/virtiofsd", "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
 			uniklog.Warnf("Could not bind mount /usr/libexec/virtiofsd: %v , trying with 9pfs", err)
-			vmmArgs.SharedfsType = "9pfs"
-			unikernelParams.RootFSType = "9pfs"
+			sharedfsArgs.Type = "9pfs"
+			unikernelParams.RootfsType = "9pfs"
 		}
 	}
 
+	unikernelParams.Block = blockArgs
+	vmmArgs.Block = blockArgs
+	vmmArgs.Sharedfs = sharedfsArgs
 	err = unikernel.Init(unikernelParams)
 	if err == unikernels.ErrUndefinedVersion || err == unikernels.ErrVersionParsing {
 		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
@@ -479,7 +488,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	if unikernelParams.RootFSType == "virtiofs" {
+	if unikernelParams.RootfsType == "virtiofs" {
 		// Start the virtiofsd process
 		err = spawnVirtiofsd(containerRootfsMountPath)
 		if err != nil {

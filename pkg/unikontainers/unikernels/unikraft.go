@@ -105,7 +105,7 @@ func (u *Unikraft) Init(data types.UnikernelParams) error {
 	u.AppName = "Unikraft"
 	u.Command = strings.Join(data.CmdLine, " ")
 
-	return u.configureUnikraftArgs(data.RootFSType, data.EthDeviceIP, data.EthDeviceGateway, data.EthDeviceMask)
+	return u.configureUnikraftArgs(data.RootfsType, data.Net.IP, data.Net.Gateway, data.Net.Mask)
 }
 
 func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGateway, ethDeviceMask string) error {

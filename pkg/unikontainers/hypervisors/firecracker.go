@@ -124,8 +124,8 @@ func (fc *Firecracker) Execve(args types.ExecArgs, _ types.Unikernel) error {
 	FCNet := make([]FirecrackerNet, 0)
 	AnIF := FirecrackerNet{
 		IfaceID:  "net1",
-		GuestMAC: args.GuestMAC,
-		HostIF:   args.TapDevice,
+		GuestMAC: args.Net.MAC,
+		HostIF:   args.Net.TapDev,
 	}
 	FCNet = append(FCNet, AnIF)
 
@@ -133,12 +133,12 @@ func (fc *Firecracker) Execve(args types.ExecArgs, _ types.Unikernel) error {
 	// TODO: Add support for block devices in FIrecracker
 	FCDrives := make([]FirecrackerDrive, 0)
 
-	if args.BlockDevice != "" {
+	if args.Block.Image != "" {
 		aBlock := FirecrackerDrive{
 			DriveID:   "rootfs",
 			IsRO:      false,
 			IsRootDev: true,
-			HostPath:  args.BlockDevice,
+			HostPath:  args.Block.Image,
 		}
 		FCDrives = append(FCDrives, aBlock)
 	}

@@ -172,11 +172,11 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 		l.Command = strings.Join(data.CmdLine[1:], " ")
 	}
 
-	l.Net.Address = data.EthDeviceIP
-	l.Net.Gateway = data.EthDeviceGateway
-	l.Net.Mask = data.EthDeviceMask
+	l.Net.Address = data.Net.IP
+	l.Net.Gateway = data.Net.Gateway
+	l.Net.Mask = data.Net.Mask
 
-	l.RootFsType = data.RootFSType
+	l.RootFsType = data.RootfsType
 	l.Env = data.EnvVars
 	return nil
 }

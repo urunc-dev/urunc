@@ -24,16 +24,59 @@ type Unikernel interface {
 	MonitorCli(string) string
 }
 
+type VMM interface {
+	Execve(args ExecArgs, ukernel Unikernel) error
+	Stop(t string) error
+	Path() string
+	UsesKVM() bool
+	SupportsSharedfs(string) bool
+	Ok() error
+}
+
+type NetDevParams struct {
+	IP      string // The veth device IP
+	Mask    string // The veth device mask
+	Gateway string // The veth device gateway
+	MAC     string // The MAC address of the guest network device
+	TapDev  string // The tap device name
+}
+
+type BlockDevParams struct {
+	Image      string
+	MountPoint string // The rootfs type of the Unikernel
+	ID         string // The rootfs type of the Unikernel
+}
+
+type SharedfsParams struct {
+	Type string // The type of shared-fs 9p or virtiofs
+	Path string // The path in the host to share with guest
+}
+
 // UnikernelParams holds the data required to build the unikernels commandline
 type UnikernelParams struct {
-	CmdLine          []string // The cmdline provided by the image
-	EnvVars          []string // The environment variables provided by the image
-	EthDeviceIP      string   // The eth device IP
-	EthDeviceMask    string   // The eth device mask
-	EthDeviceGateway string   // The eth device gateway
-	RootFSType       string   // The rootfs type of the Unikernel
-	BlockMntPoint    string   // The mount point for the block device
-	Version          string   // The version of the unikernel
+	CmdLine    []string // The cmdline provided by the image
+	EnvVars    []string // The environment variables provided by the image
+	Version    string   // The version of the unikernel
+	RootfsType string   // The rootfs type of the Unikernel
+	InitrdPath string   // The path to the initrd of the unikernel
+	Net        NetDevParams
+	Block      BlockDevParams
+}
+
+// ExecArgs holds the data required by Execve to start the VMM
+// FIXME: add extra fields if required by additional VMM's
+type ExecArgs struct {
+	ContainerID   string   // The container ID
+	Environment   []string // The environment variables of the monitor
+	Command       string   // The unikernel's command line
+	Seccomp       bool     // Enable or disable seccomp filters for the VMM
+	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
+	VCPUs         uint     // The number of vCPUs to allocate
+	UnikernelPath string   // The path of the unikernel inside rootfs
+	InitrdPath    string   // The path to the initrd of the unikernel
+	Net           NetDevParams
+	Block         BlockDevParams
+	Sharedfs      SharedfsParams
 }
 
 // HypervisorConfig struct is used to hold hypervisor specific configuration
@@ -42,32 +85,4 @@ type HypervisorConfig struct {
 	DefaultMemoryMB uint   `toml:"default_memory_mb"`
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
 	BinaryPath      string `toml:"binary_path,omitempty"` // Optional path to the hypervisor binary
-}
-
-// ExecArgs holds the data required by Execve to start the VMM
-// FIXME: add extra fields if required by additional VMM's
-type ExecArgs struct {
-	Container     string   // The container ID
-	UnikernelPath string   // The path of the unikernel inside rootfs
-	TapDevice     string   // The TAP device name
-	BlockDevice   string   // The block device path
-	InitrdPath    string   // The path to the initrd of the unikernel
-	SharedfsType  string   // The type of shared-fs 9p or virtiofs
-	SharedfsPath  string   // The path in the host to share with guest
-	Command       string   // The unikernel's command line
-	IPAddress     string   // The IP address of the TAP device
-	GuestMAC      string   // The MAC address of the guest network device
-	Seccomp       bool     // Enable or disable seccomp filters for the VMM
-	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
-	VCPUs         uint     // The number of vCPUs to allocate
-	Environment   []string // Environment
-}
-
-type VMM interface {
-	Execve(args ExecArgs, ukernel Unikernel) error
-	Stop(t string) error
-	Path() string
-	UsesKVM() bool
-	SupportsSharedfs(string) bool
-	Ok() error
 }

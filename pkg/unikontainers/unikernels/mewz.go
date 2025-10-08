@@ -75,9 +75,9 @@ func (m *Mewz) MonitorCli(monitor string) string {
 
 func (m *Mewz) Init(data types.UnikernelParams) error {
 	var mask int
-	if data.EthDeviceMask != "" {
+	if data.Net.Mask != "" {
 		var err error
-		mask, err = subnetMaskToCIDR(data.EthDeviceMask)
+		mask, err = subnetMaskToCIDR(data.Net.Mask)
 		if err != nil {
 			return err
 		}
@@ -85,8 +85,8 @@ func (m *Mewz) Init(data types.UnikernelParams) error {
 		mask = 24
 	}
 	m.Command = strings.Join(data.CmdLine, " ")
-	m.Net.Address = data.EthDeviceIP
-	m.Net.Gateway = data.EthDeviceGateway
+	m.Net.Address = data.Net.IP
+	m.Net.Gateway = data.Net.Gateway
 	m.Net.Mask = mask
 
 	return nil

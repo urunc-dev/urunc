@@ -89,33 +89,33 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	}
 
 	cmdString += " -kernel " + args.UnikernelPath
-	if args.TapDevice != "" {
-		netcli := ukernel.MonitorNetCli(qemuString, args.TapDevice, args.GuestMAC)
+	if args.Net.TapDev != "" {
+		netcli := ukernel.MonitorNetCli(qemuString, args.Net.TapDev, args.Net.MAC)
 		if netcli == "" {
 			netcli += " -net nic,model=virtio,macaddr="
-			netcli += args.GuestMAC
+			netcli += args.Net.MAC
 			netcli += " -net tap,script=no,downscript=no,ifname="
-			netcli += args.TapDevice
+			netcli += args.Net.TapDev
 		}
 		cmdString += netcli
 	} else {
 		cmdString += " -nic none"
 	}
-	if args.BlockDevice != "" {
+	if args.Block.Image != "" {
 		blockCli := ukernel.MonitorBlockCli(qemuString)
 		if blockCli == "" {
 			blockCli += " -device virtio-blk-pci,id=blk0,drive=hd0,scsi=off"
 			blockCli += " -drive format=raw,if=none,id=hd0,file="
 		}
-		blockCli += args.BlockDevice
+		blockCli += args.Block.Image
 		cmdString += blockCli
 	}
 	if args.InitrdPath != "" {
 		cmdString += " -initrd " + args.InitrdPath
 	}
-	switch args.SharedfsType {
+	switch args.Sharedfs.Type {
 	case "9pfs":
-		cmdString += " -fsdev local,id=rootfs9p,security_model=none,path=" + args.SharedfsPath
+		cmdString += " -fsdev local,id=rootfs9p,security_model=none,path=" + args.Sharedfs.Path
 		cmdString += " -device virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0"
 	case "virtiofs":
 		cmdString += " -object memory-backend-file,id=mem,size=" + qemuMem + "M,mem-path=/tmp,share=on"
