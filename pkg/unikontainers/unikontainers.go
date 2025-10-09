@@ -190,32 +190,48 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(u.State.ID, "TS15")
 
-	vmmType := u.State.Annotations[annotHypervisor]
-	unikernelType := u.State.Annotations[annotType]
-	unikernelVersion := u.State.Annotations[annotVersion]
-	unikernelPath := u.State.Annotations[annotBinary]
-	initrdPath := u.State.Annotations[annotInitrd]
-
+	// container Paths
 	// Make sure paths are clean
 	bundleDir := filepath.Clean(u.State.Bundle)
 	rootfsDir := filepath.Clean(u.Spec.Root.Path)
-	if !filepath.IsAbs(rootfsDir) {
-		if filepath.IsAbs(bundleDir) {
-			rootfsDir = filepath.Join(bundleDir, rootfsDir)
-		} else {
-			bundleAbsDir, err := filepath.Abs(bundleDir)
-			if err != nil {
-				return err
-			}
-			rootfsDir = filepath.Join(bundleAbsDir, rootfsDir)
-		}
+	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
+	if err != nil {
+		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
+		return err
 	}
 
+	// Vmm
+	vmmType := u.State.Annotations[annotHypervisor]
+
+	// unikernel
+	unikernelType := u.State.Annotations[annotType]
+
+	// unikernelParams
+	unikernelVersion := u.State.Annotations[annotVersion]
+
+	// ExecArgs
+	unikernelPath := u.State.Annotations[annotBinary]
+	initrdPath := u.State.Annotations[annotInitrd]
+
+	// debug
+	uniklog.WithFields(logrus.Fields{
+		"bundle directory":  bundleDir,
+		"rootfs directory":  rootfsDir,
+		"vmm type":          vmmType,
+		"unikernel type":    unikernelType,
+		"unikernel version": unikernelVersion,
+		"unikernel Path":    unikernelPath,
+		"initrd Path":       initrdPath,
+	}).Debug("Initialization values")
+
+	// ExecArgs
 	defaultVCPUs := u.UruncCfg.Hypervisors[vmmType].DefaultVCPUs
 	if defaultVCPUs < 1 {
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Hypervisors[vmmType].DefaultMemoryMB
+
+	// ExecArgs
 	vmmArgs := types.ExecArgs{
 		ContainerID:   u.State.ID,
 		UnikernelPath: unikernelPath,
@@ -226,6 +242,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		Environment:   os.Environ(),
 	}
 
+	// ExecArgs
 	// If memory limit is set in spec, use it instead of the config default value
 	if u.Spec.Linux.Resources.Memory != nil {
 		if u.Spec.Linux.Resources.Memory.Limit != nil {
@@ -235,12 +252,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 	}
 
+	// ExecArgs
 	// Check if container is set to unconfined -- disable seccomp
 	if u.Spec.Linux.Seccomp == nil {
 		uniklog.Warn("Seccomp is disabled")
 		vmmArgs.Seccomp = false
 	}
 
+	// UnikernelParams
 	// populate unikernel params
 	unikernelParams := types.UnikernelParams{
 		CmdLine: u.Spec.Process.Args,
@@ -249,9 +268,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
-
 	}
-
 	if initrdPath != "" {
 		unikernelParams.RootfsType = "initrd"
 	} else {
@@ -267,19 +284,20 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(u.State.ID, "TS16")
 	withTUNTAP := netArgs.IP != ""
 
+	// UnikernelParams
 	unikernelParams.Net = netArgs
+
+	// ExecArgs
 	vmmArgs.Net = netArgs
 
-	if initrdPath != "" {
-		unikernelParams.RootfsType = "initrd"
-	}
-
-	unikernelParams.Version = unikernelVersion
+	// unikernel
 	unikernel, err := unikernels.New(unikernelType)
 	if err != nil {
 		return err
 	}
 
+	// guest rootfs
+	// block
 	// handle guest's rootfs.
 	// There are three options:
 	// 1. No rootfs for guest
@@ -299,7 +317,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 			u.State.Annotations[annotMountRootfs])
 		withRootfsMount = false
 	}
-
 	blockArgs := types.BlockDevParams{}
 	sharedfsArgs := types.SharedfsParams{}
 	// TODO: Support both mounting the rootfs and another block device.
@@ -330,12 +347,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 	}
 
+	// vmm
 	// get a new vmm
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
 	if err != nil {
 		return err
 	}
 
+	// guest rootfs
 	var dmPath = ""
 	monRootfs := rootfsDir
 	// If we need to mount the rootfs, we need to choose between devmapper and
@@ -396,6 +415,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 	metrics.Capture(u.State.ID, "TS17")
 
+	// State
 	// update urunc.json state
 	// TODO: Move this somewhere else. We are not yet running and
 	// maybe we need to make sure the monitor started correctly before
@@ -415,13 +435,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// Prepare Monitor rootfs
 	// Make sure that rootfs is mounted with the correct propagation
 	// flags so we can later pivot if needed.
 	err = prepareRoot(monRootfs, u.Spec.Linux.RootfsPropagation)
 	if err != nil {
 		return err
 	}
-
 	tmpMountMemStr := "65536k"
 	if unikernelParams.RootfsType == "virtiofs" {
 		// For virtiofs, Qemu and virtiofsd are using a host file
@@ -445,6 +465,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// shared-fs
 	if unikernelParams.RootfsType == "9pfs" || unikernelParams.RootfsType == "virtiofs" {
 		// Mount the container's image rootfs inside the monitor rootfs
 		err := fileFromHost(monRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
@@ -472,9 +493,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 	}
 
+	// unikernelParams
 	unikernelParams.Block = blockArgs
+
+	// ExecArgs
 	vmmArgs.Block = blockArgs
 	vmmArgs.Sharedfs = sharedfsArgs
+
+	// unikernel
 	err = unikernel.Init(unikernelParams)
 	if err == unikernels.ErrUndefinedVersion || err == unikernels.ErrVersionParsing {
 		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
@@ -482,25 +508,31 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// unikernel
 	// build the unikernel command
 	unikernelCmd, err := unikernel.CommandString()
 	if err != nil {
 		return err
 	}
+
+	// ExecArgs
 	vmmArgs.Command = unikernelCmd
 
+	// pivot
 	withPivot := containsNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	err = changeRoot(monRootfs, withPivot)
 	if err != nil {
 		return err
 	}
 
+	// uid/gid
 	// Setup uid, gid and additional groups for the monitor process
 	err = setupUser(u.Spec.Process.User)
 	if err != nil {
 		return err
 	}
 
+	// virtiofs
 	if unikernelParams.RootfsType == "virtiofs" {
 		// Start the virtiofsd process
 		err = spawnVirtiofsd(containerRootfsMountPath)

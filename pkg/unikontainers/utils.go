@@ -244,3 +244,22 @@ func spawnVirtiofsd(sharedPath string) error {
 
 	return nil
 }
+
+func resolveAgainstBase(base string, path string) (string, error) {
+	resolvedPath := path
+
+	if !filepath.IsAbs(path) {
+		baseAbs := base
+		var err error
+
+		if !filepath.IsAbs(base) {
+			baseAbs, err = filepath.Abs(base)
+			if err != nil {
+				return "", fmt.Errorf("could not get absolute path of %s: %w", base, err)
+			}
+		}
+		resolvedPath = filepath.Join(baseAbs, path)
+	}
+
+	return resolvedPath, nil
+}
