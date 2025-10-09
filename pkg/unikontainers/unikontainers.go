@@ -156,6 +156,37 @@ func (u *Unikontainer) Create(pid int) error {
 	return u.saveContainerState()
 }
 
+func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
+	networkType := u.getNetworkType()
+	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
+	netArgs := types.NetDevParams{}
+	netManager, err := network.NewNetworkManager(networkType)
+	if err != nil {
+		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
+	}
+
+	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	if err != nil {
+		// TODO: Handle this case better. We do not need to show an error
+		// since there was no network in the container. Therefore, we
+		// need better error handling and specifically check if the container
+		// di not have any network.
+		uniklog.Errorf("Failed to setup network :%v. Possibly due to ctr", err)
+	}
+	// if network info is nil, we didn't find eth0, so we are running with ctr
+	if networkInfo != nil {
+		netArgs.TapDev = networkInfo.TapDevice
+		netArgs.IP = networkInfo.EthDevice.IP
+		netArgs.Mask = networkInfo.EthDevice.Mask
+		netArgs.Gateway = networkInfo.EthDevice.DefaultGateway
+		// The MAC address for the guest network device is the same as the
+		// virtual ethernet interface inside the namespace
+		netArgs.MAC = networkInfo.EthDevice.MAC
+	}
+
+	return netArgs, nil
+}
+
 func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(u.State.ID, "TS15")
 
@@ -228,32 +259,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	networkType := u.getNetworkType()
-	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
-	netManager, err := network.NewNetworkManager(networkType)
+	netArgs, err := u.SetupNet()
 	if err != nil {
-		uniklog.Errorf("Failed to create network manager: %v", err)
+		uniklog.Errorf("failed to setup network: %v", err)
 		return err
 	}
-	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
-	if err != nil {
-		uniklog.Errorf("Failed to setup network :%v. Possibly due to ctr", err)
-	}
 	metrics.Capture(u.State.ID, "TS16")
+	withTUNTAP := netArgs.IP != ""
 
-	withTUNTAP := false
-	netArgs := types.NetDevParams{}
-	// if network info is nil, we didn't find eth0, so we are running with ctr
-	if networkInfo != nil {
-		withTUNTAP = true
-		netArgs.TapDev = networkInfo.TapDevice
-		netArgs.IP = networkInfo.EthDevice.IP
-		netArgs.Mask = networkInfo.EthDevice.Mask
-		netArgs.Gateway = networkInfo.EthDevice.DefaultGateway
-		// The MAC address for the guest network device is the same as the
-		// virtual ethernet interface inside the namespace
-		netArgs.MAC = networkInfo.EthDevice.MAC
-	}
 	unikernelParams.Net = netArgs
 	vmmArgs.Net = netArgs
 
