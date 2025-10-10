@@ -200,11 +200,19 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	// Vmm
-	vmmType := u.State.Annotations[annotHypervisor]
-
 	// unikernel
 	unikernelType := u.State.Annotations[annotType]
+	unikernel, err := unikernels.New(unikernelType)
+	if err != nil {
+		return err
+	}
+
+	// Vmm
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
+	if err != nil {
+		return err
+	}
 
 	// unikernelParams
 	unikernelVersion := u.State.Annotations[annotVersion]
@@ -290,12 +298,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Net = netArgs
 
-	// unikernel
-	unikernel, err := unikernels.New(unikernelType)
-	if err != nil {
-		return err
-	}
-
 	// guest rootfs
 	// block
 	// handle guest's rootfs.
@@ -313,47 +315,27 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	withRootfsMount := false
 	withRootfsMount, err = strconv.ParseBool(u.State.Annotations[annotMountRootfs])
 	if err != nil {
-		uniklog.Infof("Invalid value in MountRootfs annotation: %s. Urunc will not mount any rootfs to the guest.",
+		// TODO: Move this check and log message somewhere else.
+		uniklog.Warnf("Invalid value in MountRootfs annotation: %s Urunc will not mount any rootfs to the guest.",
 			u.State.Annotations[annotMountRootfs])
 		withRootfsMount = false
 	}
-	blockArgs := types.BlockDevParams{}
-	sharedfsArgs := types.SharedfsParams{}
+
 	// TODO: Support both mounting the rootfs and another block device.
-	if u.State.Annotations[annotBlock] != "" && unikernel.SupportsBlock() {
-		blockArgs.Image = u.State.Annotations[annotBlock]
-		if u.State.Annotations[annotBlockMntPoint] != "" {
-			blockArgs.MountPoint = u.State.Annotations[annotBlockMntPoint]
-		} else {
-			// NOTE: Rumprun does not allow us to mount
-			// anything at '/'. As a result, we use the
-			// /data mount point for Rumprun. For all the
-			// other guests we use '/'.
-			if unikernelType == "rumprun" {
-				blockArgs.MountPoint = "/data"
-			} else {
-				blockArgs.MountPoint = "/"
-			}
-		}
-		if blockArgs.MountPoint == "/" {
+	blockArgs := handleExplicitBlockImage(u.State.Annotations[annotBlock],
+		u.State.Annotations[annotBlockMntPoint])
+	if blockArgs.Image != "" {
+		// TODO: Add support for using both an existing
+		// block based snapshot of the container's rootfs
+		// and an auxiliary block image placed in the container's image
+		uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
+		withRootfsMount = false
+		if blockArgs.ID == 0 {
 			unikernelParams.RootfsType = "block"
 		}
-		if withRootfsMount {
-			// TODO: Add support for using both an existing
-			// block based snapshot of the container's rootfs
-			// and an auxiliary block image placed in the container's image
-			uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
-			withRootfsMount = false
-		}
 	}
 
-	// vmm
-	// get a new vmm
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
-	if err != nil {
-		return err
-	}
-
+	sharedfsArgs := types.SharedfsParams{}
 	// guest rootfs
 	var dmPath = ""
 	monRootfs := rootfsDir
@@ -378,15 +360,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 				return err
 			}
 			if unikernel.SupportsFS(rootFsDevice.FsType) {
-				err = copyMountfiles(rootFsDevice.Path, u.Spec.Mounts)
+				err = copyMountfiles(rootfsDir, u.Spec.Mounts)
 				if err != nil {
 					return err
 				}
-				err = prepareDMAsBlock(rootFsDevice.Path, monRootfs, unikernelPath, uruncJSONFilename, initrdPath)
+				err = prepareDMAsBlock(rootfsDir, monRootfs, unikernelPath, uruncJSONFilename, initrdPath)
 				if err != nil {
 					return err
 				}
-				blockArgs.Image = rootFsDevice.Device
+				blockArgs.Image = rootFsDevice.Image
 				unikernelParams.RootfsType = "block"
 				// NOTE: Rumprun does not allow us to mount
 				// anything at '/'. As a result, we use the
@@ -397,7 +379,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 				} else {
 					blockArgs.MountPoint = "/"
 				}
-				dmPath = rootFsDevice.Device
+				dmPath = rootFsDevice.Image
 			}
 		}
 		// If we could not use a block-based rootfs, check if we can use shared-fs

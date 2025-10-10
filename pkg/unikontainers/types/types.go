@@ -43,8 +43,9 @@ type NetDevParams struct {
 
 type BlockDevParams struct {
 	Image      string
-	MountPoint string // The rootfs type of the Unikernel
-	ID         string // The rootfs type of the Unikernel
+	MountPoint string
+	FsType     string
+	ID         uint
 }
 
 type SharedfsParams struct {

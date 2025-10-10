@@ -18,19 +18,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func TestGetBlockDevice(t *testing.T) {
 	// Create a mock partition
-	tmpMnt := RootFs{
-		Path:   "/proc",
-		Device: "proc",
-		FsType: "proc",
+	tmpMnt := types.BlockDevParams{
+		Image:      "proc",
+		MountPoint: "/",
+		FsType:     "proc",
+		ID:         0,
 	}
 
-	rootFs, err := getBlockDevice(tmpMnt.Path)
+	rootFs, err := getBlockDevice("/proc")
 	assert.NoError(t, err, "Expected no error in getting block device")
-	assert.Equal(t, tmpMnt.Path, rootFs.Path, "Expected path to be /mock/path")
-	assert.Equal(t, tmpMnt.Device, rootFs.Device, "Expected device to be dm-0")
-	assert.Equal(t, tmpMnt.FsType, rootFs.FsType, "Expected filesystem type to be ext4")
+	assert.Equal(t, tmpMnt.Image, rootFs.Image, "Incorrect image")
+	assert.Equal(t, tmpMnt.MountPoint, rootFs.MountPoint, "Incorrect mountpoint")
+	assert.Equal(t, tmpMnt.FsType, rootFs.FsType, "Expected filesystem type to be proc")
+	assert.Equal(t, tmpMnt.ID, rootFs.ID, "Expected ID to be 0")
 }

@@ -25,28 +25,24 @@ import (
 	"github.com/moby/sys/mount"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
-// RootFs contains information regarding a mount
-type RootFs struct {
-	Path   string // The path of the root file system.
-	Device string // The device which is mounted as the container rootfs
-	FsType string // The filesystem type of the mounted device
-}
-
-// getBlockDevice retrieves information about the block device associated with a given path.
-// It searches for a mounted block device with the specified path and returns its details.
-// If the path is not a block device or there is an error, it returns an empty RootFs struct and an error.
-func getBlockDevice(path string) (RootFs, error) {
-	var result RootFs
+// getBlockDevice checks if a path is a block-based mount point
+// If the path is indeed a mount point then it returns the information of this
+// block device in the form of types.BlockDevParams
+// If path is not a mount point of a block device or in case of error,
+// it returns an empty types.BlockDevParams struct and an error.
+func getBlockDevice(path string) (types.BlockDevParams, error) {
 	selfProcMountInfo := "/proc/self/mountinfo"
 
 	file, err := os.Open(selfProcMountInfo)
 	if err != nil {
-		return result, nil
+		return types.BlockDevParams{}, fmt.Errorf("failed to open mountinfo: %w", err)
 	}
+	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 
@@ -54,28 +50,32 @@ func getBlockDevice(path string) (RootFs, error) {
 		line := scanner.Text()
 		parts := strings.Split(line, " - ")
 		if len(parts) != 2 {
-			return result, fmt.Errorf("invalid mountinfo line in /proc/self/mountinfo")
+			return types.BlockDevParams{}, fmt.Errorf("invalid mountinfo line in /proc/self/mountinfo")
 		}
 
 		fields := strings.Fields(parts[0])
-		mountPoint := fields[4]
-		if mountPoint != path {
+		if len(fields) < 5 || fields[4] != path {
 			continue
 		}
-		result.Path = mountPoint
 		fields = strings.Fields(parts[1])
-		result.FsType = fields[0]
-		result.Device = fields[1]
+		if len(fields) < 2 {
+			continue
+		}
 		uniklog.WithFields(logrus.Fields{
-			"mountpoint": result.Path,
-			"device":     result.Device,
-			"fstype":     result.FsType,
+			"mounted at": path,
+			"device":     fields[1],
+			"fstype":     fields[0],
 		}).Debug("Found container rootfs mount")
 
-		return result, nil
+		return types.BlockDevParams{
+			Image:      fields[1],
+			FsType:     fields[0],
+			MountPoint: "/",
+			ID:         0,
+		}, nil
 	}
 
-	return result, ErrMountpoint
+	return types.BlockDevParams{}, ErrMountpoint
 }
 
 // extractUnikernelFromBlock moves unikernel binary, initrd and urunc.json
@@ -145,4 +145,28 @@ func copyMountfiles(targetPath string, mounts []specs.Mount) error {
 	}
 
 	return nil
+}
+
+func handleExplicitBlockImage(blockImg string, mountPoint string) types.BlockDevParams {
+	blockInstance := types.BlockDevParams{}
+	if blockImg == "" {
+		return blockInstance
+	}
+	blockInstance.Image = blockImg
+	if mountPoint != "" {
+		blockInstance.MountPoint = mountPoint
+	} else {
+		// NOTE: If the user has not specified a mountpoint for
+		// the block image, set it to /data mostly for keeping
+		// compatibility with old images. However, we might need to
+		// revisit this and return an error instead.
+		blockInstance.MountPoint = "/data"
+	}
+	if blockInstance.MountPoint == "/" {
+		blockInstance.ID = 0
+	} else {
+		blockInstance.ID = 1
+	}
+
+	return blockInstance
 }
