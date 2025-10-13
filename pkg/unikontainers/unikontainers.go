@@ -277,11 +277,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
 	}
-	if initrdPath != "" {
-		unikernelParams.RootfsType = "initrd"
-	} else {
-		unikernelParams.RootfsType = ""
-	}
 
 	// handle network
 	netArgs, err := u.SetupNet()
@@ -309,93 +304,130 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
 	// both ae supported, then the block option will be used by default.
-	//
-	// Parse the annotation and convert it from string to bool. If it is not
-	// a vlaid bool value, then urunc will not try to pass any rootfs to the guest.
-	withRootfsMount := false
-	withRootfsMount, err = strconv.ParseBool(u.State.Annotations[annotMountRootfs])
+	rootfsParams, err := chooseRootfs(bundleDir, rootfsDir, u.State.Annotations, unikernel, vmm)
 	if err != nil {
-		// TODO: Move this check and log message somewhere else.
-		uniklog.Warnf("Invalid value in MountRootfs annotation: %s Urunc will not mount any rootfs to the guest.",
-			u.State.Annotations[annotMountRootfs])
-		withRootfsMount = false
+		uniklog.Errorf("could not choose guest rootfs: %v", err)
+		return err
 	}
 
-	// TODO: Support both mounting the rootfs and another block device.
-	blockArgs := handleExplicitBlockImage(u.State.Annotations[annotBlock],
-		u.State.Annotations[annotBlockMntPoint])
-	if blockArgs.Image != "" {
-		// TODO: Add support for using both an existing
-		// block based snapshot of the container's rootfs
-		// and an auxiliary block image placed in the container's image
-		uniklog.Warnf("Setting both Block and MountRootfs annotations is not supported yet. Only block will be used.")
-		withRootfsMount = false
-		if blockArgs.ID == 0 {
-			unikernelParams.RootfsType = "block"
-		}
+	// Prepare Monitor rootfs
+	// Make sure that rootfs is mounted with the correct propagation
+	// flags so we can later pivot if needed.
+	err = prepareRoot(rootfsParams.MonRootfs, u.Spec.Linux.RootfsPropagation)
+	if err != nil {
+		return err
 	}
 
+	// TODO: Add support for using both an existing
+	// block based snapshot of the container's rootfs
+	// and an auxiliary block image placed in the container's image
+	// Currently if a block Image is present in the container's image, then
+	// we will just use this image.
+	blockArgs := types.BlockDevParams{}
 	sharedfsArgs := types.SharedfsParams{}
-	// guest rootfs
-	var dmPath = ""
-	monRootfs := rootfsDir
-	// If we need to mount the rootfs, we need to choose between devmapper and
-	// shared-fs. At first, we check if the unikernel supports block devices.
-	if withRootfsMount {
-		// Create a new directory for the monitor's rootfs.
-		// THis will be the directory where we will chroot.
-		// It is not the container's rootfs. The container's rootfs
-		// will get mounted inside this directory.
-		// For the time being, we choose to place it under the bundle, but
-		// we might want to revisit this in the future.
-		monRootfs = filepath.Join(bundleDir, monitorRootfsDirName)
-		err := os.MkdirAll(monRootfs, 0o755)
-		if err != nil {
-			return err
-		}
-
-		if unikernel.SupportsBlock() {
-			rootFsDevice, err := getBlockDevice(rootfsDir)
+	dmPath := ""
+	tmpMountMemStr := "65536k"
+	switch rootfsParams.Type {
+	case "block":
+		if rootfsParams.MountedPath == "" {
+			blockArgs = handleExplicitBlockImage(u.State.Annotations[annotBlock],
+				u.State.Annotations[annotBlockMntPoint])
+		} else {
+			blockArgs.Image = rootfsParams.Path
+			// NOTE: Rumprun does not allow us to mount
+			// anything at '/'. As a result, we use the
+			// /data mount point for Rumprun. For all the
+			// other guests we use '/'.
+			if unikernelType == "rumprun" {
+				blockArgs.MountPoint = "/data"
+			} else {
+				blockArgs.MountPoint = "/"
+			}
+			dmPath = rootfsParams.Path
+			err = copyMountfiles(rootfsDir, u.Spec.Mounts)
 			if err != nil {
 				return err
 			}
-			if unikernel.SupportsFS(rootFsDevice.FsType) {
-				err = copyMountfiles(rootfsDir, u.Spec.Mounts)
-				if err != nil {
-					return err
-				}
-				err = prepareDMAsBlock(rootfsDir, monRootfs, unikernelPath, uruncJSONFilename, initrdPath)
-				if err != nil {
-					return err
-				}
-				blockArgs.Image = rootFsDevice.Image
-				unikernelParams.RootfsType = "block"
-				// NOTE: Rumprun does not allow us to mount
-				// anything at '/'. As a result, we use the
-				// /data mount point for Rumprun. For all the
-				// other guests we use '/'.
-				if unikernelType == "rumprun" {
-					blockArgs.MountPoint = "/data"
-				} else {
-					blockArgs.MountPoint = "/"
-				}
-				dmPath = rootFsDevice.Image
+			err = prepareDMAsBlock(rootfsDir, rootfsParams.MonRootfs, unikernelPath, uruncJSONFilename, initrdPath)
+			if err != nil {
+				return err
 			}
 		}
-		// If we could not use a block-based rootfs, check if we can use shared-fs
-		if unikernelParams.RootfsType == "" {
-			if unikernel.SupportsFS("virtiofs") && vmm.SupportsSharedfs("virtio") {
-				sharedfsArgs.Path = containerRootfsMountPath
-				sharedfsArgs.Type = "virtiofs"
-				unikernelParams.RootfsType = "virtiofs"
-			} else if unikernel.SupportsFS("9pfs") && vmm.SupportsSharedfs("9p") {
-				sharedfsArgs.Path = containerRootfsMountPath
-				sharedfsArgs.Type = "9pfs"
-				unikernelParams.RootfsType = "9pfs"
-			}
+	case "initrd":
+	case "9pfs":
+		// Mount the container's image rootfs inside the monitor rootfs
+		err := fileFromHost(rootfsParams.MonRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
+		if err != nil {
+			return err
 		}
+		newCntrRootfs := filepath.Join(rootfsParams.MonRootfs, containerRootfsMountPath)
+		err = mountVolumes(newCntrRootfs, u.Spec.Mounts)
+		if err != nil {
+			return err
+		}
+		// Update the paths of the files we need to pass in the monitor process.
+		vmmArgs.UnikernelPath = filepath.Join(containerRootfsMountPath, vmmArgs.UnikernelPath)
+		if vmmArgs.InitrdPath != "" {
+			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
+		}
+		sharedfsArgs.Path = containerRootfsMountPath
+		sharedfsArgs.Type = rootfsParams.Type
+	case "virtiofs":
+		// Mount the container's image rootfs inside the monitor rootfs
+		err := fileFromHost(rootfsParams.MonRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
+		if err != nil {
+			return err
+		}
+		newCntrRootfs := filepath.Join(rootfsParams.MonRootfs, containerRootfsMountPath)
+		err = mountVolumes(newCntrRootfs, u.Spec.Mounts)
+		if err != nil {
+			return err
+		}
+		// Update the paths of the files we need to pass in the monitor process.
+		vmmArgs.UnikernelPath = filepath.Join(containerRootfsMountPath, vmmArgs.UnikernelPath)
+		if vmmArgs.InitrdPath != "" {
+			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
+		}
+		// Get the virtiofsd binary from host in monRootfs
+		err = fileFromHost(rootfsParams.MonRootfs, "/usr/libexec/virtiofsd", "", unix.MS_BIND|unix.MS_PRIVATE, false)
+		if err != nil {
+			uniklog.Warnf("Could not bind mount /usr/libexec/virtiofsd: %v , trying with 9pfs", err)
+			sharedfsArgs.Type = "9pfs"
+			unikernelParams.RootfsType = "9pfs"
+		}
+		sharedfsArgs.Path = containerRootfsMountPath
+		sharedfsArgs.Type = rootfsParams.Type
+		// For virtiofs, Qemu and virtiofsd are using a host file
+		// to share the VM's RAM and hence the size of this file
+		// should be the same as guest's memory. This file will
+		// be placed under /tmp and we need to mount /tmp with enough
+		// memory for this.
+		tmpMountMem := vmmArgs.MemSizeB
+		if tmpMountMem == 0 {
+			tmpMountMem = hypervisors.DefaultMemory * 1024 * 1024
+		}
+		// However, since /tmp might be used from the monitors for other
+		// things too, we add one more MB extra.
+		tmpMountMem += 1024 * 1024
+		tmpMountMemStr = hypervisors.BytesToStringMB(tmpMountMem) + "m"
+	default:
+		uniklog.Debug("No rootfs for guest")
+	}
+
+	// Setup the rootfs for the the monitor execution, creating necessary
+	// devices and the monitor's binary.
+	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP, tmpMountMemStr)
+	if err != nil {
+		return err
 	}
 	metrics.Capture(u.State.ID, "TS17")
+
+	if blockArgs.Image == "" && unikernelType == "rumprun" {
+		// Special handling for Rumprun to keep compatibility with older
+		// images. We should revisit this and maybe remove it in the future.
+		blockArgs = handleExplicitBlockImage(u.State.Annotations[annotBlock],
+			u.State.Annotations[annotBlockMntPoint])
+	}
 
 	// State
 	// update urunc.json state
@@ -415,64 +447,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	err = u.ExecuteHooks("StartContainer")
 	if err != nil {
 		return err
-	}
-
-	// Prepare Monitor rootfs
-	// Make sure that rootfs is mounted with the correct propagation
-	// flags so we can later pivot if needed.
-	err = prepareRoot(monRootfs, u.Spec.Linux.RootfsPropagation)
-	if err != nil {
-		return err
-	}
-	tmpMountMemStr := "65536k"
-	if unikernelParams.RootfsType == "virtiofs" {
-		// For virtiofs, Qemu and virtiofsd are using a host file
-		// to share the VM's RAM and hence the size of this file
-		// should be the same as guest's memory. This file will
-		// be placed under /tmp and we need to mount /tmp with enough
-		// memory for this.
-		tmpMountMem := vmmArgs.MemSizeB
-		if tmpMountMem == 0 {
-			tmpMountMem = hypervisors.DefaultMemory * 1024 * 1024
-		}
-		// However, since /tmp might be used from the monitors for other
-		// things too, we add one more MB extra.
-		tmpMountMem += 1024 * 1024
-		tmpMountMemStr = hypervisors.BytesToStringMB(tmpMountMem) + "m"
-	}
-	// Setup the rootfs for the the monitor execution, creating necessary
-	// devices and the monitor's binary.
-	err = prepareMonRootfs(monRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP, tmpMountMemStr)
-	if err != nil {
-		return err
-	}
-
-	// shared-fs
-	if unikernelParams.RootfsType == "9pfs" || unikernelParams.RootfsType == "virtiofs" {
-		// Mount the container's image rootfs inside the monitor rootfs
-		err := fileFromHost(monRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return err
-		}
-		newCntrRootfs := filepath.Join(monRootfs, containerRootfsMountPath)
-		err = mountVolumes(newCntrRootfs, u.Spec.Mounts)
-		if err != nil {
-			return err
-		}
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = filepath.Join(containerRootfsMountPath, vmmArgs.UnikernelPath)
-		if vmmArgs.InitrdPath != "" {
-			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
-		}
-	}
-	if unikernelParams.RootfsType == "virtiofs" {
-		// Get the virtiofsd binary from host in monRootfs
-		err := fileFromHost(monRootfs, "/usr/libexec/virtiofsd", "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			uniklog.Warnf("Could not bind mount /usr/libexec/virtiofsd: %v , trying with 9pfs", err)
-			sharedfsArgs.Type = "9pfs"
-			unikernelParams.RootfsType = "9pfs"
-		}
 	}
 
 	// unikernelParams
@@ -502,7 +476,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// pivot
 	withPivot := containsNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
-	err = changeRoot(monRootfs, withPivot)
+	err = changeRoot(rootfsParams.MonRootfs, withPivot)
 	if err != nil {
 		return err
 	}

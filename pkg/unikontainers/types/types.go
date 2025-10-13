@@ -53,6 +53,13 @@ type SharedfsParams struct {
 	Path string // The path in the host to share with guest
 }
 
+type RootfsParams struct {
+	Type        string // The type of rootfs (block, initrd, 9pfs, virtiofs)
+	Path        string // The path in the host where rootfs resides
+	MountedPath string // The mountpoint in the host where the rootfs is mounted
+	MonRootfs   string // The rootfs for the monitor process
+}
+
 // UnikernelParams holds the data required to build the unikernels commandline
 type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
