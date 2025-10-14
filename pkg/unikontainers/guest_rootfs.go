@@ -113,6 +113,10 @@ func (rs *rootfsSelector) tryVirtiofs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
+	if !fileExists(virtiofsHostBinPath) {
+		return types.RootfsParams{}, false
+	}
+
 	return newRootfsResult("virtiofs", rs.cntrRootfs, rs.cntrRootfs, rs.cntrRootfs), true
 }
 

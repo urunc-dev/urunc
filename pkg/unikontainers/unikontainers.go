@@ -326,7 +326,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	blockArgs := types.BlockDevParams{}
 	sharedfsArgs := types.SharedfsParams{}
 	dmPath := ""
-	tmpMountMemStr := "65536k"
+	tmpfsSize := "65536k"
 	switch rootfsParams.Type {
 	case "block":
 		if rootfsParams.MountedPath == "" {
@@ -353,70 +353,37 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 				return err
 			}
 		}
+		unikernelParams.RootfsType = "block"
 	case "initrd":
-	case "9pfs":
-		// Mount the container's image rootfs inside the monitor rootfs
-		err := fileFromHost(rootfsParams.MonRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return err
-		}
-		newCntrRootfs := filepath.Join(rootfsParams.MonRootfs, containerRootfsMountPath)
-		err = mountVolumes(newCntrRootfs, u.Spec.Mounts)
-		if err != nil {
-			return err
-		}
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = filepath.Join(containerRootfsMountPath, vmmArgs.UnikernelPath)
-		if vmmArgs.InitrdPath != "" {
-			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
-		}
-		sharedfsArgs.Path = containerRootfsMountPath
-		sharedfsArgs.Type = rootfsParams.Type
+		unikernelParams.RootfsType = "initrd"
 	case "virtiofs":
-		// Mount the container's image rootfs inside the monitor rootfs
-		err := fileFromHost(rootfsParams.MonRootfs, rootfsDir, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return err
-		}
-		newCntrRootfs := filepath.Join(rootfsParams.MonRootfs, containerRootfsMountPath)
-		err = mountVolumes(newCntrRootfs, u.Spec.Mounts)
+		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
+		fallthrough
+	case "9pfs":
+		err = setupSharedfsBasedRootfs(rootfsParams, u.Spec.Mounts)
 		if err != nil {
 			return err
 		}
 		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = filepath.Join(containerRootfsMountPath, vmmArgs.UnikernelPath)
-		if vmmArgs.InitrdPath != "" {
-			vmmArgs.InitrdPath = filepath.Join(containerRootfsMountPath, vmmArgs.InitrdPath)
-		}
-		// Get the virtiofsd binary from host in monRootfs
-		err = fileFromHost(rootfsParams.MonRootfs, "/usr/libexec/virtiofsd", "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			uniklog.Warnf("Could not bind mount /usr/libexec/virtiofsd: %v , trying with 9pfs", err)
-			sharedfsArgs.Type = "9pfs"
-			unikernelParams.RootfsType = "9pfs"
-		}
+		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
+		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
 		sharedfsArgs.Path = containerRootfsMountPath
 		sharedfsArgs.Type = rootfsParams.Type
-		// For virtiofs, Qemu and virtiofsd are using a host file
-		// to share the VM's RAM and hence the size of this file
-		// should be the same as guest's memory. This file will
-		// be placed under /tmp and we need to mount /tmp with enough
-		// memory for this.
-		tmpMountMem := vmmArgs.MemSizeB
-		if tmpMountMem == 0 {
-			tmpMountMem = hypervisors.DefaultMemory * 1024 * 1024
-		}
-		// However, since /tmp might be used from the monitors for other
-		// things too, we add one more MB extra.
-		tmpMountMem += 1024 * 1024
-		tmpMountMemStr = hypervisors.BytesToStringMB(tmpMountMem) + "m"
 	default:
 		uniklog.Debug("No rootfs for guest")
+	}
+	unikernelParams.RootfsType = rootfsParams.Type
+
+	err = createTmpfs(rootfsParams.MonRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSize)
+	if err != nil {
+		return err
 	}
 
 	// Setup the rootfs for the the monitor execution, creating necessary
 	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP, tmpMountMemStr)
+	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
 		return err
 	}

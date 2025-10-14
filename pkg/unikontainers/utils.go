@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"os/exec"
@@ -262,4 +263,16 @@ func resolveAgainstBase(base string, path string) (string, error) {
 	}
 
 	return resolvedPath, nil
+}
+
+func fileExists(fpath string) bool {
+	var fileInfo unix.Stat_t
+
+	err := unix.Stat(fpath, &fileInfo)
+	if err != nil {
+		uniklog.Infof("Stat %s failed with: %v", fpath, err)
+		return false
+	}
+
+	return true
 }
