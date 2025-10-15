@@ -116,7 +116,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 // prepareMonRootfs prepares the rootfs where the monitor will execute. It
 // essentially sets up the devices (KVM, snapshotter block device) that are required
 // for the guest execution and any other files (e.g. binaries).
-func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needsKVM bool, needsTAP bool) error {
+func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needsTAP bool) error {
 	err := fileFromHost(monRootfs, monitorPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 	if err != nil {
 		return err
@@ -198,13 +198,6 @@ func prepareMonRootfs(monRootfs string, monitorPath string, dmPath string, needs
 
 	if needsTAP || monitorName == "firecracker" {
 		err = setupDev(monRootfs, "/dev/net/tun")
-		if err != nil {
-			return err
-		}
-	}
-
-	if dmPath != "" {
-		err = setupDev(monRootfs, dmPath)
 		if err != nil {
 			return err
 		}

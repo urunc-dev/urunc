@@ -16,8 +16,9 @@ package unikontainers
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"

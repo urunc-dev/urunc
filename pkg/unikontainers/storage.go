@@ -147,26 +147,72 @@ func copyMountfiles(targetPath string, mounts []specs.Mount) error {
 	return nil
 }
 
-func handleExplicitBlockImage(blockImg string, mountPoint string) types.BlockDevParams {
-	blockInstance := types.BlockDevParams{}
+func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDevParams, error) {
 	if blockImg == "" {
-		return blockInstance
-	}
-	blockInstance.Image = blockImg
-	if mountPoint != "" {
-		blockInstance.MountPoint = mountPoint
-	} else {
-		// NOTE: If the user has not specified a mountpoint for
-		// the block image, set it to /data mostly for keeping
-		// compatibility with old images. However, we might need to
-		// revisit this and return an error instead.
-		blockInstance.MountPoint = "/data"
-	}
-	if blockInstance.MountPoint == "/" {
-		blockInstance.ID = 0
-	} else {
-		blockInstance.ID = 1
+		return types.BlockDevParams{}, nil
 	}
 
-	return blockInstance
+	if mountPoint == "" {
+		return types.BlockDevParams{}, fmt.Errorf("annotation for block device was set without a mountpoint")
+	}
+
+	var id uint
+	id = 1
+	if mountPoint == "/" {
+		id = 0
+	}
+
+	return types.BlockDevParams{
+		Image:      blockImg,
+		MountPoint: mountPoint,
+		ID:         id,
+	}, nil
+}
+
+func handleCntrRootfsAsBlock(rfs types.RootfsParams, unikernelType string, unikernelPath string, uruncJSONFilename string, initrdPath string, mounts []specs.Mount) (types.BlockDevParams, error) {
+	err := copyMountfiles(rfs.MountedPath, mounts)
+	if err != nil {
+		return types.BlockDevParams{}, err
+	}
+
+	err = prepareDMAsBlock(rfs.MountedPath, rfs.MonRootfs, unikernelPath, uruncJSONFilename, initrdPath)
+	if err != nil {
+		return types.BlockDevParams{}, err
+	}
+
+	err = setupDev(rfs.MonRootfs, rfs.Path)
+	if err != nil {
+		return types.BlockDevParams{}, err
+	}
+
+	mp := "/"
+	// NOTE: Rumprun does not allow us to mount
+	// anything at '/'. As a result, we use the
+	// /data mount point for Rumprun. For all the
+	// other guests we use '/'.
+	if unikernelType == "rumprun" {
+		mp = "/data"
+	}
+
+	return types.BlockDevParams{
+		Image:      rfs.Path,
+		MountPoint: mp,
+		ID:         0,
+	}, nil
+}
+
+func handleBlockBasedRootfs(rfs types.RootfsParams, unikernelType string, unikernelPath string, uruncJSONFilename string, initrdPath string, mounts []specs.Mount) (types.BlockDevParams, error) {
+	var blockArgs types.BlockDevParams
+	var err error
+	if rfs.MountedPath == "" {
+		// If we got here then the mountpoint in the annotation was "/"
+		blockArgs, err = handleExplicitBlockImage(rfs.Path, "/")
+	} else {
+		blockArgs, err = handleCntrRootfsAsBlock(rfs, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, mounts)
+	}
+	if err != nil {
+		return types.BlockDevParams{}, err
+	}
+
+	return blockArgs, nil
 }

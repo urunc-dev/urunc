@@ -318,6 +318,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// Setup the rootfs for the the monitor execution, creating necessary
+	// devices and the monitor's binary.
+	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), vmm.UsesKVM(), withTUNTAP)
+	if err != nil {
+		return err
+	}
 	// TODO: Add support for using both an existing
 	// block based snapshot of the container's rootfs
 	// and an auxiliary block image placed in the container's image
@@ -325,37 +331,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// we will just use this image.
 	blockArgs := types.BlockDevParams{}
 	sharedfsArgs := types.SharedfsParams{}
-	dmPath := ""
 	tmpfsSize := "65536k"
 	switch rootfsParams.Type {
 	case "block":
-		if rootfsParams.MountedPath == "" {
-			blockArgs = handleExplicitBlockImage(u.State.Annotations[annotBlock],
-				u.State.Annotations[annotBlockMntPoint])
-		} else {
-			blockArgs.Image = rootfsParams.Path
-			// NOTE: Rumprun does not allow us to mount
-			// anything at '/'. As a result, we use the
-			// /data mount point for Rumprun. For all the
-			// other guests we use '/'.
-			if unikernelType == "rumprun" {
-				blockArgs.MountPoint = "/data"
-			} else {
-				blockArgs.MountPoint = "/"
-			}
-			dmPath = rootfsParams.Path
-			err = copyMountfiles(rootfsDir, u.Spec.Mounts)
-			if err != nil {
-				return err
-			}
-			err = prepareDMAsBlock(rootfsDir, rootfsParams.MonRootfs, unikernelPath, uruncJSONFilename, initrdPath)
-			if err != nil {
-				return err
-			}
+		blockArgs, err = handleBlockBasedRootfs(rootfsParams, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, u.Spec.Mounts)
+		if err != nil {
+			uniklog.Errorf("could not setup block based rootfs: %v", err)
+			return err
 		}
-		unikernelParams.RootfsType = "block"
-	case "initrd":
-		unikernelParams.RootfsType = "initrd"
 	case "virtiofs":
 		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
 		fallthrough
@@ -380,20 +363,16 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
-
-	// Setup the rootfs for the the monitor execution, creating necessary
-	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), dmPath, vmm.UsesKVM(), withTUNTAP)
-	if err != nil {
-		return err
-	}
 	metrics.Capture(u.State.ID, "TS17")
 
 	if blockArgs.Image == "" && unikernelType == "rumprun" {
 		// Special handling for Rumprun to keep compatibility with older
 		// images. We should revisit this and maybe remove it in the future.
-		blockArgs = handleExplicitBlockImage(u.State.Annotations[annotBlock],
+		blockArgs, err = handleExplicitBlockImage(u.State.Annotations[annotBlock],
 			u.State.Annotations[annotBlockMntPoint])
+		if err != nil {
+			return err
+		}
 	}
 
 	// State

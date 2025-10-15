@@ -17,7 +17,6 @@ package unikontainers
 import (
 	"encoding/json"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"os/exec"
@@ -25,6 +24,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/internal/constants"
