@@ -11,30 +11,225 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-// Parts of this file have been taken from
-// https://github.com/opencontainers/runc/blob/8eb2f43047ce24f06a4cbfd9af4aaedab1062bfb/libcontainer/rootfs_linux.go
-// which comes with an Apache 2.0 license. For more information check runc's
-// licence.
 
 package unikontainers
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"golang.org/x/sys/unix"
 
-	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
-var ErrCopyDir = errors.New("can not copy a directory")
+// rootfsSelector encapsulates the context for rootfs selection
+type rootfsSelector struct {
+	bundle     string
+	cntrRootfs string
+	annot      map[string]string
+	unikernel  types.Unikernel
+	vmm        types.VMM
+}
 
-type mountFlagStruct struct {
-	clear bool
-	flag  int
+// newRootfsResult creates a RootfsParams with common defaults
+func newRootfsResult(rootfsType string, path string, mountedPath string, monRootfs string) types.RootfsParams {
+	return types.RootfsParams{
+		Type:        rootfsType,
+		Path:        path,
+		MountedPath: mountedPath,
+		MonRootfs:   monRootfs,
+	}
+}
+
+// tryInitrd checks for initrd-based rootfs based on annotation values
+func (rs *rootfsSelector) tryInitrd() (types.RootfsParams, bool) {
+	initrdPath := rs.annot[annotInitrd]
+	if initrdPath == "" {
+		return types.RootfsParams{}, false
+	}
+
+	return newRootfsResult("initrd", initrdPath, "", rs.cntrRootfs), true
+}
+
+// tryExplicitBlock checks for explicit block device annotation with
+// a mountpoint at "/"
+func (rs *rootfsSelector) tryExplicitBlock() (types.RootfsParams, bool) {
+	blockPath := rs.annot[annotBlock]
+	blockMntPoint := rs.annot[annotBlockMntPoint]
+
+	// Only use explicit block if it's meant to be root (mounted at /)
+	if blockPath == "" || blockMntPoint != "/" || !rs.unikernel.SupportsBlock() {
+		return types.RootfsParams{}, false
+	}
+
+	return newRootfsResult("block", blockPath, "", rs.cntrRootfs), true
+}
+
+// shouldMountContainerRootfs checks if container rootfs should be mounted
+// based on the respective annotation
+func (rs *rootfsSelector) shouldMountContainerRootfs() bool {
+	annotValue := rs.annot[annotMountRootfs]
+	if annotValue == "" {
+		return false
+	}
+
+	shouldMount, err := strconv.ParseBool(annotValue)
+	if err != nil {
+		uniklog.Warnf("Invalid value in MountRootfs annotation: %s. Urunc will not mount any rootfs to the guest.", annotValue)
+		return false
+	}
+
+	return shouldMount
+}
+
+// tryContainerBlockRootfs checks if container rootfs can be used as a block device
+// for guest's rootfs
+func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
+	if !rs.unikernel.SupportsBlock() {
+		return types.RootfsParams{}, false
+	}
+
+	rootFsDevice, err := getBlockDevice(rs.cntrRootfs)
+	if err != nil {
+		uniklog.Errorf("failed to get container's rootfs mount info: %v", err)
+		return types.RootfsParams{}, false
+	}
+
+	if !rs.unikernel.SupportsFS(rootFsDevice.FsType) {
+		return types.RootfsParams{}, false
+	}
+
+	return newRootfsResult("block", rootFsDevice.Image, rs.cntrRootfs, rs.cntrRootfs), true
+}
+
+// tryVirtiofs checks if virtiofs can be used
+func (rs *rootfsSelector) tryVirtiofs() (types.RootfsParams, bool) {
+	if !rs.unikernel.SupportsFS("virtiofs") {
+		return types.RootfsParams{}, false
+	}
+
+	if !rs.vmm.SupportsSharedfs("virtio") {
+		return types.RootfsParams{}, false
+	}
+
+	if !fileExists(virtiofsHostBinPath) {
+		return types.RootfsParams{}, false
+	}
+
+	return newRootfsResult("virtiofs", rs.cntrRootfs, rs.cntrRootfs, rs.cntrRootfs), true
+}
+
+// try9pfs checks if 9pfs can be used
+func (rs *rootfsSelector) try9pfs() (types.RootfsParams, bool) {
+	if !rs.unikernel.SupportsFS("9pfs") {
+		return types.RootfsParams{}, false
+	}
+
+	if !rs.vmm.SupportsSharedfs("9p") {
+		return types.RootfsParams{}, false
+	}
+
+	return newRootfsResult("9pfs", rs.cntrRootfs, rs.cntrRootfs, rs.cntrRootfs), true
+}
+
+// tryContainerSharedFS tries shared filesystem options (virtiofs, then 9pfs)
+func (rs *rootfsSelector) tryContainerSharedFS() (types.RootfsParams, bool) {
+	// Try virtiofs first (preferred)
+	result, ok := rs.tryVirtiofs()
+	if ok {
+		return result, true
+	}
+
+	// Fallback to 9pfs
+	result, ok = rs.try9pfs()
+	if ok {
+		return result, true
+	}
+
+	return types.RootfsParams{}, false
+}
+
+// tryContainerRootfs tries to use container rootfs as a rootfs for the guest
+// trying first using it as block device and if not possible as a shared-fs
+func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
+	if !rs.shouldMountContainerRootfs() {
+		return types.RootfsParams{}, false
+	}
+
+	// Try block-based rootfs first
+	result, ok := rs.tryContainerBlockRootfs()
+	if ok {
+		return result, true
+	}
+
+	// Fallback to shared fs
+	result, ok = rs.tryContainerSharedFS()
+	if ok {
+		return result, true
+	}
+
+	uniklog.Error("can not use the container rootfs as block, or through shared-fs")
+	return types.RootfsParams{}, false
+}
+
+func switchMonRootfs(res types.RootfsParams, bundle string) (types.RootfsParams, error) {
+	monRootfs := filepath.Join(bundle, monitorRootfsDirName)
+	err := os.MkdirAll(monRootfs, 0o755)
+	if err != nil {
+		return types.RootfsParams{}, fmt.Errorf("failed to create monitor rootfs directory %s: %w", monRootfs, err)
+	}
+	res.MonRootfs = monRootfs
+
+	return res, nil
+}
+
+// chooseRootfs determines the best rootfs configuration based on available options
+// Priority order:
+//  1. Initrd (if specified)
+//  2. Explicit block device annotation (if mounted at /)
+//  3. Container rootfs as block device (if MountRootfs=true and supported)
+//  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
+//  5. No rootfs
+func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
+	unikernel types.Unikernel, vmm types.VMM) (types.RootfsParams, error) {
+
+	selector := &rootfsSelector{
+		bundle:     bundle,
+		cntrRootfs: cntrRootfs,
+		annot:      annot,
+		unikernel:  unikernel,
+		vmm:        vmm,
+	}
+
+	// Priority 1: Initrd
+	result, ok := selector.tryInitrd()
+	if ok {
+		return result, nil
+	}
+
+	// Priority 2: Explicit block annotation
+	result, ok = selector.tryExplicitBlock()
+	if ok {
+		return result, nil
+	}
+
+	// Priority 3 & 4: Container rootfs (block or shared-fs)
+	result, ok = selector.tryContainerRootfs()
+	if ok {
+		return switchMonRootfs(result, bundle)
+	}
+
+	if selector.shouldMountContainerRootfs() {
+		return types.RootfsParams{}, fmt.Errorf("can not mount container's rootfs as block or through shared-fs to guest")
+	}
+
+	uniklog.Info("no rootfs configured for guest")
+	result.MonRootfs = cntrRootfs
+	return result, nil
+
 }
 
 // pivotRootfs changes rootfs with pivot
@@ -211,415 +406,4 @@ func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needs
 	}
 
 	return nil
-}
-
-// createTmpfs creates a new tmpfs at path inside monRootfs
-// In particular, it is used for the creation of /tmp and /dev.
-// This is necessary to create the required devices for the monitor execution,
-// such as KVM, null, urandom etc.
-func createTmpfs(monRootfs string, path string, flags uint64, mode string, size string) error {
-	dstPath := filepath.Join(monRootfs, path)
-	mountType := "tmpfs"
-	data := "mode=" + mode + ",size=" + size
-
-	err := os.MkdirAll(dstPath, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create %s dir: %w", path, err)
-	}
-
-	err = unix.Mount(mountType, dstPath, mountType, uintptr(flags), data)
-	if err != nil {
-		return fmt.Errorf("failed to mount %s tmpfs: %w", path, err)
-	}
-
-	// Remove propagation
-	err = unix.Mount("", dstPath, "", unix.MS_PRIVATE, "")
-	if err != nil {
-		return fmt.Errorf("failed to create %s tmpfs: %w", path, err)
-	}
-
-	if mode == "1777" {
-		err := os.Chmod(path, 01777)
-		if err != nil {
-			return fmt.Errorf("failed to chmod %s: %w", path, err)
-		}
-	}
-	return nil
-}
-
-// SetupDev set ups one new device in the container's rootfs.
-// This function will get the major and minor number of
-// the device from the host's rootfs and it will replicate the device
-// inside the container's rootfs. It also appends rw for other users
-// in the permissions of the original file.
-func setupDev(monRootfs string, devPath string) error {
-	// Get info of the original file
-	var devStat unix.Stat_t
-	err := unix.Stat(devPath, &devStat)
-	if err != nil {
-		return fmt.Errorf("failed to stat dev %s: %w", devPath, err)
-	}
-
-	// mask file's mode
-	mode := devStat.Mode & unix.S_IFMT
-	if mode != unix.S_IFCHR && mode != unix.S_IFBLK {
-		return fmt.Errorf("%s is not a device node", devPath)
-	}
-	// Get minor,major numbers
-	rdev := devStat.Rdev
-	major := unix.Major(uint64(rdev))
-	minor := unix.Minor(uint64(rdev))
-
-	newDev := unix.Mkdev(major, minor)
-
-	// Set the correct target path
-	relHostPath, err := filepath.Rel("/", devPath)
-	if err != nil {
-		return fmt.Errorf("failed to get relative path of %s to /: %w", devPath, err)
-	}
-	dstPath := filepath.Join(monRootfs, relHostPath)
-	// If the device is not at /dev but further down the tree, create
-	// the necessary directories
-	if filepath.Dir(devPath) != "/dev" {
-		dstDir := filepath.Dir(dstPath)
-		err = os.MkdirAll(dstDir, 0755)
-		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
-		}
-	}
-
-	// Create the new device node
-	err = unix.Mknod(dstPath, devStat.Mode, int(newDev)) //nolint: gosec
-	if err != nil {
-		return fmt.Errorf("failed to make device node %s: %w", dstPath, err)
-	}
-
-	// Set up permissions, adding rw for others to ensure that any user can
-	// read/write them. This is helpful for non-root monitor execution and
-	// removes the burdain of getting kvm/block group id
-	permBits := devStat.Mode & 0o777
-	permBits |= 0o006
-	err = unix.Chmod(dstPath, permBits)
-	if err != nil {
-		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
-	}
-
-	// Set the owner as in the original file
-	err = os.Chown(dstPath, int(devStat.Uid), int(devStat.Gid))
-	if err != nil {
-		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
-	}
-
-	return nil
-}
-
-// fileFromHost set ups a mirror of file from the host's rootfs inside the
-// container's rootfs. Also, it preserves the permissions and ownership of the
-// file in the host's rootfs.
-// if withCopy is set then copy the file, otherwise
-// bind mount it.
-// In the context of monitor binaries a copy is considered safer, since
-// none of the monitor processes will share memory with other processes
-// of the same monitor. On the other hand, a copy is slower and consumes
-// more space.
-func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, withCopy bool) error {
-	// Get the info of the original file
-	var fileInfo unix.Stat_t
-	err := unix.Stat(hostPath, &fileInfo)
-	if err != nil {
-		return err
-	}
-	mode := fileInfo.Mode
-
-	if target == "" {
-		// Set the correct path
-		target, err = filepath.Rel("/", hostPath)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path of %s to /: %w", hostPath, err)
-		}
-	}
-	dstPath := filepath.Join(monRootfs, target)
-
-	if (mode & unix.S_IFMT) != unix.S_IFDIR {
-		dstDir := filepath.Dir(dstPath)
-		if withCopy {
-			err = copyFile(hostPath, dstPath)
-			if err != nil {
-				return fmt.Errorf("failed to copy file %s: %w", hostPath, err)
-			}
-		} else {
-			err = bindMountFile(hostPath, dstDir, dstPath, fileInfo.Mode, mFlags, false)
-			if err != nil {
-				return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
-			}
-		}
-	} else {
-		if withCopy {
-			return ErrCopyDir
-		}
-		err = bindMountFile(hostPath, dstPath, "", 0, mFlags, true)
-		if err != nil {
-			return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
-		}
-	}
-
-	// Set up the permissions and ownership of the original file.
-	err = unix.Chmod(dstPath, fileInfo.Mode)
-	if err != nil {
-		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
-	}
-
-	err = os.Chown(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
-	if err != nil {
-		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
-	}
-
-	// The initial MS_BIND won't change the mount options, we need to do a
-	// separate MS_BIND|MS_REMOUNT to apply the mount options. We skip
-	// doing this if the user has not specified any mount flags at all
-	// (including cleared flags) -- in which case we just keep the original
-	// mount flags.
-	if mFlags & ^(unix.MS_BIND|unix.MS_REC|unix.MS_REMOUNT) != 0 {
-		flags := mFlags | unix.MS_BIND | unix.MS_REMOUNT
-		err = unix.Mount(dstPath, dstPath, "", uintptr(flags), "")
-		if err != nil {
-			return fmt.Errorf("Failed to set mount flags for %s: %w", dstPath, err)
-		}
-	}
-
-	return nil
-}
-
-// bindMountFile bind mounts a file/directory to a new path
-func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, mFlags int, isDir bool) error {
-	var mountTarget string
-	err := os.MkdirAll(dstDir, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
-	}
-
-	if !isDir {
-		dstFile, err1 := unix.Open(dstPath, unix.O_CREAT, perm)
-		if err1 != nil {
-			return fmt.Errorf("failed to create file %s: %w", dstPath, err1)
-		}
-		unix.Close(dstFile)
-		mountTarget = dstPath
-	} else {
-		mountTarget = dstDir
-	}
-
-	err = unix.Mount(hostPath, mountTarget, "", uintptr(mFlags), "")
-	if err != nil {
-		return fmt.Errorf("failed to bind mount %s: %w", mountTarget, err)
-	}
-
-	return nil
-}
-
-// mapRootfsPropagationFlag retrieves the propagation flags of the rootfs
-// from the container's configuration
-func mapRootfsPropagationFlag(value string) (int, error) {
-	mountPropagationMapping := map[string]int{
-		"rprivate":    unix.MS_PRIVATE | unix.MS_REC,
-		"private":     unix.MS_PRIVATE,
-		"rslave":      unix.MS_SLAVE | unix.MS_REC,
-		"slave":       unix.MS_SLAVE,
-		"rshared":     unix.MS_SHARED | unix.MS_REC,
-		"shared":      unix.MS_SHARED,
-		"runbindable": unix.MS_UNBINDABLE | unix.MS_REC,
-		"unbindable":  unix.MS_UNBINDABLE,
-	}
-
-	propagation, exists := mountPropagationMapping[value]
-	if !exists {
-		return 0, fmt.Errorf("rootfsPropagation=%s is not supported", value)
-	}
-
-	return propagation, nil
-}
-
-// rootfsParentMountPrivate ensures rootfs parent mount is private.
-// This is needed for two reasons:
-//   - pivot_root() will fail if parent mount is shared;
-//   - when we bind mount rootfs, if its parent is not private, the new mount
-//     will propagate (leak!) to parent namespace and we don't want that.
-func rootfsParentMountPrivate(path string) error {
-	var err error
-	// Assuming path is absolute and clean.
-	// Any error other than EINVAL means we failed,
-	// and EINVAL means this is not a mount point, so traverse up until we
-	// find one.
-	for {
-		err = unix.Mount("", path, "", unix.MS_PRIVATE, "")
-		if err == nil {
-			return nil
-		}
-		if err != unix.EINVAL || path == "/" {
-			break
-		}
-		path = filepath.Dir(path)
-	}
-
-	return fmt.Errorf("Could not remount as private the parent mount of %s", path)
-}
-
-// prepareRoot prepares the directory of the container's rootfs to safely pivot
-// chroot to it.
-func prepareRoot(path string, rootfsPropagation string) error {
-	flag := unix.MS_SLAVE | unix.MS_REC
-	if rootfsPropagation != "" {
-		var err error
-
-		flag, err = mapRootfsPropagationFlag(rootfsPropagation)
-		if err != nil {
-			return err
-		}
-	}
-
-	err := unix.Mount("", "/", "", uintptr(flag), "")
-	if err != nil {
-		return err
-	}
-
-	err = rootfsParentMountPrivate(path)
-	if err != nil {
-		return err
-	}
-
-	return unix.Mount(path, path, "bind", unix.MS_BIND|unix.MS_REC, "")
-}
-
-// containsNS checks of the container's configuration contains a specific namespace
-func containsNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) bool {
-	for _, ns := range namespaces {
-		if ns.Type == nsType {
-			return true
-		}
-	}
-
-	return false
-}
-
-// findQemuDataDir tries to find the location of data and BIOS files for Qemu.
-// At first checks /usr/local/share and if it does not exist, it falls back to
-// /usr/share. If /usr/local/share is a soft link, it will find its target.
-func findQemuDataDir(basename string) (string, error) {
-	// First check if the file exists under /usr/local/share
-	qdPath := filepath.Join("/usr/local/share/", basename)
-	info, err := os.Lstat(qdPath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return "", fmt.Errorf("failed to get info of %s: %w", qdPath, err)
-		}
-		// The file does not exist under /usr/local/share
-		// fallback to the usual path /usr/share/
-		qdPath = filepath.Join("/usr/share/", basename)
-	} else {
-		// The file exists under /usr/local/share, but check if it is a link
-		if info.Mode()&os.ModeSymlink != 0 {
-			// It is a link, get the target
-			qdPath, err = os.Readlink(qdPath)
-			if err != nil {
-				return "", fmt.Errorf("failed to get target of %s %w", qdPath, err)
-			}
-		}
-
-		// It is not a link, so we found it
-		return qdPath, nil
-	}
-
-	return qdPath, nil
-}
-
-func mountVolumes(rootfsPath string, mounts []specs.Mount) error {
-	for _, m := range mounts {
-		// Skip non-bind mounts
-		// TODO handle other types of mounts too
-		if m.Type != "bind" {
-			continue
-		}
-		var mountFlags int
-		var mountClearedFlags int
-		var propFlag []int
-		mountFlags = 0
-		mountClearedFlags = 0
-		for _, o := range m.Options {
-			f, exists := mapMountFlag(o)
-			if exists {
-				if f.clear {
-					mountFlags &= ^f.flag
-					mountClearedFlags |= f.flag
-				} else {
-					mountFlags |= f.flag
-					mountClearedFlags &= ^f.flag
-				}
-				continue
-			}
-			fprop, err := mapRootfsPropagationFlag(o)
-			if err == nil {
-				propFlag = append(propFlag, fprop)
-			}
-			// Ignore unknown flags
-			// TODO: Handle unknown flags. These can be mount attribute flags
-			// or specific flags for a particular fs type.
-		}
-		err := fileFromHost(rootfsPath, m.Source, m.Destination, mountFlags, false)
-		if err != nil {
-			return err
-		}
-
-		dstPath := filepath.Join(rootfsPath, m.Destination)
-		for _, pFlag := range propFlag {
-			err = unix.Mount(dstPath, dstPath, "", uintptr(pFlag), "")
-			if err != nil {
-				return fmt.Errorf("Failed to set propagation flag for %s: %w", m.Source, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// mapMountFlag retrieves the mount flags of a mount entry
-// from the container's configuration
-func mapMountFlag(value string) (mountFlagStruct, bool) {
-	mountFlagsMapping := map[string]mountFlagStruct{
-		"async":         {true, unix.MS_SYNCHRONOUS},
-		"atime":         {true, unix.MS_NOATIME},
-		"bind":          {false, unix.MS_BIND},
-		"defaults":      {false, 0},
-		"dev":           {true, unix.MS_NODEV},
-		"diratime":      {true, unix.MS_NODIRATIME},
-		"dirsync":       {false, unix.MS_DIRSYNC},
-		"exec":          {true, unix.MS_NOEXEC},
-		"iversion":      {false, unix.MS_I_VERSION},
-		"lazytime":      {false, unix.MS_LAZYTIME},
-		"loud":          {true, unix.MS_SILENT},
-		"mand":          {false, unix.MS_MANDLOCK},
-		"noatime":       {false, unix.MS_NOATIME},
-		"nodev":         {false, unix.MS_NODEV},
-		"nodiratime":    {false, unix.MS_NODIRATIME},
-		"noexec":        {false, unix.MS_NOEXEC},
-		"noiversion":    {true, unix.MS_I_VERSION},
-		"nolazytime":    {true, unix.MS_LAZYTIME},
-		"nomand":        {true, unix.MS_MANDLOCK},
-		"norelatime":    {true, unix.MS_RELATIME},
-		"nostrictatime": {true, unix.MS_STRICTATIME},
-		"nosuid":        {false, unix.MS_NOSUID},
-		"nosymfollow":   {false, unix.MS_NOSYMFOLLOW}, // since kernel 5.10
-		"rbind":         {false, unix.MS_BIND | unix.MS_REC},
-		"relatime":      {false, unix.MS_RELATIME},
-		"remount":       {false, unix.MS_REMOUNT},
-		"ro":            {false, unix.MS_RDONLY},
-		"rw":            {true, unix.MS_RDONLY},
-		"silent":        {false, unix.MS_SILENT},
-		"strictatime":   {false, unix.MS_STRICTATIME},
-		"suid":          {true, unix.MS_NOSUID},
-		"sync":          {false, unix.MS_SYNCHRONOUS},
-		"symfollow":     {true, unix.MS_NOSYMFOLLOW}, // since kernel 5.10
-	}
-
-	f, e := mountFlagsMapping[value]
-	return f, e
 }
