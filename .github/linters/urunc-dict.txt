@@ -357,3 +357,5 @@ chardev
 vhostqemu
 vhost
 libexec
+sonarcloud
+NOSONAR
