@@ -14,7 +14,7 @@ machine (VM).
 Overall, we need to do the followings:
 
 1. Build or reuse a Linux kernel.
-2. (Optional) Build or fetch an init process.
+2. (Optional but recommended) Build or fetch an init process.
 3. Prepare the final image by appending the Linux kernel (and init) and set up
    `urunc` annotations.
 
@@ -54,16 +54,19 @@ However, this is not always reliable:
 - If the application exits, the system halts.
 - CLI argument handling may be incorrect: Linux does not natively support
   multi-word arguments via kernel boot parameters. Each space-separated word is
-  treated as a separate argument.
+treated as a separate argument.
 - A few necessary operations (such as mount /proc, set default route) might be
   required before executing the application.
+- The Linux kernel can only handle a limited number of characters in its boot
+  parameters. If too many or very long environment variables are passed, the
+  boot process will fail once that limit is exceeded. 
 
 Especially, for CLI argument handing, `urunc` follows a simple convention. All
 multi-word CLI arguments are wrapped in single quotes and the init process (or
 application) is expected to reconstruct them properly.
 
-For all the above reasons, we recommend using a dedicated init process. We
-provide [urunit](https://github.com/nubificus/urunit#); a lightweight init
+For all the above reasons, we strongly recommend using a dedicated init process.
+We provide [urunit](https://github.com/nubificus/urunit#); a lightweight init
 designed specifically for `urunc`. It performs the following actions:
 
 1. Sets default route through eth0. This is necessary when we deploy
@@ -71,7 +74,43 @@ designed specifically for `urunc`. It performs the following actions:
    the gateway of the container might be in a different subnet than the IP.
    As a result, Linux kernel will fail to set the gateway.
 2. Groups multi-word arguments correctly.
+3. Mounts `/proc` and `/sys`.
+3. Reads and sets the environment variables for the application execution
+3. Reads and sets the uid,gid and working directory for the application execution
 3. Acts as a reaper, cleaning up zombie processes.
+
+To pass the necessary information to
+[urunit](https://github.com/nubificus/urunit), `urunc` uses a configuration
+file that passes to the VM with the following format:
+
+```
+UES
+/* list of environment variables */
+UEE
+UCS
+UID:<uid>
+GID:<gid>
+WD:<working_dir>
+UCE
+```
+
+In order to minimize the dependencies for the Linux kernel running as guest,
+`urunc` attaches this configuration file as an initrd of the VM and sets the
+`retain_initrd` kernel boot parameter. In that way,
+[urunit](https://github.com/nubificus/urunit) will be able to read the
+configuration file from `/sys/firmware/initrd`. In case the guest is configured
+to boot with a user-specified initrd, then `urunc` will archive in the cpio
+format the configuration file and concatenate it with the user-provided initrd.
+The Linux kernel is smart enough to handle concatenated initrd and hence the
+configuration file will appear in the guest's rootfs.
+
+As a result, in case [urunit](https://github.com/nubificus/urunit) is used we
+strongly recommend to configure the Linux kernel setting the following
+configuration options:
+
+- Support for initrd `CONFIG_BLK_DEV_INITRD`
+- Support for sysfs `CONFIG_SYSFS`
+- Support for procfs `CONFIG_PROC_FS`
 
 You can obtain [urunit](https://github.com/nubificus/urunit) in two ways:
 
