@@ -47,7 +47,7 @@ func ctrNewContainerCmd(a containerTestArgs) string {
 	}
 	// ctr does not seem to support additional groups.
 	// Therefore only set the UID/GID
-	if a.UID != 0 && a.GID != 0 {
+	if a.UID != 0 || a.GID != 0 {
 		cmdBase += fmt.Sprintf("-u %d:%d ", a.UID, a.GID)
 	}
 	cmdBase += a.Image + " "
