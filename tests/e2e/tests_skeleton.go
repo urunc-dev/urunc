@@ -77,11 +77,11 @@ func runTest(tool testTool, t *testing.T) {
 		}
 		output, err := tool.runContainer(false)
 		if err != nil {
-			t.Fatalf("Failed to run unikernel container: %s -- %v", output, err)
+			t.Errorf("Failed to run unikernel container: %s -- %v", output, err)
 		}
 		tool.setContainerID(cntrArgs.Name)
 		if !strings.Contains(string(output), cntrArgs.ExpectOut) {
-			t.Fatalf("Expected: %s, Got: %s", cntrArgs.ExpectOut, output)
+			t.Errorf("Expected: %s, Got: %s", cntrArgs.ExpectOut, output)
 		}
 		err = testCleanup(tool)
 		if err != nil {
