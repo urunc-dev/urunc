@@ -23,6 +23,9 @@ users:
   codesmith25103:
     name: sankalp
     email: sankalp25103@gmail.com
+  vliaskov:
+    name: Vasilis Liaskovitis
+    email: vliaskovitis@suse.com
   copilot-pull-request-reviewerbot:
     name: copilot[bot]
     email: copilot[bot]@users.noreply.github.com

@@ -151,6 +151,11 @@ func (i *ctrInfo) rmContainer() error {
 	if err != nil {
 		return fmt.Errorf("Failed to remove %s: %v", i.containerID, err)
 	}
+	output, err = commonRmContainer(ctrName+" s", i.testArgs.Name)
+	err = checkExpectedOut("", output, err)
+	if err != nil {
+		return fmt.Errorf("Failed to remove snapshot %s: %v", i.testArgs.Name, err)
+	}
 	return nil
 }
 
