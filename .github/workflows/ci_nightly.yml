@@ -19,23 +19,12 @@ permissions:
   attestations: write
 
 jobs:
-  validate-files-and-commits:
-    name: Lint Files & commits 
-    uses: ./.github/workflows/validate-files-and-commits.yml
-    with:
-      ref: ${{ github.sha }}
-
-  lint:
-    name: Lint code
-    uses: ./.github/workflows/lint.yml
-    with:
-      ref: ${{ github.sha }}
-
   build:
     name: Build
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ github.sha }}
+      go_version: "1.24.6"
 
   unit_test:
     name: Unit tests
