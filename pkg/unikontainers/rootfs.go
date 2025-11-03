@@ -405,5 +405,41 @@ func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needs
 		}
 	}
 
+	// Setup /dev/pts for PTY support (needed for console and debugging tools like cntr)
+	// This allows tools like cntr to attach to the container with a shell
+	devPtsDir := filepath.Join(monRootfs, "/dev/pts")
+	err = os.MkdirAll(devPtsDir, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create /dev/pts directory: %w", err)
+	}
+
+	// Mount devpts filesystem
+	// Using newinstance creates an isolated pts namespace for this container
+	err = unix.Mount("devpts", devPtsDir, "devpts", unix.MS_NOSUID|unix.MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620,gid=5")
+	if err != nil {
+		return fmt.Errorf("failed to mount devpts: %w", err)
+	}
+
+	// Create /dev/ptmx as a symlink to /dev/pts/ptmx
+	// This is the standard way to provide the PTY master device
+	ptmxPath := filepath.Join(monRootfs, "/dev/ptmx")
+	err = os.Symlink("pts/ptmx", ptmxPath)
+	if err != nil && !os.IsExist(err) {
+		return fmt.Errorf("failed to create /dev/ptmx symlink: %w", err)
+	}
+
+	// Create /dev/console file
+	consolePath := filepath.Join(monRootfs, "/dev/console")
+	consoleFile, err := os.Create(consolePath)
+	if err != nil && !os.IsExist(err) {
+		return fmt.Errorf("failed to create /dev/console: %w", err)
+	}
+	// Ensure correct permissions
+	if err := consoleFile.Chmod(0o666); err != nil {
+		consoleFile.Close()
+		return fmt.Errorf("failed to chmod /dev/console: %w", err)
+	}
+	consoleFile.Close()
+
 	return nil
 }
