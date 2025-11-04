@@ -359,6 +359,27 @@ chmod +x $CONTAINERD_BINARY_FILENAME
 sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
 ```
 
+### Option 3: Install from latest artifacts (tip of the main branch)
+
+We can also install `urunc` from binary builds of the main branch:
+
+```bash
+URUNC_VERSION=main
+URUNC_BINARY_FILENAME="urunc_static_$(dpkg --print-architecture)"
+wget -q https://s3.nbfc.io/nbfc-assets/github/urunc/dist/$URUNC_VERSION/$(dpkg --print-architecture)/$URUNC_BINARY_FILENAME
+chmod +x $URUNC_BINARY_FILENAME
+sudo mv $URUNC_BINARY_FILENAME /usr/local/bin/urunc
+```
+
+And for `containerd-shim-urunc-v2`:
+
+```bash
+CONTAINERD_BINARY_FILENAME="containerd-shim-urunc-v2_static_$(dpkg --print-architecture)"
+wget -q https://s3.nbfc.io/nbfc-assets/github/urunc/dist/$URUNC_VERSION/$(dpkg --print-architecture)/$CONTAINERD_BINARY_FILENAME
+chmod +x $CONTAINERD_BINARY_FILENAME
+sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
+```
+
 ### Add urunc runtime to containerd
 
 We also need to add `urunc` as a runtime in containerd's configuration:

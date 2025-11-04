@@ -1,8 +1,6 @@
 name: urunc CI (nightly)
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'

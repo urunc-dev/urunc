@@ -1,0 +1,105 @@
+name: Upload to S3
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+        default: ''
+    secrets:
+      AWS_ACCESS_KEY:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+
+  workflow_dispatch:
+    inputs:
+      ref:
+        required: true
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    continue-on-error: true
+
+    steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+      with:
+        egress-policy: audit
+
+    - name: Get revision SHA and branch (safe)
+      id: get-rev
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        IS_MERGED: ${{ github.event.pull_request.merged }}
+        GITHUB_SHA: ${{ github.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        REF_NAME: ${{ github.ref_name }}
+      run: |
+        if [ "$EVENT_NAME" == "pull_request" ]; then
+          if [ "$IS_MERGED" == "true" ]; then
+            sha="$GITHUB_SHA"
+            branch="$PR_BASE_REF"
+            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
+          else
+            sha="$PR_HEAD_SHA"
+            branch="$PR_HEAD_REF"
+            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
+          fi
+        else
+          sha="$GITHUB_SHA"
+          branch="$REF_NAME"
+          echo "$EVENT_NAME event. SHA: ${sha}, Branch: ${branch}"
+        fi
+
+        echo "sha=${sha}" >> "$GITHUB_ENV"
+        echo "branch=${branch}" >> "$GITHUB_ENV"
+
+    - name: Download urunc artifact
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+      with:
+        name: urunc_${{ matrix.arch }}-${{ github.run_id }}
+        path: ./
+
+    - name: Download containerd-shim-urunc-v2 artifact
+      uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+      with:
+        name: containerd-shim-urunc-v2_${{ matrix.arch }}-${{ github.run_id }}
+        path: ./
+
+    - name: Upload urunc to S3
+      uses: cloudkernels/minio-upload@5fc9bf7a244cfafb453c6b10c8c3730a68bff0db
+      with:
+        url: https://s3.nbfc.io
+        access-key: ${{ secrets.AWS_ACCESS_KEY }}
+        secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        local-path: urunc_static_${{ matrix.arch }}
+        remote-path: nbfc-assets/github/urunc/dist/${{ env.branch }}/${{ matrix.arch }}/
+        policy: 1
+
+    - name: Upload containerd-shim-urunc-v2 to S3
+      uses: cloudkernels/minio-upload@5fc9bf7a244cfafb453c6b10c8c3730a68bff0db
+      with:
+        url: https://s3.nbfc.io
+        access-key: ${{ secrets.AWS_ACCESS_KEY }}
+        secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        local-path: containerd-shim-urunc-v2_static_${{ matrix.arch }}
+        remote-path: nbfc-assets/github/urunc/dist/${{ env.branch }}/${{ matrix.arch }}/
+        policy: 1
