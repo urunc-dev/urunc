@@ -38,7 +38,7 @@ type MirageBlock struct {
 	RootFS string
 }
 
-func (m *Mirage) CommandString() (string, error) {
+func (m *Mirage) CommandString(_ string) (string, error) {
 	return fmt.Sprintf("%s %s %s", m.Net.Address,
 		m.Net.Gateway,
 		m.Command), nil

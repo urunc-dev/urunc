@@ -61,14 +61,17 @@ func IsIPInSubnet(ln LinuxNet) bool {
 	return ip.Mask(mask).Equal(subnet)
 }
 
-func (l *Linux) CommandString() (string, error) {
+func (l *Linux) CommandString(monitor string) (string, error) {
 	rdinit := ""
 	bootParams := "panic=-1"
 
 	// TODO: Check if this check causes any performance drop
 	// or explore alternative implementations
 	consoleStr := ""
-	if runtime.GOARCH == "arm64" {
+	// TODO: Check under which conditions console should be set to
+	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
+	// and Qemu ttyAMA0 for aarch64 while for amd64 both are fine with ttyS0
+	if runtime.GOARCH == "arm64" && monitor == "qemu" {
 		consoleStr = "console=ttyAMA0"
 	} else {
 		consoleStr = "console=ttyS0"

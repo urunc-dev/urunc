@@ -16,7 +16,7 @@ package types
 
 type Unikernel interface {
 	Init(UnikernelParams) error
-	CommandString() (string, error)
+	CommandString(string) (string, error)
 	SupportsBlock() bool
 	SupportsFS(string) bool
 	MonitorNetCli(string, string, string) string

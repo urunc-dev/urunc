@@ -57,7 +57,7 @@ type RumprunBlk struct {
 	Mountpoint string `json:"mountpoint"`
 }
 
-func (r *Rumprun) CommandString() (string, error) {
+func (r *Rumprun) CommandString(_ string) (string, error) {
 	// Rumprun accepts a JSON string to configure the unikernel. However,
 	// Rumprun does not use a valid JSON format. Therefore, we manually
 	// construct the JSON instead of using Go's json Marshal.

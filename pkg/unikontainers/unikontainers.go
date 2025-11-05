@@ -426,7 +426,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// unikernel
 	// build the unikernel command
-	unikernelCmd, err := unikernel.CommandString()
+	unikernelCmd, err := unikernel.CommandString(vmmType)
 	if err != nil {
 		return err
 	}

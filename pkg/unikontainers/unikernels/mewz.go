@@ -34,7 +34,7 @@ type MewzNet struct {
 	Gateway string
 }
 
-func (m *Mewz) CommandString() (string, error) {
+func (m *Mewz) CommandString(_ string) (string, error) {
 	return fmt.Sprintf("ip=%s/%d gateway=%s ", m.Net.Address, m.Net.Mask,
 		m.Net.Gateway), nil
 }

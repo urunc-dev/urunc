@@ -49,7 +49,7 @@ type UnikraftVFS struct {
 	RootFS string
 }
 
-func (u *Unikraft) CommandString() (string, error) {
+func (u *Unikraft) CommandString(_ string) (string, error) {
 	envVarString := ""
 	consoleStr := ""
 
