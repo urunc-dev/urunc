@@ -16,6 +16,7 @@ package hypervisors
 
 import (
 	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -49,16 +50,12 @@ func applySeccompFilter() error {
 		"epoll_ctl",
 		"epoll_create1",
 		"read",
-		"open",
 		"close",
 		"fstat",
-		"stat",
 		"munmap",
 		"brk",
-		"access",
 		"execve",
 		"timerfd_create",
-		"arch_prctl",
 		"lseek",
 		"personality",
 		"socket",
@@ -74,12 +71,17 @@ func applySeccompFilter() error {
 		"rt_sigreturn",
 		"timerfd_settime",
 		"pwrite64",
-		"newfstatat",
 		"set_tid_address",
 		"set_robust_list",
 		"rseq",
 		"prlimit64",
 		"getrandom",
+	}
+
+	if runtime.GOARCH == "arm64" {
+		syscalls = append(syscalls, "faccessat", "fstatat")
+	} else {
+		syscalls = append(syscalls, "open", "stat", "access", "arch_prctl", "newfstatat")
 	}
 	// Some of the actions that we can take for accessing non-permitted system calls are:
 	// - seccomp.ActionKillThread will kill the thread that tried to use a non-permitted

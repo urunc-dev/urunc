@@ -364,3 +364,4 @@ Msec
 Mtim
 Nsec
 SYSFS
+faccessat
