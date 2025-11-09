@@ -58,18 +58,6 @@ by running the:
 > unitest, e2etest) you might need to specify the path to the go binary
 with `sudo GO=$(which go) make`.
 
-## Debugging
+## Next Steps
 
-To enable debugging logs, we need to pass the `--debug` flag when calling `urunc`. Also, to facilitate easier
-debugging, when the `debug` flag is true all logs are propagated to the syslog.
-
-An easy way to achieve this is to create a Bash wrapper for `urunc`:
-
-```bash
-sudo mv /usr/local/bin/urunc /usr/local/bin/urunc.default
-sudo tee /usr/local/bin/urunc > /dev/null <<'EOT'
-#!/usr/bin/env bash
-exec /usr/local/bin/urunc.default --debug "$@"
-EOT
-sudo chmod +x /usr/local/bin/urunc
-```
+For information on debugging urunc containers, see the [Debugging Guide](debugging.md).

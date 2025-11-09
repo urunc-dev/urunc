@@ -365,3 +365,7 @@ Mtim
 Nsec
 SYSFS
 faccessat
+devpts
+ptmx
+ptmxmode
+newinstance
