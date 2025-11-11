@@ -53,6 +53,7 @@ var uniklog = logrus.WithField("subsystem", "unikontainers")
 
 var ErrQueueProxy = errors.New("this a queue proxy container")
 var ErrNotUnikernel = errors.New("this is not a unikernel container")
+var ErrNotExistingNS = errors.New("the namespace does not exist")
 
 // Unikontainer holds the data necessary to create, manage and delete unikernel containers
 type Unikontainer struct {
@@ -437,7 +438,11 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	vmmArgs.Command = unikernelCmd
 
 	// pivot
-	withPivot := containsNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
+	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
+	// We just want to check if a mount namespace was define din the list
+	// Therefore, if there was no error and the mount namespace was found
+	// we can pivot.
+	withPivot := err != nil
 	err = changeRoot(rootfsParams.MonRootfs, withPivot)
 	if err != nil {
 		return err
@@ -492,12 +497,27 @@ func setupUser(user specs.User) error {
 // Kill stops the VMM process, first by asking the VMM struct to stop
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {
+	// Try to join the Network namespace of the monitor befor ekilling it.
+	// If we kill it there might be no process inside the namespace and hence
+	// the namespace gets destroyed.
+	err := u.joinSandboxNetNs()
+	if err != nil {
+		if errors.Is(err, ErrNotExistingNS) {
+			// There is no network namespace to join.
+			// Most probably the sandbox is dead and the namespace
+			// has been destroyed.
+			uniklog.Infof("could not find sandbox's network namespace: %v", err)
+			return nil
+		}
+		return fmt.Errorf("failed to join sandbox netns: %v", err)
+	}
 	vmmType := u.State.Annotations[annotHypervisor]
 	// get a new vmm
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
 	if err != nil {
 		return err
 	}
+	// TODO: Properly implement this and let that code handle the shutdown
 	err = vmm.Stop(u.State.ID)
 	if err != nil {
 		return err
@@ -525,14 +545,6 @@ func (u *Unikontainer) Kill() error {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// If PID is running we need to kill the process
-	// Once the process is dead, we need to enter the network namespace
-	// and delete the TC rules and TAP device
-	err = u.joinSandboxNetNs()
-	if err != nil {
-		uniklog.Errorf("failed to join sandbox netns: %v", err)
-		return nil
-	}
 	// TODO: tap0_urunc should not be hardcoded
 	err = network.Cleanup("tap0_urunc")
 	if err != nil {
@@ -606,39 +618,24 @@ func (u *Unikontainer) Delete() error {
 	return os.RemoveAll(u.BaseDir)
 }
 
-// joinSandboxNetns joins the network namespace of the sandbox (pause container).
+// joinSandboxNetns joins the network namespace of the sandbox
 // This function should be called only from a locked thread
 // (i.e. runtime. LockOSThread())
 func (u Unikontainer) joinSandboxNetNs() error {
-	var netNsPath string
-	// We want enter the network namespace of the container.
-	// There are two possibilities:
-	// 1. The unikernel was running inside a Pod and hence we need to join
-	//    the namespace of the pause container
-	// 2. The unikernel was running in its own network namespace (typical
-	//    in docker, nerdctl etc.). If that is the case, then when the
-	//    unikernel dies/exits the namespace will also die, since there will
-	//    not be any process in that namespace. Therefore, the cleanup will
-	//    happen automatically and we do not need to care about that.
-	// Therefore, focus only in the first case above.
-	for _, ns := range u.Spec.Linux.Namespaces {
-		if ns.Type == specs.NetworkNamespace {
-			if ns.Path == "" {
-				// We had to create the network namespace, when
-				// creating the container. Therefore, the namespace
-				// will die along with the unikernel.
-				return nil
-			}
-			err := checkValidNsPath(ns.Path)
-			if err == nil {
-				netNsPath = ns.Path
-			} else {
-				return err
-			}
-			break
+	netNsPath, err := findNS(u.Spec.Linux.Namespaces, specs.NetworkNamespace)
+	if err != nil && !errors.Is(err, ErrNotExistingNS) {
+		return err
+	}
+	// In case no path was specified for the network namespace it means,
+	// that we had to create a new one and therefore we can join it by
+	// using the pid of the monitor process.
+	if netNsPath == "" {
+		netNsPath = fmt.Sprintf("/proc/%d/ns/net", u.State.Pid)
+		err := checkValidNsPath(netNsPath)
+		if err != nil {
+			return err
 		}
 	}
-
 	uniklog.WithFields(logrus.Fields{
 		"path": netNsPath,
 	}).Debug("Joining network namespace")

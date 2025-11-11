@@ -193,7 +193,7 @@ func remove(s []string, i int) []string {
 func checkValidNsPath(path string) error {
 	// only set to join this namespace if it exists
 	if _, err := os.Lstat(path); err != nil {
-		return fmt.Errorf("namespace path: %w", err)
+		return ErrNotExistingNS
 	}
 	// do not allow namespace path with comma as we use it to separate
 	// the namespace paths
@@ -279,14 +279,18 @@ func fileExists(fpath string) bool {
 }
 
 // containsNS checks of the container's configuration contains a specific namespace
-func containsNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) bool {
+func findNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) (string, error) {
 	for _, ns := range namespaces {
 		if ns.Type == nsType {
-			return true
+			err := checkValidNsPath(ns.Path)
+			if err != nil {
+				return "", err
+			}
+			return ns.Path, nil
 		}
 	}
 
-	return false
+	return "", fmt.Errorf("Namespace %s was not found", string(nsType))
 }
 
 // findQemuDataDir tries to find the location of data and BIOS files for Qemu.
