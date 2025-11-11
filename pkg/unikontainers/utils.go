@@ -15,6 +15,8 @@
 package unikontainers
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +26,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -330,6 +333,41 @@ func rmMultipleDirs(prefixPath string, dirs []string) error {
 		if err := os.RemoveAll(path); err != nil {
 			return fmt.Errorf("cannot remove %s: %w", d, err)
 		}
+	}
+
+	return nil
+}
+
+func executeHook(hook specs.Hook, state []byte) error {
+	var stdout, stderr bytes.Buffer
+	var cancel context.CancelFunc
+	ctx := context.Background()
+
+	// Apply hook-specific timeout if set, otherwise use global config timeout
+	if hook.Timeout != nil && *hook.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(*hook.Timeout)*time.Second)
+	}
+	if cancel != nil {
+		defer cancel()
+	}
+
+	// Skip the first argument (the binary name) because CommandContext() adds
+	// the binary path as the first arg automatically.
+	args := hook.Args
+	if len(args) > 0 {
+		args = args[1:]
+	}
+	// Hook path and args come from OCI runtime spec configuration.
+	// We are expected to execute whatever is there.
+	cmd := exec.CommandContext(ctx, hook.Path, args...) // nolint:gosec
+	cmd.Env = hook.Env
+	cmd.Stdin = bytes.NewReader(state)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed hook: %s stdout: %s stderr %s error: %w", hook.Path, stdout.String(), stderr.String(), err)
 	}
 
 	return nil

@@ -22,7 +22,6 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -645,63 +644,83 @@ func (u *Unikontainer) saveContainerState() error {
 	return os.WriteFile(stateName, data, 0o644) //nolint: gosec
 }
 
-func (u *Unikontainer) ExecuteHooks(name string) error {
-	// NOTICE: This wrapper function provides an easy way to toggle between
-	// the sequential and concurrent hook execution. By default the hooks are executed concurrently.
-	// To execute hooks sequentially, change the following line to:
-	// if false
-	if true {
-		return u.executeHooksConcurrently(name)
+// getHooksByName returns the hooks for a given lifecycle stage
+func (u *Unikontainer) getHooksByName(name string) []specs.Hook {
+	switch name {
+	case "Prestart":
+		return u.Spec.Hooks.Prestart // nolint:staticcheck // deprecated but still supported
+	case "CreateRuntime":
+		return u.Spec.Hooks.CreateRuntime
+	case "CreateContainer":
+		return u.Spec.Hooks.CreateContainer
+	case "StartContainer":
+		return u.Spec.Hooks.StartContainer
+	case "Poststart":
+		return u.Spec.Hooks.Poststart
+	case "Poststop":
+		return u.Spec.Hooks.Poststop
+	default:
+		return nil
 	}
-	return u.executeHooksSequentially(name)
 }
 
-// ExecuteHooks executes concurrently any hooks found in spec based on name:
-func (u *Unikontainer) executeHooksConcurrently(name string) error {
-	// NOTICE: It is possible that the concurrent execution of the hooks may cause
-	// some unknown problems down the line. Be sure to prioritize checking with sequential
-	// hook execution when debugging.
-
-	// More info for individual hooks can be found here:
-	// https://github.com/opencontainers/runtime-spec/blob/main/config.md#posix-platform-hooks
-	uniklog.Debugf("Executing %s hooks", name)
+func (u *Unikontainer) ExecuteHooks(name string) error {
 	if u.Spec.Hooks == nil {
 		return nil
 	}
-	hooks := map[string][]specs.Hook{
-		// TODO: Prestart is deprecated
-		"Prestart":        u.Spec.Hooks.Prestart, // nolint:staticcheck
-		"CreateRuntime":   u.Spec.Hooks.CreateRuntime,
-		"CreateContainer": u.Spec.Hooks.CreateContainer,
-		"StartContainer":  u.Spec.Hooks.StartContainer,
-		"Poststart":       u.Spec.Hooks.Poststart,
-		"Poststop":        u.Spec.Hooks.Poststop,
-	}[name]
 
-	if len(hooks) == 0 {
-		uniklog.WithFields(logrus.Fields{
-			"id":    u.State.ID,
-			"name:": name,
-		}).Debug("No hooks")
-		return nil
-	}
+	hooks := u.getHooksByName(name)
+	uniklog.Debugf("Executing %d %s hooks", len(hooks), name)
 
 	s, err := json.Marshal(u.State)
 	if err != nil {
 		return err
 	}
 
+	// NOTE: This wrapper function provides an easy way to toggle between
+	// the sequential and concurrent hook execution.
+	// By default the hooks are executed concurrently.
+	// To execute hooks sequentially, change the following line to:
+	// if false
+	if true {
+		return u.executeHooksConcurrently(name, hooks, s)
+	}
+	return u.executeHooksSequentially(name, hooks, s)
+}
+
+// executeHooksConcurrently executes concurrently any hooks found in spec based on name:
+// NOTE: It is possible that the concurrent execution of the hooks may cause
+// some unknown problems down the line. Be sure to prioritize checking
+// with sequential hook execution when debugging.
+func (u *Unikontainer) executeHooksConcurrently(name string, hooks []specs.Hook, s []byte) error {
 	var (
 		wg       sync.WaitGroup
 		errChan  = make(chan error, len(hooks))
 		firstErr error
 	)
-	for _, hook := range hooks {
+	for i := range hooks {
+		uniklog.WithFields(logrus.Fields{
+			"id":   u.State.ID,
+			"name": name,
+			"path": hooks[i].Path,
+			"args": hooks[i].Args,
+		}).Debug("Executing hook")
+
 		wg.Add(1)
 		go func(h specs.Hook) {
 			defer wg.Done()
-			u.executeHook(h, s, errChan)
-		}(hook)
+			err := executeHook(h, s)
+			if err != nil {
+				uniklog.WithFields(logrus.Fields{
+					"id":    u.State.ID,
+					"name":  name,
+					"path":  hooks[i].Path,
+					"args":  hooks[i].Args,
+					"error": err,
+				}).Error("Executing hook failed")
+				errChan <- err
+			}
+		}(hooks[i])
 	}
 
 	go func() {
@@ -718,93 +737,30 @@ func (u *Unikontainer) executeHooksConcurrently(name string) error {
 	return firstErr
 }
 
-func (u *Unikontainer) executeHook(hook specs.Hook, state []byte, errChan chan<- error) {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Cmd{
-		Path:   hook.Path,
-		Args:   hook.Args,
-		Env:    hook.Env,
-		Stdin:  bytes.NewReader(state),
-		Stdout: &stdout,
-		Stderr: &stderr,
-	}
-
-	uniklog.WithFields(logrus.Fields{
-		"cmd":  cmd.String(),
-		"path": hook.Path,
-		"args": hook.Args,
-		"env":  hook.Env,
-	}).Debug("executing hook")
-
-	if err := cmd.Run(); err != nil {
+// executeHooksSequentially executes sequentially any hooks found in spec based on name:
+// NOTE: This function is left on purpose to aid future debugging efforts
+// in case concurrent hook execution causes unexpected errors.
+func (u *Unikontainer) executeHooksSequentially(name string, hooks []specs.Hook, s []byte) error {
+	for i := range hooks {
 		uniklog.WithFields(logrus.Fields{
-			"id":     u.State.ID,
-			"error":  err.Error(),
-			"cmd":    cmd.String(),
-			"stderr": stderr.String(),
-			"stdout": stdout.String(),
-		}).Error("failed to execute hook")
-		errChan <- fmt.Errorf("failed to execute hook '%s': %w", cmd.String(), err)
-	}
-}
+			"id":   u.State.ID,
+			"name": name,
+			"path": hooks[i].Path,
+			"args": hooks[i].Args,
+		}).Debug("Executing hook")
 
-// ExecuteHooks executes sequentially any hooks found in spec based on name:
-func (u *Unikontainer) executeHooksSequentially(name string) error {
-	// NOTICE: This function is left on purpose to aid future debugging efforts
-	// in case concurrent hook execution causes unexpected errors.
-
-	// More info for individual hooks can be found here:
-	// https://github.com/opencontainers/runtime-spec/blob/main/config.md#posix-platform-hooks
-	uniklog.Debugf("Executing %s hooks", name)
-	if u.Spec.Hooks == nil {
-		return nil
-	}
-
-	hooks := map[string][]specs.Hook{
-		// TODO: Prestart is deprecated
-		"Prestart":        u.Spec.Hooks.Prestart, // nolint:staticcheck
-		"CreateRuntime":   u.Spec.Hooks.CreateRuntime,
-		"CreateContainer": u.Spec.Hooks.CreateContainer,
-		"StartContainer":  u.Spec.Hooks.StartContainer,
-		"Poststart":       u.Spec.Hooks.Poststart,
-		"Poststop":        u.Spec.Hooks.Poststop,
-	}[name]
-
-	uniklog.Debugf("Found %d %s hooks", len(hooks), name)
-
-	if len(hooks) == 0 {
-		uniklog.WithFields(logrus.Fields{
-			"id":    u.State.ID,
-			"name:": name,
-		}).Debug("No hooks")
-		return nil
-	}
-
-	s, err := json.Marshal(u.State)
-	if err != nil {
-		return err
-	}
-	for _, hook := range hooks {
-		var stdout, stderr bytes.Buffer
-		cmd := exec.Cmd{
-			Path:   hook.Path,
-			Args:   hook.Args,
-			Env:    hook.Env,
-			Stdin:  bytes.NewReader(s),
-			Stdout: &stdout,
-			Stderr: &stderr,
-		}
-
-		if err := cmd.Run(); err != nil {
+		err := executeHook(hooks[i], s)
+		if err != nil {
 			uniklog.WithFields(logrus.Fields{
-				"id":     u.State.ID,
-				"name:":  name,
-				"error":  err.Error(),
-				"stderr": stderr.String(),
-				"stdout": stdout.String(),
-			}).Error("failed to execute hooks")
-			return fmt.Errorf("failed to execute %s hook '%s': %w", name, cmd.String(), err)
+				"id":    u.State.ID,
+				"name":  name,
+				"path":  hooks[i].Path,
+				"args":  hooks[i].Args,
+				"error": err,
+			}).Error("Executing hook failed")
+			return fmt.Errorf("failed to execute %s hook: %w", name, err)
 		}
+
 	}
 	return nil
 }
