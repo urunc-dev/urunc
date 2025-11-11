@@ -20,6 +20,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 )
 
 var startCommand = &cli.Command{
@@ -55,11 +56,29 @@ func startUnikontainer(cmd *cli.Command) error {
 	}
 	metrics.Capture(containerID, "TS12")
 
+	sockAddr := unikontainers.GetStartSockAddr(unikontainer.BaseDir)
+	listener, cleaner, err := unikontainers.CreateListener(sockAddr, true)
+	if err != nil {
+		return err
+	}
+	defer cleaner()
+
 	err = unikontainer.SendStartExecve()
 	if err != nil {
 		return err
 	}
 	metrics.Capture(containerID, "TS13")
+
+	// wait ContainerStarted message on start.sock from reexec process
+	err = unikontainers.AwaitMessage(listener, unikontainers.ContainerStarted)
+	if err != nil {
+		return err
+	}
+
+	err = unikontainer.SetRunningState()
+	if err != nil {
+		return err
+	}
 
 	return unikontainer.ExecuteHooks("Poststart")
 }

@@ -371,3 +371,5 @@ ptmxmode
 newinstance
 Imgs
 nosec
+derr
+ldconfig

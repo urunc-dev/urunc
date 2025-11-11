@@ -79,6 +79,11 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 				return err
 			}
 		}
-		return unikontainer.Delete()
+		err = unikontainer.Delete()
+		if err != nil {
+			return err
+		}
+
+		return unikontainer.ExecuteHooks("Poststop")
 	},
 }

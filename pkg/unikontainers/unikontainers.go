@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -152,6 +153,12 @@ func (u *Unikontainer) Create(pid int) error {
 	}
 	u.State.Pid = pid
 	u.State.Status = specs.StateCreated
+	return u.saveContainerState()
+}
+
+// SetRunningState sets the Unikernel status as running,
+func (u *Unikontainer) SetRunningState() error {
+	u.State.Status = specs.StateRunning
 	return u.saveContainerState()
 }
 
@@ -390,26 +397,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		blockArgs = append(blockArgs, blockFromAnnot)
 	}
 
-	// State
-	// update urunc.json state
-	// TODO: Move this somewhere else. We are not yet running and
-	// maybe we need to make sure the monitor started correctly before
-	// setting this to running.
-	// For example, we can move it to the Start command.
-	u.State.Status = "running"
-	err = u.saveContainerState()
-	if err != nil {
-		return err
-	}
-
-	// execute hooks
-	// TODO: Check when to run this hook. For sure we need to run it in the
-	// container's namespace, but after/before pivot, user setup, etc.?
-	err = u.ExecuteHooks("StartContainer")
-	if err != nil {
-		return err
-	}
-
 	// unikernelParams
 	unikernelParams.Block = blockArgs
 
@@ -434,6 +421,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Command = unikernelCmd
 
+	// We need to open the socket before pivot so we can be able to use the
+	// same socket as urunc start
+	socketAddress := getStartSockAddr(u.BaseDir)
+	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: socketAddress, Net: "unix"})
+	if err != nil {
+		return err
+	}
+
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	// We just want to check if a mount namespace was define din the list
@@ -452,6 +447,17 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// execute hooks
+	// NOTE: StartContainer hooks are supposed to run right before the init of
+	// the container. However, in the case of a Linux-based container, the init
+	// of the container runs inside the sandbox. Therefore, we have to see how
+	// we should treat this hook, because it might refer to operations like
+	// ldconfig etc.
+	err = u.ExecuteHooks("StartContainer")
+	if err != nil {
+		return err
+	}
+
 	// virtiofs
 	if rootfsParams.Type == "virtiofs" {
 		// Start the virtiofsd process
@@ -463,7 +469,18 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(u.State.ID, "TS18")
-	// metrics.Wait()
+
+	// TODO: We set the state to running and notify urunc Start that the monitor
+	// started, but we might encounter issues with the monitor execution. We need
+	// to revisit this and check if a failed monitor execution affects this approach.
+	// If it affects then we need to re-design the whole spawning of the monitor.
+	// Notify urunc start
+	_, err = conn.Write([]byte(ContainerStarted))
+	if err != nil {
+		return fmt.Errorf("failed to send message \"%s\" to \"%s\": %w", ContainerStarted, socketAddress, err)
+	}
+	conn.Close()
+
 	return vmm.Execve(vmmArgs, unikernel)
 }
 
@@ -647,8 +664,6 @@ func (u *Unikontainer) saveContainerState() error {
 // getHooksByName returns the hooks for a given lifecycle stage
 func (u *Unikontainer) getHooksByName(name string) []specs.Hook {
 	switch name {
-	case "Prestart":
-		return u.Spec.Hooks.Prestart // nolint:staticcheck // deprecated but still supported
 	case "CreateRuntime":
 		return u.Spec.Hooks.CreateRuntime
 	case "CreateContainer":
@@ -660,6 +675,7 @@ func (u *Unikontainer) getHooksByName(name string) []specs.Hook {
 	case "Poststop":
 		return u.Spec.Hooks.Poststop
 	default:
+		uniklog.Warnf("Unsupported hook %s", name)
 		return nil
 	}
 }
@@ -988,25 +1004,18 @@ func GetUruncSockAddr(baseDir string) string {
 	return getSockAddr(baseDir, uruncSock)
 }
 
+func GetStartSockAddr(baseDir string) string {
+	return getSockAddr(baseDir, startSock)
+}
+
 // ListeAndAwaitMsg opens a new connection to UruncSock and
 // waits for the expectedMsg message
 func ListenAndAwaitMsg(sockAddr string, msg IPCMessage) error {
-	listener, err := CreateListener(sockAddr, true)
+	listener, cleaner, err := CreateListener(sockAddr, true)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err = listener.Close()
-		if err != nil {
-			uniklog.WithError(err).Error("failed to close listener")
-		}
-	}()
-	defer func() {
-		err = syscall.Unlink(sockAddr)
-		if err != nil {
-			uniklog.WithError(err).Errorf("failed to unlink %s", sockAddr)
-		}
-	}()
+	defer cleaner()
 	return AwaitMessage(listener, msg)
 }
 

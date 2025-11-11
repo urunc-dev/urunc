@@ -275,14 +275,6 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	}
 	metrics.Capture(containerID, "TS08")
 
-	// execute CreateRuntime hooks
-	err = unikontainer.ExecuteHooks("CreateContainer")
-	if err != nil {
-		err = fmt.Errorf("failed to execute CreateRuntime hooks: %w", err)
-		return err
-	}
-	metrics.Capture(containerID, "TS10")
-
 	err = nil
 	return err
 }
@@ -402,18 +394,20 @@ func reexecUnikontainer(cmd *cli.Command) error {
 		return err
 	}
 
+	// execute CreateContainer hooks
+	err = unikontainer.ExecuteHooks("CreateContainer")
+	if err != nil {
+		err = fmt.Errorf("failed to execute CreateContainer hooks: %w", err)
+		return err
+	}
+	metrics.Capture(containerID, "TS10")
+
 	// wait StartExecve message on urunc.sock from urunc start process
 	err = unikontainers.ListenAndAwaitMsg(socketPath, unikontainers.StartExecve)
 	if err != nil {
 		return err
 	}
 	metrics.Capture(containerID, "TS14")
-
-	// execute Prestart hooks
-	err = unikontainer.ExecuteHooks("Prestart")
-	if err != nil {
-		return err
-	}
 
 	// execve
 	// we need to pass metrics to Exec() function, as the unikontainer
