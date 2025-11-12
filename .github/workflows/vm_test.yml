@@ -171,6 +171,13 @@ jobs:
         EOT
         sudo systemctl restart containerd
 
+    - name: Setup block-based mountpoint
+      run: |
+        mkdir /tmp/test_mountpoint
+        dd if=/dev/zero of=/tmp/fake_block bs=1M count=200
+        mkfs.ext2 /tmp/fake_block
+        sudo mount /tmp/fake_block /tmp/test_mountpoint
+
     - name: Install CNI plugins
       env:
         CNI_VERSION: ${{ inputs.cni_version }}

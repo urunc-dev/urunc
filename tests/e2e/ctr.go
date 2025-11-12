@@ -50,6 +50,9 @@ func ctrNewContainerCmd(a containerTestArgs) string {
 	if a.UID != 0 || a.GID != 0 {
 		cmdBase += fmt.Sprintf("-u %d:%d ", a.UID, a.GID)
 	}
+	for _, vol := range a.Volumes {
+		cmdBase += fmt.Sprintf("--mount type=bind,src=%s,dst=%s ", vol.Source, vol.Dest)
+	}
 	cmdBase += a.Image + " "
 	cmdBase += a.Name + " "
 	cmdBase += a.Cli

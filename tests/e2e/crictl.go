@@ -84,6 +84,14 @@ func crictlNewContainerConfig(path string, a containerTestArgs) (string, error) 
 	} else {
 		name = a.Name
 	}
+	var mounts []*criruntimeapi.Mount
+	for _, vol := range a.Volumes {
+		mounts = append(mounts, &criruntimeapi.Mount{
+			ContainerPath: vol.Dest,
+			HostPath:      vol.Source,
+			Readonly:      false,
+		})
+	}
 	containerConfig := criruntimeapi.ContainerConfig{
 		Metadata: &criruntimeapi.ContainerMetadata{
 			Name: name,
@@ -92,6 +100,7 @@ func crictlNewContainerConfig(path string, a containerTestArgs) (string, error) 
 			Image: a.Image,
 		},
 		Command: strings.Fields(a.Cli),
+		Mounts:  mounts,
 		Linux: &criruntimeapi.LinuxContainerConfig{
 			SecurityContext: &criruntimeapi.LinuxContainerSecurityContext{},
 			Resources:       &criruntimeapi.LinuxContainerResources{},

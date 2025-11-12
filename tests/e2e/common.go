@@ -66,6 +66,9 @@ func commonNewContainerCmd(a containerTestArgs) string {
 	for _, groupID := range a.Groups {
 		cmdBase += fmt.Sprintf("--group-add %d ", groupID)
 	}
+	for _, vol := range a.Volumes {
+		cmdBase += fmt.Sprintf("--mount type=bind,src=%s,dst=%s ", vol.Source, vol.Dest)
+	}
 	cmdBase += "--name "
 	cmdBase += a.Name + " "
 	cmdBase += a.Image + " "

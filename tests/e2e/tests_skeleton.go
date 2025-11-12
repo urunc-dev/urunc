@@ -24,6 +24,11 @@ import (
 
 type testMethod func(tool testTool) error
 
+type containerVolume struct {
+	Source string
+	Dest   string
+}
+
 type containerTestArgs struct {
 	Name           string
 	Image          string
@@ -34,6 +39,7 @@ type containerTestArgs struct {
 	Groups         []int64
 	Memory         string
 	Cli            string
+	Volumes        []containerVolume
 	StaticNet      bool
 	SideContainers []string
 	Skippable      bool
@@ -59,6 +65,12 @@ func runTest(tool testTool, t *testing.T) {
 
 	})
 	cntrArgs := tool.getTestArgs()
+	for _, vol := range cntrArgs.Volumes {
+		_, err := os.Stat(vol.Source)
+		if err != nil {
+			t.Skipf("Could not find %s", vol.Source)
+		}
+	}
 	err = tool.pullImage()
 	if err != nil {
 		t.Fatalf("Failed to pull container image: %s - %v", cntrArgs.Image, err)
@@ -136,7 +148,7 @@ func runTest(tool testTool, t *testing.T) {
 	// Maybe we need to revisit this in the future.
 	// MirageOS in Qemu(nested) needs more time to be responsive
 	// in ping requests
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	err = cntrArgs.TestFunc(tool)
 	if err != nil {
 		t.Fatalf("Failed test: %v", err)

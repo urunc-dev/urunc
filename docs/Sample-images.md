@@ -48,3 +48,5 @@ We plan to create and maintain multi-platform images soon, as well as enrich thi
 - harbor.nbfc.io/nubificus/urunc/block-test-spt-mirage:latest
 - harbor.nbfc.io/nubificus/urunc/whoami-qemu-linux-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/whoami-firecracker-linux-initrd:latest
+- harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
+- harbor.nbfc.io/nubificus/urunc/busybox-firecracker-linux-raw:latest

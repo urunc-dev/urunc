@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -32,6 +33,59 @@ import (
 )
 
 var matchTest testMethod
+
+func blockMountTest(tool testTool) error {
+	args := tool.getTestArgs()
+	output, err := tool.logContainer()
+	if err != nil {
+		return fmt.Errorf("Failed to extract container logs: %v", err)
+	}
+	re := regexp.MustCompile(`^\d+\s+\d+\s+\d+:\d+\s+/[^\s]*\s+/[^\s]*\s+[\w,=-]+\s+-\s+\S+\s+\S+.*$`)
+	mountInfo := []string{}
+	unmounts := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		if re.MatchString(line) {
+			mountInfo = append(mountInfo, line)
+		}
+		if strings.Contains(line, "unmounting filesystem") {
+			unmounts = append(unmounts, line)
+		}
+	}
+	for _, vol := range args.Volumes {
+		found := false
+		blockDev := ""
+		for _, line := range mountInfo {
+			if strings.Contains(line, vol.Dest) {
+				parts := strings.Split(line, " - ")
+				if len(parts) != 2 {
+					return fmt.Errorf("Invalid line %s", line)
+				}
+				fields := strings.Fields(parts[1])
+				if len(fields) != 3 {
+					return fmt.Errorf("Invalid line %s", line)
+				}
+				blockDev = strings.TrimPrefix(fields[1], "/dev/")
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("Mount of %s with mountpoint %s was not found", vol.Source, vol.Dest)
+		}
+		found = false
+		for _, line := range unmounts {
+			if strings.Contains(line, blockDev) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("No unmounts of %s", blockDev)
+		}
+	}
+
+	return nil
+}
 
 func userGroupTest(tool testTool) error {
 	args := tool.getTestArgs()
