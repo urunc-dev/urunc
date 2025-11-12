@@ -32,10 +32,9 @@ type SPT struct {
 	binary     string
 }
 
-// Stop is an empty function to satisfy VMM interface compatibility requirements.
-// It does not perform any actions and always returns nil.
-func (s *SPT) Stop(_ string) error {
-	return nil
+// Stop kills the spt process
+func (s *SPT) Stop(pid int) error {
+	return killProcess(pid)
 }
 
 // UsesKVM returns a bool value depending on if the monitor uses KVM

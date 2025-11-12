@@ -29,7 +29,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
@@ -517,32 +516,9 @@ func (u *Unikontainer) Kill() error {
 	if err != nil {
 		return err
 	}
-	// TODO: Properly implement this and let that code handle the shutdown
-	err = vmm.Stop(u.State.ID)
+	err = vmm.Stop(u.State.Pid)
 	if err != nil {
 		return err
-	}
-
-	// Check if pid is running
-	if syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil {
-		err = syscall.Kill(u.State.Pid, unix.SIGKILL)
-		if err != nil {
-			return err
-		}
-	}
-	const timeout = 2 * time.Second
-	deadline := time.Now().Add(timeout)
-	for {
-		if err := syscall.Kill(u.State.Pid, 0); err != nil {
-			if errors.Is(err, syscall.ESRCH) {
-				break // process is dead
-			}
-			return fmt.Errorf("error checking pid %d: %w", u.State.Pid, err)
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for pid %d to die", u.State.Pid)
-		}
-		time.Sleep(100 * time.Millisecond)
 	}
 
 	// TODO: tap0_urunc should not be hardcoded
@@ -550,6 +526,7 @@ func (u *Unikontainer) Kill() error {
 	if err != nil {
 		uniklog.Errorf("failed to delete tap0_urunc: %v", err)
 	}
+
 	return nil
 }
 

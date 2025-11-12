@@ -33,7 +33,7 @@ func (h *Hedge) Ok() error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 
-func (h *Hedge) Stop(_ string) error {
+func (h *Hedge) Stop(_ int) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 

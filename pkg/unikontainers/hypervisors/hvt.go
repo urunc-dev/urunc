@@ -120,10 +120,9 @@ func applySeccompFilter() error {
 	return nil
 }
 
-// Stop is an empty function to satisfy VMM interface compatibility requirements.
-// It does not perform any actions and always returns nil.
-func (h *HVT) Stop(_ string) error {
-	return nil
+// Stop kills the hvt process
+func (h *HVT) Stop(pid int) error {
+	return killProcess(pid)
 }
 
 // UsesKVM returns a bool value depending on if the monitor uses KVM

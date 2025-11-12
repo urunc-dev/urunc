@@ -33,8 +33,8 @@ type Qemu struct {
 	binary     string
 }
 
-func (q *Qemu) Stop(_ string) error {
-	return nil
+func (q *Qemu) Stop(pid int) error {
+	return killProcess(pid)
 }
 
 func (q *Qemu) Ok() error {

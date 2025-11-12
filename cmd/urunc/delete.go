@@ -16,7 +16,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/sirupsen/logrus"
@@ -54,6 +56,21 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 		// get Unikontainer data from state.json
 		unikontainer, err := getUnikontainer(cmd)
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				containerID := cmd.Args().First()
+				if containerID == "" {
+					return ErrEmptyContainerID
+				}
+				rootDir := cmd.String("root")
+				containerDir := filepath.Join(rootDir, containerID)
+				e := os.RemoveAll(containerDir)
+				if e != nil {
+					logrus.Errorf("remove %s: %v", containerDir, e)
+				}
+				if cmd.Bool("force") {
+					return nil
+				}
+			}
 			return err
 		}
 		if cmd.Bool("force") {

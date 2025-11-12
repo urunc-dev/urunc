@@ -26,7 +26,7 @@ type Unikernel interface {
 
 type VMM interface {
 	Execve(args ExecArgs, ukernel Unikernel) error
-	Stop(t string) error
+	Stop(int) error
 	Path() string
 	UsesKVM() bool
 	SupportsSharedfs(string) bool

@@ -15,8 +15,14 @@
 package hypervisors
 
 import (
+	"errors"
+	"fmt"
 	"runtime"
 	"strconv"
+	"syscall"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func cpuArch() string {
@@ -59,4 +65,28 @@ func BytesToStringMB(argMem uint64) string {
 	}
 
 	return stringMem
+}
+
+func killProcess(pid int) error {
+	const timeout = 2 * time.Second
+	err := syscall.Kill(pid, unix.SIGKILL)
+	if err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if err := syscall.Kill(pid, 0); err != nil {
+			if errors.Is(err, syscall.ESRCH) {
+				// process is dead
+				break
+			}
+			return fmt.Errorf("error checking if process with pid %d is alive: %w", pid, err)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for pid %d to die", pid)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return nil
 }

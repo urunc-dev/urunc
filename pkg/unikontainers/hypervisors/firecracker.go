@@ -69,8 +69,8 @@ type FirecrackerConfig struct {
 	NetIfs  []FirecrackerNet      `json:"network-interfaces"`
 }
 
-func (fc *Firecracker) Stop(_ string) error {
-	return nil
+func (fc *Firecracker) Stop(pid int) error {
+	return killProcess(pid)
 }
 
 func (fc *Firecracker) Ok() error {
