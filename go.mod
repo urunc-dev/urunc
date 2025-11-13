@@ -16,16 +16,16 @@ require (
 	github.com/moby/sys/mount v0.3.4
 	github.com/nubificus/hedge_cli v0.0.3
 	github.com/opencontainers/runc v1.2.8
-	github.com/opencontainers/runtime-spec v1.2.0
+	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.5.0
+	github.com/urfave/cli/v3 v3.6.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.38.0
-	k8s.io/cri-api v0.34.1
+	k8s.io/cri-api v0.34.2
 )
 
 require (
