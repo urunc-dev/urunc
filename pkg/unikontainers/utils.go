@@ -323,3 +323,14 @@ func findQemuDataDir(basename string) (string, error) {
 
 	return qdPath, nil
 }
+
+func rmMultipleDirs(prefixPath string, dirs []string) error {
+	for _, d := range dirs {
+		path := filepath.Join(prefixPath, d)
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("cannot remove %s: %w", d, err)
+		}
+	}
+
+	return nil
+}

@@ -843,7 +843,7 @@ func TestCrictl(t *testing.T) {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-unikraft:latest",
+			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-unikraft-initrd:latest",
 			Name:           "Firecracker-unikraft-nginx",
 			Devmapper:      false,
 			Seccomp:        true,

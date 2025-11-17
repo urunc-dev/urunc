@@ -25,7 +25,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -496,7 +495,7 @@ func setupUser(user specs.User) error {
 // Kill stops the VMM process, first by asking the VMM struct to stop
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {
-	// Try to join the Network namespace of the monitor befor ekilling it.
+	// Try to join the Network namespace of the monitor before killing it.
 	// If we kill it there might be no process inside the namespace and hence
 	// the namespace gets destroyed.
 	err := u.joinSandboxNetNs()
@@ -510,8 +509,9 @@ func (u *Unikontainer) Kill() error {
 		}
 		return fmt.Errorf("failed to join sandbox netns: %v", err)
 	}
-	vmmType := u.State.Annotations[annotHypervisor]
+
 	// get a new vmm
+	vmmType := u.State.Annotations[annotHypervisor]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
 	if err != nil {
 		return err
@@ -532,66 +532,64 @@ func (u *Unikontainer) Kill() error {
 
 // Delete removes the containers base directory and its contents
 func (u *Unikontainer) Delete() error {
+	var dirs []string
+	var prefPath string
+
 	if u.isRunning() {
-		return fmt.Errorf("cannot delete running unikernel: %s", u.State.ID)
+		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
 	}
+
+	// get a monitor instance of the running monitor
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
+	if err != nil {
+		return err
+	}
+
 	// Make sure paths are clean
 	bundleDir := filepath.Clean(u.State.Bundle)
 	rootfsDir := filepath.Clean(u.Spec.Root.Path)
 	if !filepath.IsAbs(rootfsDir) {
 		rootfsDir = filepath.Join(bundleDir, rootfsDir)
 	}
+	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
 
-	// Check if we used a different directory for monitor's rootfs than the
-	// container's one.
-	withRootfsMount := false
-	withRootfsMount, err := strconv.ParseBool(u.State.Annotations[annotMountRootfs])
-	if err != nil {
-		withRootfsMount = false
-	}
-	annotBlock := u.State.Annotations[annotBlock]
-	// TODO: We might not need to remove all these directories.
-	if annotBlock == "" && withRootfsMount {
+	// TODO: We might not need to remove any of the directories and let
+	// the kernel cleanup the mounts and shim to remove directories.
+	// However, just to be on the safe side, we remove all the newly
+	// created directories from urunc. In order to check if we used the
+	// rootfs under the bundle directory or we create anew one, we can check
+	// if the monitorRootfsDirName directory exists under the bundle.
+	_, err = os.Stat(monRootfs)
+	if !os.IsNotExist(err) {
 		// Since there was no no block defined for the unikernel
 		// and we created a new rootfs for the monitor, we need to
 		// clean it up.
-		monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
-		err = os.RemoveAll(monRootfs)
-		if err != nil {
-			return fmt.Errorf("cannot remove %s: %v", monRootfs, err)
-		}
+		dirs = append(dirs, monitorRootfsDirName)
+		prefPath = bundleDir
 	} else {
 		// Otherwise remove the enw directories we created inside the
 		// container's rootfs.
-		cntrDev := filepath.Join(rootfsDir, "/dev")
-		err = os.RemoveAll(cntrDev)
-		if err != nil {
-			return fmt.Errorf("cannot remove /dev: %v", err)
-		}
-		cntrTmp := filepath.Join(rootfsDir, "/tmp")
-		err = os.RemoveAll(cntrTmp)
-		if err != nil {
-			return fmt.Errorf("cannot remove /tmp: %v", err)
-		}
-		cntrLib := filepath.Join(rootfsDir, "/lib")
-		err = os.RemoveAll(cntrLib)
-		if err != nil {
-			return fmt.Errorf("cannot remove /lib: %v", err)
-		}
-		cntrLib64 := filepath.Join(rootfsDir, "/lib64")
-		err = os.RemoveAll(cntrLib64)
-		if err != nil {
-			return fmt.Errorf("cannot remove /lib64: %v", err)
-		}
 		// We do not need to unmount anything here, since we rely on Linux
 		// to do the cleanup for us. This will happen automatically,
 		// when the mount namespace gets destroyed
-		cntrUsr := filepath.Join(rootfsDir, "/usr")
-		err = os.RemoveAll(cntrUsr)
-		if err != nil {
-			return fmt.Errorf("cannot remove /usr: %v", err)
+		dirs = []string{
+			"/lib",
+			"/lib64",
+			"/usr",
+			"/proc",
+			"/dev",
+			"/tmp",
 		}
+		dirs = append(dirs, vmm.Path())
+		prefPath = rootfsDir
 	}
+
+	err = rmMultipleDirs(prefPath, dirs)
+	if err != nil {
+		return err
+	}
+
 	return os.RemoveAll(u.BaseDir)
 }
 
