@@ -90,13 +90,3 @@ jobs:
       solo5_version: 'v0.9.3'
       runc_version: '1.3.0'
     secrets: inherit
-
-  urunc_deploy_test:
-    if: ${{ inputs.skip-build != 'yes' }}
-    needs: [build, unit_test]
-    name: urunc-deploy test
-    uses: ./.github/workflows/urunc-deploy-test.yml
-    with:
-      ref: ${{ inputs.ref }}
-      runc_version: '1.3.0'
-    secrets: inherit

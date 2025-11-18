@@ -54,3 +54,10 @@ jobs:
       firecracker_version: 'v1.7.0'
       solo5_version: 'v0.9.3'
       runc_version: '1.3.0'
+
+  urunc_deploy_test:
+    needs: [build]
+    name: urunc-deploy test
+    uses: ./.github/workflows/urunc-deploy-test.yml
+    with:
+      runc_version: '1.3.0'

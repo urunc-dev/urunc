@@ -14,9 +14,6 @@ on:
       runc_version:
         required: true
         type: string
-    secrets:
-      GIT_CLONE_PAT:
-        required: false
 
   workflow_dispatch:
 
@@ -35,17 +32,14 @@ jobs:
             runner: ubuntu-22.04-arm
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@v2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2
         with:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git wget build-essential pkg-config
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Install kind
         run: |
@@ -111,10 +105,12 @@ jobs:
           docker exec urunc-deploy-test-control-plane apt-get install -y git wget build-essential libseccomp-dev pkg-config bc
 
       - name: Install runc inside kind node
+        env:
+          RUNC_VERSION: ${{ inputs.runc_version }}
         run: |
-          docker exec urunc-deploy-test-control-plane bash -c '
+          docker exec -e RUNC_VERSION="${RUNC_VERSION}" urunc-deploy-test-control-plane bash -c '
             if ! which runc; then
-              wget -q https://github.com/opencontainers/runc/releases/download/v${{ inputs.runc_version }}/runc.$(dpkg --print-architecture)
+              wget -q https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.$(dpkg --print-architecture)
               install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
               rm -f ./runc.$(dpkg --print-architecture)
             fi
@@ -141,8 +137,26 @@ jobs:
 
       - name: Verify Node label
         run: |
-          docker exec urunc-deploy-test-control-plane \
-            bash -c "kubectl get nodes -o json | jq '.items[].metadata.labels' | grep urunc.io/urunc-runtime=true || exit 1"
+          echo "=== Checking for node label urunc.io/urunc-runtime=true ==="
+          # Wait for the DaemonSet to apply the node label (retry up to 30 seconds)
+          for i in {1..30}; do
+            echo "Attempt $i/30: Checking node labels..."
+            if docker exec urunc-deploy-test-control-plane \
+              bash -c "kubectl get nodes -o json | jq '.items[].metadata.labels' | grep -q 'urunc.io/urunc-runtime.*true'"; then
+              echo "Node label found!"
+              docker exec urunc-deploy-test-control-plane \
+                bash -c "kubectl get nodes -o json | jq '.items[].metadata.labels' | grep urunc"
+              exit 0
+            fi
+            echo "Label not found yet, waiting 1 second..."
+            sleep 1
+          done
+          echo "Node label not found after 30 seconds"
+          echo "=== Current node labels ==="
+          docker exec urunc-deploy-test-control-plane kubectl get nodes -o yaml
+          echo "=== DaemonSet pods logs ==="
+          docker exec urunc-deploy-test-control-plane kubectl logs -n kube-system -l name=urunc-deploy --tail=50
+          exit 1
 
       - name: Verify RuntimeClass exists
         run: |
