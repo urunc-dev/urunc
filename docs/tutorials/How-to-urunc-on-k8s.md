@@ -62,8 +62,6 @@ spec:
       - image: harbor.nbfc.io/nubificus/urunc/nginx-firecracker-unikraft-initrd:latest
         imagePullPolicy: Always
         name: nginx-urunc
-        command: ["sleep"]
-        args: ["infinity"]
         ports:
         - containerPort: 80
           protocol: TCP
@@ -142,7 +140,7 @@ kubectl delete -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deploym
 To install in a k8s cluster, first we need to create the RBAC:
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
 ```
 
 Then, we create the `urunc-deploy` Daemonset:
