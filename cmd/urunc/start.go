@@ -21,6 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
 	"github.com/urunc-dev/urunc/pkg/unikontainers"
+	m "github.com/urunc-dev/urunc/internal/metrics"
 )
 
 var startCommand = &cli.Command{
@@ -47,14 +48,14 @@ func startUnikontainer(cmd *cli.Command) error {
 	// No need to check if containerID is valid, because it will get
 	// checked later. We just want it for the metrics
 	containerID := cmd.Args().First()
-	metrics.Capture(containerID, "TS11")
+	metrics.Capture(containerID, m.TS11)
 
 	// get Unikontainer data from state.json
 	unikontainer, err := getUnikontainer(cmd)
 	if err != nil {
 		return err
 	}
-	metrics.Capture(containerID, "TS12")
+	metrics.Capture(containerID, m.TS12)
 
 	sockAddr := unikontainers.GetStartSockAddr(unikontainer.BaseDir)
 	listener, cleaner, err := unikontainers.CreateListener(sockAddr, true)
@@ -67,7 +68,7 @@ func startUnikontainer(cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	metrics.Capture(containerID, "TS13")
+	metrics.Capture(containerID, m.TS13)
 
 	// wait ContainerStarted message on start.sock from reexec process
 	err = unikontainers.AwaitMessage(listener, unikontainers.ContainerStarted)
