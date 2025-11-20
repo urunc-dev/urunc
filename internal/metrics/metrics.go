@@ -21,27 +21,44 @@ import (
 )
 
 type Writer interface {
-	Capture(containerID string, timestampID string)
+	Capture(id TimestampID)
 }
 
 type zerologMetrics struct {
-	logger *zerolog.Logger
+	logger      *zerolog.Logger
+	containerID string
 }
 
-func (z *zerologMetrics) Capture(containerID string, timestampID string) {
-	z.logger.Log().Str("containerID", containerID).Str("timestampID", timestampID).Msg("")
+func (z *zerologMetrics) Capture(id TimestampID) {
+	if id >= TimestampCount {
+		z.logger.Log().
+			Str("containerID", z.containerID).
+			Uint("timestampID_invalid", uint(id)).
+			Msg("invalid timestamp ID")
+		return
+	}
+	meta := Timestamps[id]
+	z.logger.Log().
+		Str("containerID", z.containerID).
+		Str("timestampID", meta.LegacyID).
+		Str("timestampName", meta.Name).
+		Int("timestampOrder", meta.Order).
+		Msg("")
 }
 
-func NewZerologMetrics(enabled bool, target string) Writer {
+// NewZerologMetrics creates a Writer that logs timestamps for a single container
+// containerID is derived once from CLI args and reused
+func NewZerologMetrics(enabled bool, target string, containerID string) Writer {
 	if enabled {
+		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixNano
 		file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return nil
 		}
 		logger := zerolog.New(file).Level(zerolog.InfoLevel).With().Timestamp().Logger()
-		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixNano
 		return &zerologMetrics{
-			logger: &logger,
+			logger:      &logger,
+			containerID: containerID,
 		}
 	}
 	return &mockWriter{}
@@ -49,7 +66,10 @@ func NewZerologMetrics(enabled bool, target string) Writer {
 
 type mockWriter struct{}
 
-func (m *mockWriter) Capture(_, _ string) {}
+// Capture is a no-op used in tests where metrics are disabled
+func (m *mockWriter) Capture(_ TimestampID) {
+	// no-op
+}
 
 func NewMockMetrics(_ string) Writer {
 	return &mockWriter{}

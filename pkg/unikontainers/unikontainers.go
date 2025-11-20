@@ -194,7 +194,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 }
 
 func (u *Unikontainer) Exec(metrics m.Writer) error {
-	metrics.Capture(u.State.ID, "TS15")
+	metrics.Capture(u.State.ID, m.TS15)
 
 	// container Paths
 	// Make sure paths are clean
@@ -297,7 +297,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
 	}
-	metrics.Capture(u.State.ID, "TS16")
+	metrics.Capture(u.State.ID, m.TS16)
 	withTUNTAP := netArgs.IP != ""
 
 	// UnikernelParams
@@ -383,7 +383,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
-	metrics.Capture(u.State.ID, "TS17")
+	metrics.Capture(u.State.ID, m.TS17)
 
 	blockFromAnnot, err := handleExplicitBlockImage(u.State.Annotations[annotBlock],
 		u.State.Annotations[annotBlockMntPoint])
@@ -468,8 +468,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	uniklog.Debug("calling vmm execve")
-	metrics.Capture(u.State.ID, "TS18")
-
+	metrics.Capture(u.State.ID, m.TS18)
+	// metrics.Wait()
 	// TODO: We set the state to running and notify urunc Start that the monitor
 	// started, but we might encounter issues with the monitor execution. We need
 	// to revisit this and check if a failed monitor execution affects this approach.

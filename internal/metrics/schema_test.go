@@ -12,30 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package metrics
 
 import (
 	"fmt"
 	"testing"
-
-	"github.com/urunc-dev/urunc/internal/constants"
-	m "github.com/urunc-dev/urunc/internal/metrics"
 )
 
-func BenchmarkZerologWriter(b *testing.B) {
-	var zerologWriter = m.NewZerologMetrics(true, constants.TimestampTargetFile)
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < len(m.Timestamps); j++ {
-			zerologWriter.Capture(fmt.Sprintf("container%02d", i), m.Timestamps[j].ID)
+func TestTimestampSchemaConsistency(t *testing.T) {
+	seenLegacy := make(map[string]bool)
+	for i, ts := range Timestamps {
+		if ts.Order != i {
+			t.Errorf("Order mismatch at index %d: got %d", i, ts.Order)
 		}
-	}
-}
-
-func BenchmarkMockWriter(b *testing.B) {
-	var mockWriter = m.NewMockMetrics(constants.TimestampTargetFile)
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < len(m.Timestamps); j++ {
-			mockWriter.Capture(fmt.Sprintf("container%02d", i), m.Timestamps[j].ID)
+		wantLegacy := fmt.Sprintf("TS%02d", i)
+		if ts.LegacyID != wantLegacy {
+			t.Errorf("LegacyID mismatch at index %d: got %s, want %s",
+				i, ts.LegacyID, wantLegacy)
 		}
+		if seenLegacy[ts.LegacyID] {
+			t.Errorf("duplicate LegacyID: %s", ts.LegacyID)
+		}
+		seenLegacy[ts.LegacyID] = true
 	}
 }
