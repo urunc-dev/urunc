@@ -231,7 +231,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers
+unittest: test_unikontainers test_metrics
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -241,6 +241,12 @@ e2etest: test_nerdctl test_ctr test_crictl test_docker
 test_unikontainers:
 	@echo "Unit testing in unikontainers"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers -v
+	@echo " "
+
+## test_metrics Run unit tests for metrics package
+test_metrics:
+	@echo "Unit testing in internal/metrics"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./internal/metrics -v
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
