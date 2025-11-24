@@ -45,17 +45,14 @@ your host.`,
 // We keep it as a separate function, since it is also called from
 // the run command
 func startUnikontainer(cmd *cli.Command) error {
-	// No need to check if containerID is valid, because it will get
-	// checked later. We just want it for the metrics
-	containerID := cmd.Args().First()
-	metrics.Capture(containerID, m.TS11)
+	metrics.Capture(m.TS11)
 
 	// get Unikontainer data from state.json
 	unikontainer, err := getUnikontainer(cmd)
 	if err != nil {
 		return err
 	}
-	metrics.Capture(containerID, m.TS12)
+	metrics.Capture(m.TS12)
 
 	sockAddr := unikontainers.GetStartSockAddr(unikontainer.BaseDir)
 	listener, cleaner, err := unikontainers.CreateListener(sockAddr, true)
@@ -68,7 +65,7 @@ func startUnikontainer(cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	metrics.Capture(containerID, m.TS13)
+	metrics.Capture(m.TS13)
 
 	// wait ContainerStarted message on start.sock from reexec process
 	err = unikontainers.AwaitMessage(listener, unikontainers.ContainerStarted)

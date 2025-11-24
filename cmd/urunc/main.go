@@ -127,8 +127,16 @@ func main() {
 			if err != nil {
 				return nil, err
 			}
-			metrics = m.NewZerologMetrics(cfg.Timestamps.Enabled, cfg.Timestamps.Destination)
-
+			// Derive containerID from CLI args (used by create/start/run)
+			containerID := ""
+			cmdName := cmd.Name
+			if cmdName == "create" || cmdName == "start" || cmdName == "run" || cmdName == "reexec" {
+				args := cmd.Args().Slice()
+				if len(args) > 0 {
+					containerID = args[len(args)-1]
+				}
+			}
+			metrics = m.NewZerologMetrics(cfg.Timestamps.Enabled, cfg.Timestamps.Destination, containerID)
 			return nil, nil
 		},
 	}

@@ -95,7 +95,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		err = fmt.Errorf("container id cannot be empty")
 		return err
 	}
-	metrics.Capture(containerID, m.TS00)
+	metrics.Capture(m.TS00)
 
 	// We have already made sure in main.go that root is not nil
 	rootDir := cmd.String("root")
@@ -121,14 +121,14 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		}
 		return err
 	}
-	metrics.Capture(containerID, m.TS01)
+	metrics.Capture(m.TS01)
 
 	err = unikontainer.InitialSetup()
 	if err != nil {
 		return err
 	}
 
-	metrics.Capture(containerID, m.TS02)
+	metrics.Capture(m.TS02)
 
 	// Create socket for nsenter
 	initSockParent, initSockChild, err := newSockPair("init")
@@ -166,7 +166,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	logsDone := ForwardLogs(logPipeParent)
 
 	// Start reexec process
-	metrics.Capture(containerID, m.TS03)
+	metrics.Capture(m.TS03)
 	// setup terminal if required and start reexec process
 	// TODO: This part of code needs better rhandling. It is not the
 	// job of the urunc create to setup the terminal for reexec.
@@ -252,7 +252,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 
 	// Retrieve reexec cmd's pid and write to file and state
 	containerPid := reexecPid
-	metrics.Capture(containerID, m.TS06)
+	metrics.Capture(m.TS06)
 
 	err = unikontainer.Create(containerPid)
 	if err != nil {
@@ -265,7 +265,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		err = fmt.Errorf("failed to execute CreateRuntime hooks: %w", err)
 		return err
 	}
-	metrics.Capture(containerID, m.TS07)
+	metrics.Capture(m.TS07)
 
 	// send ACK to reexec process
 	err = unikontainer.SendAckReexec()
@@ -274,7 +274,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		return err
 
 	}
-	metrics.Capture(containerID, m.TS08)
+	metrics.Capture(m.TS08)
 
 	// execute CreateRuntime hooks
 	err = unikontainer.ExecuteHooks("CreateContainer")
@@ -282,7 +282,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		err = fmt.Errorf("failed to execute CreateRuntime hooks: %w", err)
 		return err
 	}
-	metrics.Capture(containerID, m.TS10)
+	metrics.Capture(m.TS10)
 
 	err = nil
 	return err
@@ -354,10 +354,10 @@ func handleNsenterRet(initSock *os.File, reexec *exec.Cmd) (int, error) {
 // waits StartExecve message on urunc.sock,
 // executes Prestart hooks and finally execve's the unikernel vmm.
 func reexecUnikontainer(cmd *cli.Command) error {
-	// No need to check if containerID is valid, because it will get
-	// checked later. We just want it for the metrics
+	// We need containerID here for filesystem paths.
+	// Metrics get the containerID once from CLI args in main.go
 	containerID := cmd.Args().First()
-	metrics.Capture(containerID, m.TS04)
+	metrics.Capture(m.TS04)
 
 	logFd, err := strconv.Atoi(os.Getenv("_LIBCONTAINER_LOGPIPE"))
 	if err != nil {
@@ -382,7 +382,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	rootDir := cmd.String("root")
 	baseDir := filepath.Join(rootDir, containerID)
 
-	metrics.Capture(containerID, m.TS05)
+	metrics.Capture(m.TS05)
 
 	// wait AckReexec message on urunc.sock from parent process
 	socketPath := unikontainers.GetUruncSockAddr(baseDir)
@@ -390,7 +390,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	metrics.Capture(containerID, m.TS09)
+	metrics.Capture(m.TS09)
 
 	// get Unikontainer data from state.json
 	// TODO: We need to find a better way to synchronize and make sure
@@ -416,7 +416,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	metrics.Capture(containerID, m.TS14)
+	metrics.Capture(m.TS14)
 
 	// execve
 	// we need to pass metrics to Exec() function, as the unikontainer

@@ -15,7 +15,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/urunc-dev/urunc/internal/constants"
@@ -23,10 +22,10 @@ import (
 )
 
 func BenchmarkZerologWriter(b *testing.B) {
-	var zerologWriter = m.NewZerologMetrics(true, constants.TimestampTargetFile)
+	var zerologWriter = m.NewZerologMetrics(true, constants.TimestampTargetFile, "")
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < len(m.Timestamps); j++ {
-			zerologWriter.Capture(fmt.Sprintf("container%02d", i), m.Timestamps[j].ID)
+			zerologWriter.Capture(m.Timestamps[j].ID)
 		}
 	}
 }
@@ -35,7 +34,7 @@ func BenchmarkMockWriter(b *testing.B) {
 	var mockWriter = m.NewMockMetrics(constants.TimestampTargetFile)
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < len(m.Timestamps); j++ {
-			mockWriter.Capture(fmt.Sprintf("container%02d", i), m.Timestamps[j].ID)
+			mockWriter.Capture(m.Timestamps[j].ID)
 		}
 	}
 }
