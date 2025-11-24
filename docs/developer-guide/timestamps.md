@@ -36,11 +36,7 @@ The timestamps currently depicting each unikernel container execution are the fo
 
 To log the timestamps with minimal overhead, we opted to use the [zerolog](https://github.com/rs/zerolog) package. We were able to keep the delay caused by the timestamp logging in a low level, around 38351ns for the 20 timestamps required. In comparison, when using [logrus](https://github.com/sirupsen/logrus) the overhead was measured at around 71589ns.
 
-To run the benchmarks for the currently supported logging methods:
-
-```bash
-URUNC_TIMESTAMPS=1 GOFLAGS="-count=1" go test ./tests/benchmarks -bench=. -count 5 -v
-```
+Timestamp logging is now handled through a fixed schema using zerolog. The previous logger benchmark suite has been removed, as it is no longer relevant to the current timestamping implementation.
 
 ## How to enable timestamping
 
@@ -82,11 +78,10 @@ The timestamp logs are located at `/tmp/urunc.zlog`:
 
 ```console
 $ cat /tmp/urunc.zlog | grep TS
-{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"cTS00","time":1703676366849599657}
-{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"cTS01","time":1703676366853466038}
-{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS00","time":1703676366853478852}
-{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS01","time":1703676366854590287}
-{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS02","time":1703676366854709857}
+{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS00","timestampName":"CR.invoked","timestampOrder":0,"time":1703676366849599657}
+{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS01","timestampName":"CR.unikontainer_created","timestampOrder":1,"time":1703676366850466038}
+{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS02","timestampName":"CR.initial_setup","timestampOrder":2,"time":1703676366850709857}
+{"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS03","timestampName":"CR.start_reexec","timestampOrder":3,"time":1703676366850900287}
 # ... (rest of the output)
 ```
 
