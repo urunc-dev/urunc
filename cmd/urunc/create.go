@@ -87,7 +87,7 @@ var createCommand = &cli.Command{
 // initializes it's base dir and state.json,
 // setups terminal if required and spawns reexec process,
 // waits for reexec process to notify, executes CreateRuntime hooks,
-// sends ACK to reexec process and executes CreateContainer hooks
+// sends ACK to reexec process
 func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
 	err = nil
 	containerID := cmd.Args().First()
@@ -275,14 +275,6 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 
 	}
 	metrics.Capture(m.TS08)
-
-	// execute CreateRuntime hooks
-	err = unikontainer.ExecuteHooks("CreateContainer")
-	if err != nil {
-		err = fmt.Errorf("failed to execute CreateRuntime hooks: %w", err)
-		return err
-	}
-	metrics.Capture(m.TS10)
 
 	err = nil
 	return err
