@@ -95,6 +95,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		err = fmt.Errorf("container id cannot be empty")
 		return err
 	}
+	metrics.SetLoggerContainerID(containerID)
 	metrics.Capture(m.TS00)
 
 	// We have already made sure in main.go that root is not nil
@@ -347,8 +348,9 @@ func handleNsenterRet(initSock *os.File, reexec *exec.Cmd) (int, error) {
 // executes Prestart hooks and finally execve's the unikernel vmm.
 func reexecUnikontainer(cmd *cli.Command) error {
 	// We need containerID here for filesystem paths.
-	// Metrics get the containerID once from CLI args in main.go
+	// Metrics get the containerID from each subcommand
 	containerID := cmd.Args().First()
+	metrics.SetLoggerContainerID(containerID)
 	metrics.Capture(m.TS04)
 
 	logFd, err := strconv.Atoi(os.Getenv("_LIBCONTAINER_LOGPIPE"))

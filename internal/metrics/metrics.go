@@ -22,6 +22,7 @@ import (
 
 type Writer interface {
 	Capture(id TimestampID)
+	SetLoggerContainerID(containerID string)
 }
 
 type zerologMetrics struct {
@@ -46,8 +47,11 @@ func (z *zerologMetrics) Capture(id TimestampID) {
 		Msg("")
 }
 
+func (z *zerologMetrics) SetLoggerContainerID(containerID string) {
+	z.containerID = containerID
+}
+
 // NewZerologMetrics creates a Writer that logs timestamps for a single container
-// containerID is derived once from CLI args and reused
 func NewZerologMetrics(enabled bool, target string, containerID string) Writer {
 	if enabled {
 		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixNano
@@ -68,6 +72,11 @@ type mockWriter struct{}
 
 // Capture is a no-op used in tests where metrics are disabled
 func (m *mockWriter) Capture(_ TimestampID) {
+	// no-op
+}
+
+// SetLoggerContainerID is a no-op in tests where metrics are disabled
+func (m *mockWriter) SetLoggerContainerID(_ string) {
 	// no-op
 }
 

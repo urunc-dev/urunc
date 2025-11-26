@@ -20,8 +20,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
-	"github.com/urunc-dev/urunc/pkg/unikontainers"
 	m "github.com/urunc-dev/urunc/internal/metrics"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 )
 
 var startCommand = &cli.Command{
@@ -45,6 +45,8 @@ your host.`,
 // We keep it as a separate function, since it is also called from
 // the run command
 func startUnikontainer(cmd *cli.Command) error {
+	containerID := cmd.Args().First()
+	metrics.SetLoggerContainerID(containerID)
 	metrics.Capture(m.TS11)
 
 	// get Unikontainer data from state.json
