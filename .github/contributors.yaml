@@ -26,6 +26,9 @@ users:
   vliaskov:
     name: Vasilis Liaskovitis
     email: vliaskovitis@suse.com
+  amallikopoulou:
+    name: Anastasia Mallikopoulou
+    email: amallik@nubificus.co.uk
   copilot-pull-request-reviewerbot:
     name: copilot[bot]
     email: copilot[bot]@users.noreply.github.com
