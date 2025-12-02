@@ -35,3 +35,6 @@ users:
   dependabotbot:
     name: dependabot[bot]
     email: support@github.com
+  KhitemMed:
+    name: Medfouni Khitem
+    email: lk_medfouni@esi.dz

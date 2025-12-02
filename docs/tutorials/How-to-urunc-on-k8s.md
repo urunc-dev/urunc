@@ -65,9 +65,6 @@ spec:
         ports:
         - containerPort: 80
           protocol: TCP
-        resources:
-          requests:
-            cpu: 10m
       restartPolicy: Always
 ---
 apiVersion: v1
