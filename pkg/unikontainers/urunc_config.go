@@ -35,10 +35,10 @@ type UruncTimestamps struct {
 }
 
 type UruncConfig struct {
-	Log        UruncLog        `toml:"log"`
-	Timestamps UruncTimestamps `toml:"timestamps"`
-
+	Log         UruncLog                          `toml:"log"`
+	Timestamps  UruncTimestamps                   `toml:"timestamps"`
 	Hypervisors map[string]types.HypervisorConfig `toml:"hypervisors"`
+	ExtraBins   map[string]types.ExtraBinConfig   `toml:"extra_binaries"`
 }
 
 // this struct is used to parse only the log and timestamp section of the urunc config file
@@ -63,6 +63,7 @@ func defaultLogMetricsConfig() LogMetricsUruncConfig {
 		Timestamps: defaultTimestampsConfig(),
 	}
 }
+
 func defaultLogConfig() UruncLog {
 	return UruncLog{
 		Level:  "info",
@@ -86,11 +87,18 @@ func defaultHypervisorsConfig() map[string]types.HypervisorConfig {
 	}
 }
 
+func defaultExtraBinConfig() map[string]types.ExtraBinConfig {
+	return map[string]types.ExtraBinConfig{
+		"virtiofsd": {Path: "/usr/libexec/virtiofsd", Options: "--cache always --sandbox none"},
+	}
+}
+
 func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
 		Log:         defaultLogConfig(),
 		Timestamps:  defaultTimestampsConfig(),
 		Hypervisors: defaultHypervisorsConfig(),
+		ExtraBins:   defaultExtraBinConfig(),
 	}
 }
 
@@ -117,6 +125,11 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"default_vcpus"] = strconv.FormatUint(uint64(hvCfg.DefaultVCPUs), 10)
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
 	}
+	for eb, ebCfg := range p.ExtraBins {
+		prefix := "urunc_config.extra_binaries." + eb + "."
+		cfgMap[prefix+"path"] = ebCfg.Path
+		cfgMap[prefix+"options"] = ebCfg.Options
+	}
 	return cfgMap
 }
 
@@ -125,6 +138,7 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 	// them from this map. this map will be used to parse the rest of the urunc config from state.json
 	cfg := &UruncConfig{
 		Hypervisors: defaultHypervisorsConfig(),
+		ExtraBins:   defaultExtraBinConfig(),
 	}
 
 	for key, val := range cfgMap {
@@ -156,6 +170,30 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			hvCfg.BinaryPath = val
 		}
 		cfg.Hypervisors[hv] = hvCfg
+	}
+	for key, val := range cfgMap {
+		if !strings.HasPrefix(key, "urunc_config.extra_binaries.") {
+			continue
+		}
+		parts := strings.Split(key, ".")
+		if len(parts) != 4 {
+			continue
+		}
+		eb := parts[2]
+		if cfg.ExtraBins == nil {
+			cfg.ExtraBins = make(map[string]types.ExtraBinConfig)
+		}
+		ebCfg, exists := cfg.ExtraBins[eb]
+		if !exists {
+			ebCfg = types.ExtraBinConfig{}
+		}
+		switch parts[3] {
+		case "path":
+			ebCfg.Path = val
+		case "options":
+			ebCfg.Options = val
+		}
+		cfg.ExtraBins[eb] = ebCfg
 	}
 	return cfg
 }

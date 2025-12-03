@@ -306,6 +306,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Net = netArgs
 
+	// virtiofsd config
+	virtiofsdConfig := u.UruncCfg.ExtraBins["virtiofsd"]
+
 	// guest rootfs
 	// block
 	// handle guest's rootfs.
@@ -317,7 +320,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
 	// both ae supported, then the block option will be used by default.
-	rootfsParams, err := chooseRootfs(bundleDir, rootfsDir, u.State.Annotations, unikernel, vmm)
+	rootfsParams, err := chooseRootfs(bundleDir, rootfsDir, u.State.Annotations, unikernel, vmm, virtiofsdConfig.Path)
 	if err != nil {
 		uniklog.Errorf("could not choose guest rootfs: %v", err)
 		return err
@@ -363,7 +366,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
 		fallthrough
 	case "9pfs":
-		err = setupSharedfsBasedRootfs(rootfsParams, u.Spec.Mounts)
+		err = setupSharedfsBasedRootfs(rootfsParams, virtiofsdConfig.Path, u.Spec.Mounts)
 		if err != nil {
 			return err
 		}
@@ -461,7 +464,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// virtiofs
 	if rootfsParams.Type == "virtiofs" {
 		// Start the virtiofsd process
-		err = spawnVirtiofsd(containerRootfsMountPath)
+		err = spawnVirtiofsd(virtiofsdConfig, containerRootfsMountPath)
 		if err != nil {
 			return err
 		}

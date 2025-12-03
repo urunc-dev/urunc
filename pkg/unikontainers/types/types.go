@@ -106,6 +106,13 @@ type MonitorBlockArgs struct {
 	ExactArgs string
 }
 
+// ExtraBinConfig struct is used to hold specific configuration for extra binaries
+// like virtiofsd. It is parsed from the urunc config file or state.json annotations
+type ExtraBinConfig struct {
+	Path    string `toml:"path"`              // The path to the binary
+	Options string `toml:"options,omitempty"` // Optional cli options for the extra binary
+}
+
 // HypervisorConfig struct is used to hold hypervisor specific configuration
 // that is parsed from the urunc config file or state.json annotations
 type HypervisorConfig struct {

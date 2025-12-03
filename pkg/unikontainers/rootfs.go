@@ -32,6 +32,7 @@ type rootfsSelector struct {
 	annot      map[string]string
 	unikernel  types.Unikernel
 	vmm        types.VMM
+	vfsdPath   string
 }
 
 // newRootfsResult creates a RootfsParams with common defaults
@@ -115,7 +116,7 @@ func (rs *rootfsSelector) tryVirtiofs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	if !fileExists(virtiofsHostBinPath) {
+	if !fileExists(rs.vfsdPath) {
 		return types.RootfsParams{}, false
 	}
 
@@ -194,7 +195,7 @@ func switchMonRootfs(res types.RootfsParams, bundle string) (types.RootfsParams,
 //  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
 //  5. No rootfs
 func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
-	unikernel types.Unikernel, vmm types.VMM) (types.RootfsParams, error) {
+	unikernel types.Unikernel, vmm types.VMM, vfsdPath string) (types.RootfsParams, error) {
 
 	selector := &rootfsSelector{
 		bundle:     bundle,
@@ -202,6 +203,7 @@ func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
 		annot:      annot,
 		unikernel:  unikernel,
 		vmm:        vmm,
+		vfsdPath:   vfsdPath,
 	}
 
 	// Priority 1: Initrd

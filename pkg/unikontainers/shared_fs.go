@@ -25,8 +25,6 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
-const virtiofsHostBinPath = "/usr/libexec/virtiofsd"
-
 func chooseTmpfsSize(mem uint64) string {
 	// For virtiofs, Qemu and virtiofsd are using a host file
 	// to share the VM's RAM and hence the size of this file
@@ -41,7 +39,7 @@ func chooseTmpfsSize(mem uint64) string {
 	return tmpMountMemStr
 }
 
-func setupSharedfsBasedRootfs(rfs types.RootfsParams, mounts []specs.Mount) error {
+func setupSharedfsBasedRootfs(rfs types.RootfsParams, vfsdBin string, mounts []specs.Mount) error {
 	// Mount the container's image rootfs inside the monitor rootfs
 	err := fileFromHost(rfs.MonRootfs, rfs.MountedPath, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
 	if err != nil {
@@ -56,9 +54,9 @@ func setupSharedfsBasedRootfs(rfs types.RootfsParams, mounts []specs.Mount) erro
 
 	if rfs.Type == "virtiofs" {
 		// Get the virtiofsd binary from host in monRootfs
-		err = fileFromHost(rfs.MonRootfs, virtiofsHostBinPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
+		err = fileFromHost(rfs.MonRootfs, vfsdBin, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
-			return fmt.Errorf("Could not bind mount %s: %w", virtiofsHostBinPath, err)
+			return fmt.Errorf("Could not bind mount %s: %w", vfsdBin, err)
 		}
 	}
 

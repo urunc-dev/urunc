@@ -23,12 +23,16 @@ import (
 
 // Constants for test configuration keys and values
 const (
-	testQemuMemoryKey  = "urunc_config.hypervisors.qemu.default_memory_mb"
-	testQemuVCPUsKey   = "urunc_config.hypervisors.qemu.default_vcpus"
-	testQemuBinaryKey  = "urunc_config.hypervisors.qemu.binary_path"
-	testHvtMemoryKey   = "urunc_config.hypervisors.hvt.default_memory_mb"
-	testQemuBinaryPath = "/usr/bin/qemu"
-	testTimestampsPath = "/var/log/urunc/timestamps.log"
+	testQemuMemoryKey    = "urunc_config.hypervisors.qemu.default_memory_mb"
+	testQemuVCPUsKey     = "urunc_config.hypervisors.qemu.default_vcpus"
+	testQemuBinaryKey    = "urunc_config.hypervisors.qemu.binary_path"
+	testHvtMemoryKey     = "urunc_config.hypervisors.hvt.default_memory_mb"
+	testVirtiofsdPathKey = "urunc_config.extra_binaries.virtiofsd.path"
+	testVirtiofsdOptsKey = "urunc_config.extra_binaries.virtiofsd.options"
+	testVirtiofsdDefOpts = "--cache always --sandbox none"
+	testBinOpts          = "opt1 opt2"
+	testQemuBinaryPath   = "/usr/bin/qemu"
+	testTimestampsPath   = "/var/log/urunc/timestamps.log"
 )
 
 func TestUruncConfigFromMap(t *testing.T) {
@@ -40,6 +44,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 
 		assert.NotNil(t, config)
 		assert.Equal(t, defaultHypervisorsConfig(), config.Hypervisors)
+		assert.Equal(t, defaultExtraBinConfig(), config.ExtraBins)
 	})
 
 	t.Run("single hypervisor with all fields", func(t *testing.T) {
@@ -206,6 +211,112 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, uint(256), hvtConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(1), hvtConfig.DefaultVCPUs)
 	})
+
+	t.Run("single extra binary with all fields", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testVirtiofsdPathKey: testQemuBinaryPath,
+			testVirtiofsdOptsKey: testBinOpts,
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		assert.Contains(t, config.ExtraBins, "virtiofsd")
+		vfsConfig := config.ExtraBins["virtiofsd"]
+		assert.Equal(t, testQemuBinaryPath, vfsConfig.Path)
+		assert.Equal(t, testBinOpts, vfsConfig.Options)
+	})
+
+	t.Run("multiple extra binaries", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testVirtiofsdPathKey: testQemuBinaryPath,
+			testVirtiofsdOptsKey: testBinOpts,
+			"urunc_config.extra_binaries.binary.path":    "/path/to/bin",
+			"urunc_config.extra_binaries.binary.options": "some opts",
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		assert.Contains(t, config.ExtraBins, "virtiofsd")
+		assert.Contains(t, config.ExtraBins, "binary")
+
+		vfsConfig := config.ExtraBins["virtiofsd"]
+		assert.Equal(t, testQemuBinaryPath, vfsConfig.Path)
+		assert.Equal(t, testBinOpts, vfsConfig.Options)
+
+		binConfig := config.ExtraBins["binary"]
+		assert.Equal(t, "/path/to/bin", binConfig.Path)
+		assert.Equal(t, "some opts", binConfig.Options)
+	})
+
+	t.Run("partial extra binary config", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testVirtiofsdPathKey: testQemuBinaryPath,
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		assert.Contains(t, config.ExtraBins, "virtiofsd")
+		vfsConfig := config.ExtraBins["virtiofsd"]
+		assert.Equal(t, testQemuBinaryPath, vfsConfig.Path)
+		assert.Equal(t, testVirtiofsdDefOpts, vfsConfig.Options)
+	})
+
+	t.Run("unknown extra binary config field is ignored", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testVirtiofsdPathKey: testQemuBinaryPath,
+			"urunc_config.extra_binaries.virtiofsd.unknown_field": "value",
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		assert.Contains(t, config.ExtraBins, "virtiofsd")
+		vfsConfig := config.ExtraBins["virtiofsd"]
+		assert.Equal(t, testQemuBinaryPath, vfsConfig.Path)
+		assert.Equal(t, testVirtiofsdDefOpts, vfsConfig.Options)
+	})
+
+	t.Run("new unknown extra binary config", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			"urunc_config.extra_binaries.custom.path":    "/custom/binary",
+			"urunc_config.extra_binaries.custom.options": testBinOpts,
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		assert.Contains(t, config.ExtraBins, "custom")
+		cConfig := config.ExtraBins["custom"]
+		assert.Equal(t, cfgMap["urunc_config.extra_binaries.custom.path"], cConfig.Path)
+		assert.Equal(t, cfgMap["urunc_config.extra_binaries.custom.options"], cConfig.Options)
+	})
+
+	t.Run("preserves default extra binaries not in map", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			"urunc_config.extra_binaries.custom.path":    "/custom/binary",
+			"urunc_config.extra_binaries.custom.options": testBinOpts,
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		// Should still contain all default extra binaries
+		assert.Contains(t, config.ExtraBins, "virtiofsd")
+		vfsConfig := config.ExtraBins["virtiofsd"]
+		// Should have default values
+		assert.Equal(t, "/usr/libexec/virtiofsd", vfsConfig.Path)
+		assert.Equal(t, testVirtiofsdDefOpts, vfsConfig.Options)
+	})
+
 }
 
 func TestUruncConfigMap(t *testing.T) {
@@ -231,6 +342,8 @@ func TestUruncConfigMap(t *testing.T) {
 			"urunc_config.hypervisors.firecracker.default_memory_mb",
 			"urunc_config.hypervisors.firecracker.default_vcpus",
 			"urunc_config.hypervisors.firecracker.binary_path",
+			testVirtiofsdPathKey,
+			testVirtiofsdOptsKey,
 		}
 
 		for _, key := range expectedKeys {
@@ -241,6 +354,8 @@ func TestUruncConfigMap(t *testing.T) {
 		assert.Equal(t, "256", cfgMap[testQemuMemoryKey])
 		assert.Equal(t, "1", cfgMap[testQemuVCPUsKey])
 		assert.Equal(t, "", cfgMap[testQemuBinaryKey])
+		assert.Equal(t, "/usr/libexec/virtiofsd", cfgMap[testVirtiofsdPathKey])
+		assert.Equal(t, testVirtiofsdDefOpts, cfgMap[testVirtiofsdOptsKey])
 	})
 
 	t.Run("custom config produces expected map", func(t *testing.T) {
@@ -253,6 +368,12 @@ func TestUruncConfigMap(t *testing.T) {
 					BinaryPath:      "/custom/path",
 				},
 			},
+			ExtraBins: map[string]types.ExtraBinConfig{
+				"custom": {
+					Path:    "/custom/path",
+					Options: "some opts",
+				},
+			},
 		}
 
 		cfgMap := config.Map()
@@ -261,12 +382,26 @@ func TestUruncConfigMap(t *testing.T) {
 		assert.Equal(t, "2048", cfgMap["urunc_config.hypervisors.custom.default_memory_mb"])
 		assert.Equal(t, "4", cfgMap["urunc_config.hypervisors.custom.default_vcpus"])
 		assert.Equal(t, "/custom/path", cfgMap["urunc_config.hypervisors.custom.binary_path"])
+		assert.Equal(t, config.ExtraBins["custom"].Path, cfgMap["urunc_config.extra_binaries.custom.path"])
+		assert.Equal(t, config.ExtraBins["custom"].Options, cfgMap["urunc_config.extra_binaries.custom.options"])
 	})
 
 	t.Run("empty hypervisors map produces empty result", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
 			Hypervisors: map[string]types.HypervisorConfig{},
+		}
+
+		cfgMap := config.Map()
+
+		assert.NotNil(t, cfgMap)
+		assert.Empty(t, cfgMap)
+	})
+
+	t.Run("empty extra binaries map produces empty result", func(t *testing.T) {
+		t.Parallel()
+		config := &UruncConfig{
+			ExtraBins: map[string]types.ExtraBinConfig{},
 		}
 
 		cfgMap := config.Map()
@@ -311,6 +446,17 @@ func TestDefaultConfigs(t *testing.T) {
 		}
 	})
 
+	t.Run("defaultExtraBinConfig", func(t *testing.T) {
+		t.Parallel()
+		config := defaultExtraBinConfig()
+
+		assert.Len(t, config, 1)
+		assert.Contains(t, config, "virtiofsd")
+
+		assert.Equal(t, "/usr/libexec/virtiofsd", config["virtiofsd"].Path)
+		assert.Equal(t, testVirtiofsdDefOpts, config["virtiofsd"].Options)
+	})
+
 	t.Run("defaultUruncConfig", func(t *testing.T) {
 		t.Parallel()
 		config := defaultUruncConfig()
@@ -321,6 +467,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.False(t, config.Timestamps.Enabled)
 		assert.Equal(t, testTimestampsPath, config.Timestamps.Destination)
 		assert.Len(t, config.Hypervisors, 4)
+		assert.Len(t, config.ExtraBins, 1)
 	})
 
 	t.Run("defaultLogMetricsConfig", func(t *testing.T) {

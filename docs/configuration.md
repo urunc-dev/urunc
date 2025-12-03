@@ -34,6 +34,10 @@ default_vcpus = 1
 [hypervisors.spt]
 default_memory_mb = 256
 default_vcpus = 1
+
+[extra_binaries.virtiofsd]
+path = "/usr/libexec/virtiofsd"
+options = "--sandbox none"
 ```
 
 ## Configuration Sections
@@ -118,6 +122,38 @@ binary_path = "/usr/local/bin/qemu-system-x86_64"
 default_memory_mb = 512
 default_vcpus = 2
 binary_path = "/opt/firecracker/firecracker"
+```
+
+### Extra binaries Configuration
+
+The `[extra_binaries]` section allows users to configure default settings for
+different extra binaries to be included in the monitor's container. Each
+extra binary is configured as a subsection with its own default values.
+
+#### Supported extra binaries
+
+- `virtiofsd` - vhost-user virtio-fs device backend written in Rust
+
+#### Extra binaries Options
+
+Each extra binary subsection supports the following options:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `path` | string | (empty) | Optional custom path to the extra binary. If not specified, urunc will search for the binary in PATH |
+| `options` | string | (empty) | Optional custom cli options for the extra binary |
+
+Specifically for `virtiofsd` the default values are the following:
+
+- `path`: `/usr/libexec/virtiofsd`
+- `options`: `--cache always --sandbox none`
+
+**Example:**
+
+```toml
+[extra_binaries.virtiofsd]
+path = "/usr/local/bin/virtiofsd"
+options = "--sandbox none --cache always"
 ```
 
 ## Creating the Configuration File
