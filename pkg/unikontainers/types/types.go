@@ -119,4 +119,5 @@ type HypervisorConfig struct {
 	DefaultMemoryMB uint   `toml:"default_memory_mb"`
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
 	BinaryPath      string `toml:"binary_path,omitempty"` // Optional path to the hypervisor binary
+	DataPath        string `toml:"data_path,omitempty"`   // Optional path to the hypervisor data files (e.g. qemu bios stuff)
 }

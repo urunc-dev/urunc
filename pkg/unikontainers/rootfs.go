@@ -313,7 +313,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 // prepareMonRootfs prepares the rootfs where the monitor will execute. It
 // essentially sets up the devices (KVM, snapshotter block device) that are required
 // for the guest execution and any other files (e.g. binaries).
-func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needsTAP bool) error {
+func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath string, needsKVM bool, needsTAP bool) error {
 	err := fileFromHost(monRootfs, monitorPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 	if err != nil {
 		return err
@@ -343,7 +343,15 @@ func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needs
 
 	// TODO: Remove these when we switch to static binaries
 	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
-		qDataPath, err := findQemuDataDir("qemu")
+		var qDataPath string
+		var sBiosPath string
+		var err error
+		if monitorDataPath == "" {
+			qDataPath, err = findQemuDataDir("qemu")
+		} else {
+			qDataPath = filepath.Join(monitorDataPath, "qemu")
+			err = nil
+		}
 		if err != nil {
 			return err
 		}
@@ -353,7 +361,12 @@ func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needs
 			return err
 		}
 
-		sBiosPath, err := findQemuDataDir("seabios")
+		if monitorDataPath == "" {
+			sBiosPath, err = findQemuDataDir("seabios")
+		} else {
+			sBiosPath = filepath.Join(monitorDataPath, "seabios")
+			err = nil
+		}
 		if err != nil {
 			return fmt.Errorf("failed to get info of seabios directory: %w", err)
 		}

@@ -109,6 +109,11 @@ Each hypervisor subsection supports the following options:
 | `default_memory_mb` | integer | `256` | Default memory allocation in megabytes |
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
 | `binary_path` | string | (empty) | Optional custom path to the hypervisor binary. If not specified, urunc will search for the binary in PATH |
+| `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
+
+Since Qemu is the only currently supported monitor which requires extra data to
+boot a VM, `urunc` wll first check `/usr/local/share` and then `/usr/share` for
+Qemu's data files.
 
 **Example:**
 
@@ -117,6 +122,7 @@ Each hypervisor subsection supports the following options:
 default_memory_mb = 1024
 default_vcpus = 4
 binary_path = "/usr/local/bin/qemu-system-x86_64"
+data_path = "/usr/local/share/"
 
 [hypervisors.firecracker]
 default_memory_mb = 512

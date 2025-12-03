@@ -124,6 +124,7 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
 		cfgMap[prefix+"default_vcpus"] = strconv.FormatUint(uint64(hvCfg.DefaultVCPUs), 10)
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
+		cfgMap[prefix+"data_path"] = hvCfg.DataPath
 	}
 	for eb, ebCfg := range p.ExtraBins {
 		prefix := "urunc_config.extra_binaries." + eb + "."
@@ -168,6 +169,8 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			}
 		case "binary_path":
 			hvCfg.BinaryPath = val
+		case "data_path":
+			hvCfg.DataPath = val
 		}
 		cfg.Hypervisors[hv] = hvCfg
 	}

@@ -26,12 +26,14 @@ const (
 	testQemuMemoryKey    = "urunc_config.hypervisors.qemu.default_memory_mb"
 	testQemuVCPUsKey     = "urunc_config.hypervisors.qemu.default_vcpus"
 	testQemuBinaryKey    = "urunc_config.hypervisors.qemu.binary_path"
+	testQemuDataKey      = "urunc_config.hypervisors.qemu.data_path"
 	testHvtMemoryKey     = "urunc_config.hypervisors.hvt.default_memory_mb"
 	testVirtiofsdPathKey = "urunc_config.extra_binaries.virtiofsd.path"
 	testVirtiofsdOptsKey = "urunc_config.extra_binaries.virtiofsd.options"
 	testVirtiofsdDefOpts = "--cache always --sandbox none"
 	testBinOpts          = "opt1 opt2"
 	testQemuBinaryPath   = "/usr/bin/qemu"
+	testQemuDataPath     = "/usr/local/share/qemu"
 	testTimestampsPath   = "/var/log/urunc/timestamps.log"
 )
 
@@ -53,6 +55,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuMemoryKey: "512",
 			testQemuVCPUsKey:  "2",
 			testQemuBinaryKey: testQemuBinaryPath,
+			testQemuDataKey:   testQemuDataPath,
 		}
 
 		config := UruncConfigFromMap(cfgMap)
@@ -63,6 +66,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(2), qemuConfig.DefaultVCPUs)
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
+		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
 	})
 
 	t.Run("multiple hypervisors", func(t *testing.T) {
@@ -111,6 +115,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuMemoryKey: "invalid",
 			testQemuVCPUsKey:  "-5",
 			testQemuBinaryKey: testQemuBinaryPath,
+			testQemuDataKey:   testQemuDataPath,
 			"urunc_config.hypervisors.qemu.field.extra.parts": "invalid",
 			testHvtMemoryKey: "512",
 		}
@@ -123,6 +128,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, uint(256), qemuConfig.DefaultMemoryMB) // Default value for invalid input
 		assert.Equal(t, uint(1), qemuConfig.DefaultVCPUs)      // Default value for negative input
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
+		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
 		assert.Contains(t, config.Hypervisors, "hvt")
 		hvtConfig := config.Hypervisors["hvt"]
 		assert.Equal(t, uint(512), hvtConfig.DefaultMemoryMB)
@@ -231,8 +237,8 @@ func TestUruncConfigFromMap(t *testing.T) {
 	t.Run("multiple extra binaries", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
-			testVirtiofsdPathKey: testQemuBinaryPath,
-			testVirtiofsdOptsKey: testBinOpts,
+			testVirtiofsdPathKey:                         testQemuBinaryPath,
+			testVirtiofsdOptsKey:                         testBinOpts,
 			"urunc_config.extra_binaries.binary.path":    "/path/to/bin",
 			"urunc_config.extra_binaries.binary.options": "some opts",
 		}

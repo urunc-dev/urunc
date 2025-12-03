@@ -336,7 +336,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Setup the rootfs for the the monitor execution, creating necessary
 	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), vmm.UsesKVM(), withTUNTAP)
+	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), u.UruncCfg.Hypervisors[vmmType].DataPath, vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
 		return err
 	}
