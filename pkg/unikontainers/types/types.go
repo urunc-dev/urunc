@@ -113,9 +113,9 @@ type ExtraBinConfig struct {
 	Options string `toml:"options,omitempty"` // Optional cli options for the extra binary
 }
 
-// HypervisorConfig struct is used to hold hypervisor specific configuration
+// MonitorConfig struct is used to hold hypervisor specific configuration
 // that is parsed from the urunc config file or state.json annotations
-type HypervisorConfig struct {
+type MonitorConfig struct {
 	DefaultMemoryMB uint   `toml:"default_memory_mb"`
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
 	BinaryPath      string `toml:"binary_path,omitempty"` // Optional path to the hypervisor binary

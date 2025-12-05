@@ -28,7 +28,7 @@ const DefaultMemory uint64 = 256 // The default memory for every hypervisor: 256
 type VmmType string
 
 var ErrVMMNotInstalled = errors.New("vmm not found")
-var vmmLog = logrus.WithField("subsystem", "hypervisors")
+var vmmLog = logrus.WithField("subsystem", "monitors")
 
 type VMMFactory struct {
 	binary     string
@@ -54,7 +54,7 @@ var vmmFactories = map[VmmType]VMMFactory{
 	},
 }
 
-func NewVMM(vmmType VmmType, hypervisors map[string]types.HypervisorConfig) (vmm types.VMM, err error) {
+func NewVMM(vmmType VmmType, monitors map[string]types.MonitorConfig) (vmm types.VMM, err error) {
 	defer func() {
 		if err != nil {
 			vmmLog.Error(err.Error())
@@ -75,7 +75,7 @@ func NewVMM(vmmType VmmType, hypervisors map[string]types.HypervisorConfig) (vmm
 		return nil, fmt.Errorf("vmm \"%s\" is not supported", vmmType)
 	}
 
-	vmmPath, err := getVMMPath(vmmType, factory.binary, hypervisors)
+	vmmPath, err := getVMMPath(vmmType, factory.binary, monitors)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +83,8 @@ func NewVMM(vmmType VmmType, hypervisors map[string]types.HypervisorConfig) (vmm
 	return factory.createFunc(factory.binary, vmmPath), nil
 }
 
-func getVMMPath(vmmType VmmType, binary string, hypervisors map[string]types.HypervisorConfig) (string, error) {
-	if vmmPath := hypervisors[string(vmmType)].BinaryPath; vmmPath != "" {
+func getVMMPath(vmmType VmmType, binary string, monitors map[string]types.MonitorConfig) (string, error) {
+	if vmmPath := monitors[string(vmmType)].BinaryPath; vmmPath != "" {
 		return vmmPath, nil
 	}
 

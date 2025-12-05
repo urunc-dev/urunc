@@ -217,7 +217,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Vmm
 	vmmType := u.State.Annotations[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
 		return err
 	}
@@ -241,11 +241,11 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}).Debug("Initialization values")
 
 	// ExecArgs
-	defaultVCPUs := u.UruncCfg.Hypervisors[vmmType].DefaultVCPUs
+	defaultVCPUs := u.UruncCfg.Monitors[vmmType].DefaultVCPUs
 	if defaultVCPUs < 1 {
 		defaultVCPUs = 1
 	}
-	defaultMemSizeMB := u.UruncCfg.Hypervisors[vmmType].DefaultMemoryMB
+	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
 
 	// ExecArgs
 	vmmArgs := types.ExecArgs{
@@ -338,7 +338,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Setup the rootfs for the the monitor execution, creating necessary
 	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), u.UruncCfg.Hypervisors[vmmType].DataPath, vmm.UsesKVM(), withTUNTAP)
+	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), u.UruncCfg.Monitors[vmmType].DataPath, vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
 		return err
 	}
@@ -524,7 +524,7 @@ func (u *Unikontainer) Kill() error {
 
 	// get a new vmm
 	vmmType := u.State.Annotations[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
 		return err
 	}
@@ -553,7 +553,7 @@ func (u *Unikontainer) Delete() error {
 
 	// get a monitor instance of the running monitor
 	vmmType := u.State.Annotations[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Hypervisors)
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
 		return err
 	}

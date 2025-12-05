@@ -1,4 +1,4 @@
-`urunc` supports configuration through a TOML configuration file that allows you to customize various runtime behaviors including logging, timestamping, and hypervisor defaults. This document explains how to configure `urunc` using the configuration file.
+`urunc` supports configuration through a TOML configuration file that allows you to customize various runtime behaviors including logging, timestamping, and monitor defaults. This document explains how to configure `urunc` using the configuration file.
 
 ## Configuration File Location
 
@@ -17,21 +17,21 @@ syslog = false
 enabled = false
 destination = "/var/log/urunc/timestamps.log"
 
-[hypervisors.qemu]
+[monitors.qemu]
 default_memory_mb = 512
 default_vcpus = 2
 binary_path = "/usr/bin/qemu-system-x86_64"
 
-[hypervisors.firecracker]
+[monitors.firecracker]
 default_memory_mb = 256
 default_vcpus = 1
 binary_path = "/usr/local/bin/firecracker"
 
-[hypervisors.hvt]
+[monitors.hvt]
 default_memory_mb = 256
 default_vcpus = 1
 
-[hypervisors.spt]
+[monitors.spt]
 default_memory_mb = 256
 default_vcpus = 1
 
@@ -89,26 +89,28 @@ destination = "/tmp/urunc-timestamps.log"
 
 When enabled, `urunc` will log performance timestamps to help with debugging and optimization.
 
-### Hypervisor Configuration
+### Monitor Configuration
 
-The `[hypervisors]` section allows you to configure default settings for different hypervisors/VMMs. Each hypervisor is configured as a subsection with its own default values.
+The `[monitors]` section allows you to configure default settings for different
+VM/Sandbox monitors. Each monitor is configured as a subsection with its own default
+values.
 
-#### Supported Hypervisors
+#### Supported monitors and their respective subsection names
 
-- `qemu` - QEMU/KVM virtualization
-- `firecracker` - Amazon Firecracker microVM
-- `hvt` - Solo5 hvt (hardware virtualized tender)
-- `spt` - Solo5 spt (sandboxed process tender)
+- [QEMU/KVM](./hypervisor-support#qemu) - `qemu`
+- [Firecrakcer](./hypervisor-support#firecracker) - `firecracker`
+- [Solo5-hvt](./hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
+- [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
 
-#### Hypervisor Options
+#### Monitor Options
 
-Each hypervisor subsection supports the following options:
+Each monitor subsection supports the following options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `default_memory_mb` | integer | `256` | Default memory allocation in megabytes |
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
-| `binary_path` | string | (empty) | Optional custom path to the hypervisor binary. If not specified, urunc will search for the binary in PATH |
+| `binary_path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 
 Since Qemu is the only currently supported monitor which requires extra data to
@@ -118,13 +120,13 @@ Qemu's data files.
 **Example:**
 
 ```toml
-[hypervisors.qemu]
+[monitors.qemu]
 default_memory_mb = 1024
 default_vcpus = 4
 binary_path = "/usr/local/bin/qemu-system-x86_64"
 data_path = "/usr/local/share/"
 
-[hypervisors.firecracker]
+[monitors.firecracker]
 default_memory_mb = 512
 default_vcpus = 2
 binary_path = "/opt/firecracker/firecracker"
@@ -184,19 +186,19 @@ To create a configuration file, you can:
    enabled = false
    destination = "/var/log/urunc/timestamps.log"
 
-   [hypervisors.qemu]
+   [monitors.qemu]
    default_memory_mb = 512
    default_vcpus = 2
 
-   [hypervisors.firecracker]
+   [monitors.firecracker]
    default_memory_mb = 256
    default_vcpus = 1
 
-   [hypervisors.hvt]
+   [monitors.hvt]
    default_memory_mb = 256
    default_vcpus = 1
 
-   [hypervisors.spt]
+   [monitors.spt]
    default_memory_mb = 256
    default_vcpus = 1
    EOF
@@ -223,22 +225,22 @@ syslog = false
 enabled = false
 destination = "/var/log/urunc/timestamps.log"
 
-[hypervisors.qemu]
+[monitors.qemu]
 default_memory_mb = 256
 default_vcpus = 1
 # binary_path is not set by default - urunc will search in PATH
 
-[hypervisors.firecracker]
+[monitors.firecracker]
 default_memory_mb = 256
 default_vcpus = 1
 # binary_path is not set by default - urunc will search in PATH
 
-[hypervisors.hvt]
+[monitors.hvt]
 default_memory_mb = 256
 default_vcpus = 1
 # binary_path is not set by default - urunc will search in PATH
 
-[hypervisors.spt]
+[monitors.spt]
 default_memory_mb = 256
 default_vcpus = 1
 # binary_path is not set by default - urunc will search in PATH

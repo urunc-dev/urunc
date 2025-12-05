@@ -35,10 +35,10 @@ type UruncTimestamps struct {
 }
 
 type UruncConfig struct {
-	Log         UruncLog                          `toml:"log"`
-	Timestamps  UruncTimestamps                   `toml:"timestamps"`
-	Hypervisors map[string]types.HypervisorConfig `toml:"hypervisors"`
-	ExtraBins   map[string]types.ExtraBinConfig   `toml:"extra_binaries"`
+	Log        UruncLog                        `toml:"log"`
+	Timestamps UruncTimestamps                 `toml:"timestamps"`
+	Monitors   map[string]types.MonitorConfig  `toml:"monitors"`
+	ExtraBins  map[string]types.ExtraBinConfig `toml:"extra_binaries"`
 }
 
 // this struct is used to parse only the log and timestamp section of the urunc config file
@@ -78,8 +78,8 @@ func defaultTimestampsConfig() UruncTimestamps {
 	}
 }
 
-func defaultHypervisorsConfig() map[string]types.HypervisorConfig {
-	return map[string]types.HypervisorConfig{
+func defaultMonitorsConfig() map[string]types.MonitorConfig {
+	return map[string]types.MonitorConfig{
 		"qemu":        {DefaultMemoryMB: 256, DefaultVCPUs: 1},
 		"hvt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
 		"spt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
@@ -95,10 +95,10 @@ func defaultExtraBinConfig() map[string]types.ExtraBinConfig {
 
 func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
-		Log:         defaultLogConfig(),
-		Timestamps:  defaultTimestampsConfig(),
-		Hypervisors: defaultHypervisorsConfig(),
-		ExtraBins:   defaultExtraBinConfig(),
+		Log:        defaultLogConfig(),
+		Timestamps: defaultTimestampsConfig(),
+		Monitors:   defaultMonitorsConfig(),
+		ExtraBins:  defaultExtraBinConfig(),
 	}
 }
 
@@ -119,8 +119,8 @@ func (p *UruncConfig) Map() map[string]string {
 	// them to this map. this map will be used to save the rest of the urunc config to state.json
 	cfgMap := make(map[string]string)
 
-	for hv, hvCfg := range p.Hypervisors {
-		prefix := "urunc_config.hypervisors." + hv + "."
+	for hv, hvCfg := range p.Monitors {
+		prefix := "urunc_config.monitors." + hv + "."
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
 		cfgMap[prefix+"default_vcpus"] = strconv.FormatUint(uint64(hvCfg.DefaultVCPUs), 10)
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
@@ -138,12 +138,12 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 	// since log and timestamps are loaded at the start of urunc, we will not be reading
 	// them from this map. this map will be used to parse the rest of the urunc config from state.json
 	cfg := &UruncConfig{
-		Hypervisors: defaultHypervisorsConfig(),
-		ExtraBins:   defaultExtraBinConfig(),
+		Monitors:  defaultMonitorsConfig(),
+		ExtraBins: defaultExtraBinConfig(),
 	}
 
 	for key, val := range cfgMap {
-		if !strings.HasPrefix(key, "urunc_config.hypervisors.") {
+		if !strings.HasPrefix(key, "urunc_config.monitors.") {
 			continue
 		}
 		parts := strings.Split(key, ".")
@@ -151,12 +151,12 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			continue
 		}
 		hv := parts[2]
-		if cfg.Hypervisors == nil {
-			cfg.Hypervisors = make(map[string]types.HypervisorConfig)
+		if cfg.Monitors == nil {
+			cfg.Monitors = make(map[string]types.MonitorConfig)
 		}
-		hvCfg, exists := cfg.Hypervisors[hv]
+		hvCfg, exists := cfg.Monitors[hv]
 		if !exists {
-			hvCfg = types.HypervisorConfig{}
+			hvCfg = types.MonitorConfig{}
 		}
 		switch parts[3] {
 		case "default_memory_mb":
@@ -172,7 +172,7 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 		case "data_path":
 			hvCfg.DataPath = val
 		}
-		cfg.Hypervisors[hv] = hvCfg
+		cfg.Monitors[hv] = hvCfg
 	}
 	for key, val := range cfgMap {
 		if !strings.HasPrefix(key, "urunc_config.extra_binaries.") {

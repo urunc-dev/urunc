@@ -23,11 +23,11 @@ import (
 
 // Constants for test configuration keys and values
 const (
-	testQemuMemoryKey    = "urunc_config.hypervisors.qemu.default_memory_mb"
-	testQemuVCPUsKey     = "urunc_config.hypervisors.qemu.default_vcpus"
-	testQemuBinaryKey    = "urunc_config.hypervisors.qemu.binary_path"
-	testQemuDataKey      = "urunc_config.hypervisors.qemu.data_path"
-	testHvtMemoryKey     = "urunc_config.hypervisors.hvt.default_memory_mb"
+	testQemuMemoryKey    = "urunc_config.monitors.qemu.default_memory_mb"
+	testQemuVCPUsKey     = "urunc_config.monitors.qemu.default_vcpus"
+	testQemuBinaryKey    = "urunc_config.monitors.qemu.binary_path"
+	testQemuDataKey      = "urunc_config.monitors.qemu.data_path"
+	testHvtMemoryKey     = "urunc_config.monitors.hvt.default_memory_mb"
 	testVirtiofsdPathKey = "urunc_config.extra_binaries.virtiofsd.path"
 	testVirtiofsdOptsKey = "urunc_config.extra_binaries.virtiofsd.options"
 	testVirtiofsdDefOpts = "--cache always --sandbox none"
@@ -45,11 +45,11 @@ func TestUruncConfigFromMap(t *testing.T) {
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		assert.Equal(t, defaultHypervisorsConfig(), config.Hypervisors)
+		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
 		assert.Equal(t, defaultExtraBinConfig(), config.ExtraBins)
 	})
 
-	t.Run("single hypervisor with all fields", func(t *testing.T) {
+	t.Run("single monitor with all fields", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
 			testQemuMemoryKey: "512",
@@ -61,39 +61,39 @@ func TestUruncConfigFromMap(t *testing.T) {
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		assert.Contains(t, config.Hypervisors, "qemu")
-		qemuConfig := config.Hypervisors["qemu"]
+		assert.Contains(t, config.Monitors, "qemu")
+		qemuConfig := config.Monitors["qemu"]
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(2), qemuConfig.DefaultVCPUs)
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
 		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
 	})
 
-	t.Run("multiple hypervisors", func(t *testing.T) {
+	t.Run("multiple monitors", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
 			testQemuMemoryKey: "512",
 			testQemuVCPUsKey:  "2",
-			"urunc_config.hypervisors.firecracker.default_memory_mb": "128",
-			"urunc_config.hypervisors.firecracker.binary_path":       "/usr/bin/firecracker",
+			"urunc_config.monitors.firecracker.default_memory_mb": "128",
+			"urunc_config.monitors.firecracker.binary_path":       "/usr/bin/firecracker",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		assert.Contains(t, config.Hypervisors, "qemu")
-		assert.Contains(t, config.Hypervisors, "firecracker")
+		assert.Contains(t, config.Monitors, "qemu")
+		assert.Contains(t, config.Monitors, "firecracker")
 
-		qemuConfig := config.Hypervisors["qemu"]
+		qemuConfig := config.Monitors["qemu"]
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(2), qemuConfig.DefaultVCPUs)
 
-		firecrackerConfig := config.Hypervisors["firecracker"]
+		firecrackerConfig := config.Monitors["firecracker"]
 		assert.Equal(t, uint(128), firecrackerConfig.DefaultMemoryMB)
 		assert.Equal(t, "/usr/bin/firecracker", firecrackerConfig.BinaryPath)
 	})
 
-	t.Run("partial hypervisor config", func(t *testing.T) {
+	t.Run("partial monitor config", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
 			testHvtMemoryKey: "1024",
@@ -102,8 +102,8 @@ func TestUruncConfigFromMap(t *testing.T) {
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		assert.Contains(t, config.Hypervisors, "hvt")
-		hvtConfig := config.Hypervisors["hvt"]
+		assert.Contains(t, config.Monitors, "hvt")
+		hvtConfig := config.Monitors["hvt"]
 		assert.Equal(t, uint(1024), hvtConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(1), hvtConfig.DefaultVCPUs) // Default value for unset field
 		assert.Equal(t, "", hvtConfig.BinaryPath)
@@ -116,51 +116,51 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuVCPUsKey:  "-5",
 			testQemuBinaryKey: testQemuBinaryPath,
 			testQemuDataKey:   testQemuDataPath,
-			"urunc_config.hypervisors.qemu.field.extra.parts": "invalid",
+			"urunc_config.monitors.qemu.field.extra.parts": "invalid",
 			testHvtMemoryKey: "512",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		assert.Contains(t, config.Hypervisors, "qemu")
-		qemuConfig := config.Hypervisors["qemu"]
+		assert.Contains(t, config.Monitors, "qemu")
+		qemuConfig := config.Monitors["qemu"]
 		assert.Equal(t, uint(256), qemuConfig.DefaultMemoryMB) // Default value for invalid input
 		assert.Equal(t, uint(1), qemuConfig.DefaultVCPUs)      // Default value for negative input
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
 		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
-		assert.Contains(t, config.Hypervisors, "hvt")
-		hvtConfig := config.Hypervisors["hvt"]
+		assert.Contains(t, config.Monitors, "hvt")
+		hvtConfig := config.Monitors["hvt"]
 		assert.Equal(t, uint(512), hvtConfig.DefaultMemoryMB)
 	})
 
-	t.Run("unknown hypervisor field is ignored", func(t *testing.T) {
+	t.Run("unknown monitor field is ignored", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
-			"urunc_config.hypervisors.qemu.unknown_field": "value",
-			testQemuMemoryKey: "512",
+			"urunc_config.monitors.qemu.unknown_field": "value",
+			testQemuMemoryKey:                          "512",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		qemuConfig := config.Hypervisors["qemu"]
+		qemuConfig := config.Monitors["qemu"]
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 	})
 
-	t.Run("new hypervisor not in default config", func(t *testing.T) {
+	t.Run("new monitor not in default config", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
-			"urunc_config.hypervisors.custom.default_memory_mb": "2048",
-			"urunc_config.hypervisors.custom.default_vcpus":     "4",
-			"urunc_config.hypervisors.custom.binary_path":       "/custom/hypervisor",
+			"urunc_config.monitors.custom.default_memory_mb": "2048",
+			"urunc_config.monitors.custom.default_vcpus":     "4",
+			"urunc_config.monitors.custom.binary_path":       "/custom/hypervisor",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		assert.Contains(t, config.Hypervisors, "custom")
-		customConfig := config.Hypervisors["custom"]
+		assert.Contains(t, config.Monitors, "custom")
+		customConfig := config.Monitors["custom"]
 		assert.Equal(t, uint(2048), customConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(4), customConfig.DefaultVCPUs)
 		assert.Equal(t, "/custom/hypervisor", customConfig.BinaryPath)
@@ -169,11 +169,11 @@ func TestUruncConfigFromMap(t *testing.T) {
 	t.Run("mixed valid and invalid entries", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
-			testQemuMemoryKey:                            "512",
-			"invalid.key.format":                         "ignored",
-			"urunc_config.hypervisors.hvt.default_vcpus": "invalid_number",
-			"urunc_config.hypervisors.spt.binary_path":   "/usr/bin/spt",
-			"urunc_config.hypervisors":                   "malformed",
+			testQemuMemoryKey:                         "512",
+			"invalid.key.format":                      "ignored",
+			"urunc_config.monitors.hvt.default_vcpus": "invalid_number",
+			"urunc_config.monitors.spt.binary_path":   "/usr/bin/spt",
+			"urunc_config.monitors":                   "malformed",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
@@ -181,19 +181,19 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.NotNil(t, config)
 
 		// qemu should have memory set
-		qemuConfig := config.Hypervisors["qemu"]
+		qemuConfig := config.Monitors["qemu"]
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 
 		// hvt should preserve default vcpus value due to invalid input
-		hvtConfig := config.Hypervisors["hvt"]
+		hvtConfig := config.Monitors["hvt"]
 		assert.Equal(t, uint(1), hvtConfig.DefaultVCPUs)
 
 		// spt should have binary path set
-		sptConfig := config.Hypervisors["spt"]
+		sptConfig := config.Monitors["spt"]
 		assert.Equal(t, "/usr/bin/spt", sptConfig.BinaryPath)
 	})
 
-	t.Run("preserves default hypervisors not in map", func(t *testing.T) {
+	t.Run("preserves default monitors not in map", func(t *testing.T) {
 		t.Parallel()
 		cfgMap := map[string]string{
 			testQemuMemoryKey: "512",
@@ -202,18 +202,18 @@ func TestUruncConfigFromMap(t *testing.T) {
 		config := UruncConfigFromMap(cfgMap)
 
 		assert.NotNil(t, config)
-		// Should still contain all default hypervisors
-		assert.Contains(t, config.Hypervisors, "qemu")
-		assert.Contains(t, config.Hypervisors, "hvt")
-		assert.Contains(t, config.Hypervisors, "spt")
-		assert.Contains(t, config.Hypervisors, "firecracker")
+		// Should still contain all default monitors
+		assert.Contains(t, config.Monitors, "qemu")
+		assert.Contains(t, config.Monitors, "hvt")
+		assert.Contains(t, config.Monitors, "spt")
+		assert.Contains(t, config.Monitors, "firecracker")
 
 		// qemu should be modified
-		qemuConfig := config.Hypervisors["qemu"]
+		qemuConfig := config.Monitors["qemu"]
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 
 		// others should have default values
-		hvtConfig := config.Hypervisors["hvt"]
+		hvtConfig := config.Monitors["hvt"]
 		assert.Equal(t, uint(256), hvtConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(1), hvtConfig.DefaultVCPUs)
 	})
@@ -334,20 +334,20 @@ func TestUruncConfigMap(t *testing.T) {
 
 		assert.NotNil(t, cfgMap)
 
-		// Check that all default hypervisors are in the map
+		// Check that all default monitors are in the map
 		expectedKeys := []string{
 			testQemuMemoryKey,
 			testQemuVCPUsKey,
 			testQemuBinaryKey,
-			"urunc_config.hypervisors.hvt.default_memory_mb",
-			"urunc_config.hypervisors.hvt.default_vcpus",
-			"urunc_config.hypervisors.hvt.binary_path",
-			"urunc_config.hypervisors.spt.default_memory_mb",
-			"urunc_config.hypervisors.spt.default_vcpus",
-			"urunc_config.hypervisors.spt.binary_path",
-			"urunc_config.hypervisors.firecracker.default_memory_mb",
-			"urunc_config.hypervisors.firecracker.default_vcpus",
-			"urunc_config.hypervisors.firecracker.binary_path",
+			"urunc_config.monitors.hvt.default_memory_mb",
+			"urunc_config.monitors.hvt.default_vcpus",
+			"urunc_config.monitors.hvt.binary_path",
+			"urunc_config.monitors.spt.default_memory_mb",
+			"urunc_config.monitors.spt.default_vcpus",
+			"urunc_config.monitors.spt.binary_path",
+			"urunc_config.monitors.firecracker.default_memory_mb",
+			"urunc_config.monitors.firecracker.default_vcpus",
+			"urunc_config.monitors.firecracker.binary_path",
 			testVirtiofsdPathKey,
 			testVirtiofsdOptsKey,
 		}
@@ -367,7 +367,7 @@ func TestUruncConfigMap(t *testing.T) {
 	t.Run("custom config produces expected map", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
-			Hypervisors: map[string]types.HypervisorConfig{
+			Monitors: map[string]types.MonitorConfig{
 				"custom": {
 					DefaultMemoryMB: 2048,
 					DefaultVCPUs:    4,
@@ -385,17 +385,17 @@ func TestUruncConfigMap(t *testing.T) {
 		cfgMap := config.Map()
 
 		assert.NotNil(t, cfgMap)
-		assert.Equal(t, "2048", cfgMap["urunc_config.hypervisors.custom.default_memory_mb"])
-		assert.Equal(t, "4", cfgMap["urunc_config.hypervisors.custom.default_vcpus"])
-		assert.Equal(t, "/custom/path", cfgMap["urunc_config.hypervisors.custom.binary_path"])
+		assert.Equal(t, "2048", cfgMap["urunc_config.monitors.custom.default_memory_mb"])
+		assert.Equal(t, "4", cfgMap["urunc_config.monitors.custom.default_vcpus"])
+		assert.Equal(t, "/custom/path", cfgMap["urunc_config.monitors.custom.binary_path"])
 		assert.Equal(t, config.ExtraBins["custom"].Path, cfgMap["urunc_config.extra_binaries.custom.path"])
 		assert.Equal(t, config.ExtraBins["custom"].Options, cfgMap["urunc_config.extra_binaries.custom.options"])
 	})
 
-	t.Run("empty hypervisors map produces empty result", func(t *testing.T) {
+	t.Run("empty monitors map produces empty result", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
-			Hypervisors: map[string]types.HypervisorConfig{},
+			Monitors: map[string]types.MonitorConfig{},
 		}
 
 		cfgMap := config.Map()
@@ -434,9 +434,9 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.Equal(t, testTimestampsPath, config.Destination)
 	})
 
-	t.Run("defaultHypervisorsConfig", func(t *testing.T) {
+	t.Run("defaultMonitorsConfig", func(t *testing.T) {
 		t.Parallel()
-		config := defaultHypervisorsConfig()
+		config := defaultMonitorsConfig()
 
 		assert.Len(t, config, 4)
 		assert.Contains(t, config, "qemu")
@@ -444,7 +444,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.Contains(t, config, "spt")
 		assert.Contains(t, config, "firecracker")
 
-		// Check default values for each hypervisor
+		// Check default values for each monitor
 		for _, hvConfig := range config {
 			assert.Equal(t, uint(256), hvConfig.DefaultMemoryMB)
 			assert.Equal(t, uint(1), hvConfig.DefaultVCPUs)
@@ -472,7 +472,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.False(t, config.Log.Syslog)
 		assert.False(t, config.Timestamps.Enabled)
 		assert.Equal(t, testTimestampsPath, config.Timestamps.Destination)
-		assert.Len(t, config.Hypervisors, 4)
+		assert.Len(t, config.Monitors, 4)
 		assert.Len(t, config.ExtraBins, 1)
 	})
 
