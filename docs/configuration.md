@@ -20,12 +20,12 @@ destination = "/var/log/urunc/timestamps.log"
 [monitors.qemu]
 default_memory_mb = 512
 default_vcpus = 2
-binary_path = "/usr/bin/qemu-system-x86_64"
+path = "/usr/bin/qemu-system-x86_64"
 
 [monitors.firecracker]
 default_memory_mb = 256
 default_vcpus = 1
-binary_path = "/usr/local/bin/firecracker"
+path = "/usr/local/bin/firecracker"
 
 [monitors.hvt]
 default_memory_mb = 256
@@ -110,7 +110,7 @@ Each monitor subsection supports the following options:
 |--------|------|---------|-------------|
 | `default_memory_mb` | integer | `256` | Default memory allocation in megabytes |
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
-| `binary_path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
+| `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 
 Since Qemu is the only currently supported monitor which requires extra data to
@@ -123,13 +123,13 @@ Qemu's data files.
 [monitors.qemu]
 default_memory_mb = 1024
 default_vcpus = 4
-binary_path = "/usr/local/bin/qemu-system-x86_64"
+path = "/usr/local/bin/qemu-system-x86_64"
 data_path = "/usr/local/share/"
 
 [monitors.firecracker]
 default_memory_mb = 512
 default_vcpus = 2
-binary_path = "/opt/firecracker/firecracker"
+path = "/opt/firecracker/firecracker"
 ```
 
 ### Extra binaries Configuration
@@ -228,22 +228,22 @@ destination = "/var/log/urunc/timestamps.log"
 [monitors.qemu]
 default_memory_mb = 256
 default_vcpus = 1
-# binary_path is not set by default - urunc will search in PATH
+# path is not set by default - urunc will search in PATH
 
 [monitors.firecracker]
 default_memory_mb = 256
 default_vcpus = 1
-# binary_path is not set by default - urunc will search in PATH
+# path is not set by default - urunc will search in PATH
 
 [monitors.hvt]
 default_memory_mb = 256
 default_vcpus = 1
-# binary_path is not set by default - urunc will search in PATH
+# path is not set by default - urunc will search in PATH
 
 [monitors.spt]
 default_memory_mb = 256
 default_vcpus = 1
-# binary_path is not set by default - urunc will search in PATH
+# path is not set by default - urunc will search in PATH
 ```
 
 ## Notes
