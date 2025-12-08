@@ -11,7 +11,7 @@ require (
 	github.com/containerd/containerd v1.7.29
 	github.com/creack/pty v1.1.24
 	github.com/elastic/go-seccomp-bpf v1.6.0
-	github.com/hashicorp/go-version v1.7.0
+	github.com/hashicorp/go-version v1.8.0
 	github.com/jackpal/gateway v1.1.1
 	github.com/moby/sys/mount v0.3.4
 	github.com/nubificus/hedge_cli v0.0.3
@@ -24,7 +24,7 @@ require (
 	github.com/urfave/cli/v3 v3.6.1
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.39.0
 	k8s.io/cri-api v0.34.2
 )
 
