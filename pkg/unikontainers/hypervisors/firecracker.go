@@ -72,7 +72,7 @@ type FirecrackerConfig struct {
 	Source  FirecrackerBootSource `json:"boot-source"`
 	Machine FirecrackerMachine    `json:"machine-config"`
 	Drives  []FirecrackerDrive    `json:"drives"`
-	NetIfs  []FirecrackerNet      `json:"network-interfaces"`
+	NetIfs  []FirecrackerNet      `json:"network-interfaces,omitempty"`
 	VSock   FirecrackerVSockDev   `json:"vsock,omitempty"`
 }
 
@@ -139,12 +139,14 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 
 	// Net config for Firecracker
 	FCNet := make([]FirecrackerNet, 0)
-	AnIF := FirecrackerNet{
-		IfaceID:  "net1",
-		GuestMAC: args.Net.MAC,
-		HostIF:   args.Net.TapDev,
+	if args.Net.TapDev != "" {
+		AnIF := FirecrackerNet{
+			IfaceID:  "net1",
+			GuestMAC: args.Net.MAC,
+			HostIF:   args.Net.TapDev,
+		}
+		FCNet = append(FCNet, AnIF)
 	}
-	FCNet = append(FCNet, AnIF)
 
 	// Block config for Firecracker
 	// TODO: Add support for block devices in FIrecracker

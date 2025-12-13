@@ -406,7 +406,7 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 		return err
 	}
 
-	if needsTAP || monitorName == "firecracker" {
+	if needsTAP {
 		err = setupDev(monRootfs, "/dev/net/tun")
 		if err != nil {
 			return err
