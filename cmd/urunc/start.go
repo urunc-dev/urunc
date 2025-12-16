@@ -16,6 +16,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -56,27 +58,56 @@ func startUnikontainer(cmd *cli.Command) error {
 	}
 	metrics.Capture(m.TS12)
 
-	sockAddr := unikontainers.GetStartSockAddr(unikontainer.BaseDir)
-	listener, cleaner, err := unikontainers.CreateListener(sockAddr, true)
+	err = unikontainer.CreateListener(!unikontainers.FromReexec)
 	if err != nil {
 		return err
 	}
-	defer cleaner()
+	// NOTE: We ignore any errors from the DestroyListener here, because
+	// the reexec process has already started the monitor execution and hence
+	// returning an error would confuse the shim. Furthermore, this process
+	// exits. However, we might want to revisit this in the future and
+	// handle it better.
+	defer func() {
+		tmpErr := unikontainer.DestroyListener(!unikontainers.FromReexec)
+		if tmpErr != nil {
+			logrus.WithError(tmpErr).Error("failed to destroy listener on reexec socket")
+		}
+	}()
 
-	err = unikontainer.SendStartExecve()
+	// Send message to reexec to start the monitor
+	err = unikontainer.CreateConn(!unikontainers.FromReexec)
+	if err != nil {
+		err = fmt.Errorf("failed to create connection with reexec socket: %w", err)
+		return err
+	}
+	sendErr := unikontainer.SendMessage(unikontainers.StartExecve)
+	if sendErr != nil {
+		logrus.WithError(sendErr).Error("failed to send START message to reexec")
+		sendErr = fmt.Errorf("error sending START message: %w", sendErr)
+	}
+	// Regardless of the SendMessage status, make sure to clean up the socket,
+	// since it is not required anymore
+	cleanErr := unikontainer.DestroyConn(!unikontainers.FromReexec)
+	if cleanErr != nil {
+		logrus.WithError(cleanErr).Error("failed to destroy connection to reexec socket")
+		cleanErr = fmt.Errorf("error destroying connection to reexec socket: %w", cleanErr)
+	}
+	err = errors.Join(sendErr, cleanErr)
 	if err != nil {
 		return err
 	}
 	metrics.Capture(m.TS13)
 
 	// wait ContainerStarted message on start.sock from reexec process
-	err = unikontainers.AwaitMessage(listener, unikontainers.ContainerStarted)
+	err = unikontainer.AwaitMsg(unikontainers.StartSuccess)
 	if err != nil {
+		err = fmt.Errorf("failed to get message from successful start from reexec: %w", err)
 		return err
 	}
 
 	err = unikontainer.SetRunningState()
 	if err != nil {
+		err = fmt.Errorf("failed to set the state as running for container: %w", err)
 		return err
 	}
 

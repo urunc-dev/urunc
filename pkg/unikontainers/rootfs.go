@@ -172,7 +172,7 @@ func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
 		return result, true
 	}
 
-	uniklog.Error("can not use the container rootfs as block, or through shared-fs")
+	uniklog.Error("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
 	return types.RootfsParams{}, false
 }
 
@@ -225,7 +225,7 @@ func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
 	}
 
 	if selector.shouldMountContainerRootfs() {
-		return types.RootfsParams{}, fmt.Errorf("can not mount container's rootfs as block or through shared-fs to guest")
+		return types.RootfsParams{}, fmt.Errorf("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
 	}
 
 	uniklog.Info("no rootfs configured for guest")

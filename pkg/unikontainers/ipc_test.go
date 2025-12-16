@@ -141,11 +141,11 @@ func TestSendIPCMessageWithRetry(t *testing.T) {
 func TestCreateListener(t *testing.T) {
 	socketAddress := "/tmp/test_create_listener.sock"
 
-	listener, cleaner, err := CreateListener(socketAddress, true)
+	listener, err := createListener(socketAddress, true)
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer cleaner()
+	defer listener.Close()
 
 	assert.NotNil(t, listener, "Expected listener to be created")
 }
@@ -154,11 +154,11 @@ func TestAwaitMessage(t *testing.T) {
 	socketAddress := "/tmp/test_await_message.sock"
 	expectedMessage := ReexecStarted
 
-	listener, cleaner, err := CreateListener(socketAddress, true)
+	listener, err := createListener(socketAddress, true)
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer cleaner()
+	defer listener.Close()
 
 	go func() {
 		conn, err := net.Dial("unix", socketAddress)

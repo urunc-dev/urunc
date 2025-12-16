@@ -21,7 +21,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -30,14 +29,18 @@ import (
 type IPCMessage string
 
 const (
-	startSock                   = "start.sock"
-	uruncSock                   = "urunc.sock"
-	ReexecStarted    IPCMessage = "BOOTED"
-	AckReexec        IPCMessage = "ACK"
-	StartExecve      IPCMessage = "START"
-	ContainerStarted IPCMessage = "CNTR_STARTED"
-	maxRetries                  = 50
-	waitTime                    = 5 * time.Millisecond
+	// Socket for messages towards reexec. The reexec process listens in this socket
+	reexecSock = "reexec.sock"
+	// Socket for messages from reexec. The reexec process writes in this socket
+	uruncSock                = "urunc.sock"
+	ReexecStarted IPCMessage = "RX_START"
+	AckReexec     IPCMessage = "UC_ACK"
+	StartExecve   IPCMessage = "UC_START"
+	StartSuccess  IPCMessage = "RX_SUCCESS"
+	StartErr      IPCMessage = "RX_ERROR"
+	maxRetries               = 50
+	waitTime                 = 5 * time.Millisecond
+	FromReexec               = true
 )
 
 func getSockAddr(dir string, name string) string {
@@ -48,8 +51,8 @@ func getUruncSockAddr(containerDir string) string {
 	return getSockAddr(containerDir, uruncSock)
 }
 
-func getStartSockAddr(baseDir string) string {
-	return getSockAddr(baseDir, startSock)
+func getReexecSockAddr(baseDir string) string {
+	return getSockAddr(baseDir, reexecSock)
 }
 
 func ensureValidSockAddr(sockAddr string) error {
@@ -125,32 +128,21 @@ func sendIPCMessageWithRetry(socketAddress string, message IPCMessage, mustBeVal
 	return err
 }
 
-// CreateListener sets up a listener for new connection to socketAddress
-func CreateListener(socketAddress string, mustBeValid bool) (*net.UnixListener, func(), error) {
+// createListener sets up a listener for new connection to socketAddress
+func createListener(socketAddress string, mustBeValid bool) (*net.UnixListener, error) {
 	if mustBeValid {
 		err := ensureValidSockAddr(socketAddress)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketAddress, Net: "unix"})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	cleanup := func() {
-		derr := listener.Close()
-		if derr != nil {
-			logrus.WithError(derr).Error("failed to close listener")
-		}
-		derr = syscall.Unlink(socketAddress)
-		if derr != nil {
-			logrus.WithError(derr).Errorf("failed to unlink %s", socketAddress)
-		}
-	}
-
-	return listener, cleanup, nil
+	return listener, nil
 }
 
 // awaitMessage opens a new connection to socketAddress

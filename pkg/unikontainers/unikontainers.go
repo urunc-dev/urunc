@@ -60,6 +60,8 @@ type Unikontainer struct {
 	BaseDir  string
 	RootDir  string
 	UruncCfg *UruncConfig
+	Listener *net.UnixListener
+	Conn     *net.UnixConn
 }
 
 // New parses the bundle and creates a new Unikontainer object
@@ -424,14 +426,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Command = unikernelCmd
 
-	// We need to open the socket before pivot so we can be able to use the
-	// same socket as urunc start
-	socketAddress := getStartSockAddr(u.BaseDir)
-	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: socketAddress, Net: "unix"})
-	if err != nil {
-		return err
-	}
-
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	// We just want to check if a mount namespace was define din the list
@@ -478,11 +472,10 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// to revisit this and check if a failed monitor execution affects this approach.
 	// If it affects then we need to re-design the whole spawning of the monitor.
 	// Notify urunc start
-	_, err = conn.Write([]byte(ContainerStarted))
+	err = u.SendMessage(StartSuccess)
 	if err != nil {
-		return fmt.Errorf("failed to send message \"%s\" to \"%s\": %w", ContainerStarted, socketAddress, err)
+		return err
 	}
-	conn.Close()
 
 	return vmm.Execve(vmmArgs, unikernel)
 }
@@ -1003,35 +996,100 @@ func (u *Unikontainer) FormatNsenterInfo() (rdr io.Reader, retErr error) {
 	return bytes.NewReader(r.Serialize()), nil
 }
 
-func GetUruncSockAddr(baseDir string) string {
-	return getSockAddr(baseDir, uruncSock)
-}
-
-func GetStartSockAddr(baseDir string) string {
-	return getSockAddr(baseDir, startSock)
-}
-
-// ListeAndAwaitMsg opens a new connection to UruncSock and
-// waits for the expectedMsg message
-func ListenAndAwaitMsg(sockAddr string, msg IPCMessage) error {
-	listener, cleaner, err := CreateListener(sockAddr, true)
-	if err != nil {
-		return err
+// CreateListener creates a new listener over a Unix socket.
+// If the caller is reexec then the new listener will refer to the
+// ReexecSock, the socket that holds messages from urunc instances to the reexec process
+// If it is not the reexec process then the listener will refer to the
+// uruncSock, the socket that holds messages from reexec to urunc instances
+func (u *Unikontainer) CreateListener(isReexec bool) error {
+	sockAddr := getUruncSockAddr(u.BaseDir)
+	if isReexec {
+		sockAddr = getReexecSockAddr(u.BaseDir)
 	}
-	defer cleaner()
-	return AwaitMessage(listener, msg)
+
+	listener, err := createListener(sockAddr, true)
+	if err != nil {
+		uniklog.WithError(err).Errorf("failed to create listener at %s", sockAddr)
+		return fmt.Errorf("failed to create listener at %s: %w", sockAddr, err)
+	}
+
+	u.Listener = listener
+
+	return nil
 }
 
-// SendAckReexec sends an AckReexec message to UruncSock
-func (u *Unikontainer) SendAckReexec() error {
+// DestroyListener destroys an existing listener over a socket
+func (u *Unikontainer) DestroyListener(isReexec bool) error {
 	sockAddr := getUruncSockAddr(u.BaseDir)
-	return sendIPCMessageWithRetry(sockAddr, AckReexec, true)
+	if isReexec {
+		sockAddr = getReexecSockAddr(u.BaseDir)
+	}
+	listener := u.Listener
+
+	// NOTE: In Go, Close() will also unlink the unix socket.
+	err := listener.Close()
+	if err != nil {
+		uniklog.WithError(err).Errorf("failed to close listener at %s", sockAddr)
+		err = fmt.Errorf("failed to close listener at %s: %w", sockAddr, err)
+	}
+
+	return err
 }
 
-// SendStartExecve sends an StartExecve message to UruncSock
-func (u *Unikontainer) SendStartExecve() error {
-	sockAddr := getUruncSockAddr(u.BaseDir)
-	return sendIPCMessageWithRetry(sockAddr, StartExecve, true)
+// CreateConn opens a new connection to a unix socket.
+// If the caller is reexec then the new connection will refer to the
+// uruncSock, the socket that holds messages from reexec to urunc instances
+// If it is not the reexec process then the connection will refer to the
+// ReexecSock, the socket that holds messages from urunc instances to the reexec process
+func (u *Unikontainer) CreateConn(isReexec bool) error {
+	sockAddr := getReexecSockAddr(u.BaseDir)
+	if isReexec {
+		sockAddr = getUruncSockAddr(u.BaseDir)
+	}
+
+	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: sockAddr, Net: "unix"})
+	if err != nil {
+		uniklog.WithError(err).Errorf("failed to create connection to unix socket %s", sockAddr)
+		return fmt.Errorf("failed to create connection to unix socket %s: %w", sockAddr, err)
+	}
+
+	u.Conn = conn
+
+	return nil
+}
+
+// DestroyListenerReexec destroys an existing listener over a socket
+func (u *Unikontainer) DestroyConn(isReexec bool) error {
+	sockAddr := getReexecSockAddr(u.BaseDir)
+	if isReexec {
+		sockAddr = getUruncSockAddr(u.BaseDir)
+	}
+	conn := u.Conn
+
+	err := conn.Close()
+	if err != nil {
+		uniklog.WithError(err).Errorf("failed to close connection to unix socket %s", sockAddr)
+		return fmt.Errorf("failed to close connection to unix socket %s: %w", sockAddr, err)
+	}
+
+	return nil
+}
+
+// AwaitMessage waits for a specific message in the listener of unikontainer instance
+func (u *Unikontainer) AwaitMsg(msg IPCMessage) error {
+	return AwaitMessage(u.Listener, msg)
+}
+
+// SendMessage sends message over the active connection
+func (u *Unikontainer) SendMessage(message IPCMessage) error {
+	conn := u.Conn
+	_, err := conn.Write([]byte(message))
+	if err != nil {
+		uniklog.WithError(err).Errorf("failed to send message %s", message)
+		return fmt.Errorf("failed to send message %s over active connection: %w", message, err)
+	}
+
+	return nil
 }
 
 // isRunning returns true if the PID is alive or hedge.ListVMs returns our containerID

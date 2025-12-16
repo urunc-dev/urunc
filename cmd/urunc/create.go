@@ -23,7 +23,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 
 	"github.com/creack/pty"
@@ -268,16 +267,14 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	}
 	metrics.Capture(m.TS07)
 
-	// send ACK to reexec process
-	err = unikontainer.SendAckReexec()
+	_, err = initSockParent.Write([]byte(unikontainers.AckReexec))
 	if err != nil {
 		err = fmt.Errorf("failed to send ACK to reexec process: %w", err)
 		return err
-
 	}
+
 	metrics.Capture(m.TS08)
 
-	err = nil
 	return err
 }
 
@@ -367,22 +364,21 @@ func reexecUnikontainer(cmd *cli.Command) error {
 		return fmt.Errorf("unable to convert _LIBCONTAINER_INITPIPE: %w", err)
 	}
 	initPipe := os.NewFile(uintptr(initFd), "initpipe")
+	metrics.Capture(m.TS05)
+
+	// wait AckReexec message on init socket from parent process
+	buf := make([]byte, len(unikontainers.AckReexec))
+	n, err := initPipe.Read(buf)
+	if err != nil {
+		return fmt.Errorf("failed to read from init socket: %w", err)
+	}
+	msg := string(buf[0:n])
+	if msg != string(unikontainers.AckReexec) {
+		return fmt.Errorf("received unexpected message: %s", msg)
+	}
 	err = initPipe.Close()
 	if err != nil {
 		return fmt.Errorf("close init pipe: %w", err)
-	}
-
-	// We have already made sure in main.go that root is not nil
-	rootDir := cmd.String("root")
-	baseDir := filepath.Join(rootDir, containerID)
-
-	metrics.Capture(m.TS05)
-
-	// wait AckReexec message on urunc.sock from parent process
-	socketPath := unikontainers.GetUruncSockAddr(baseDir)
-	err = unikontainers.ListenAndAwaitMsg(socketPath, unikontainers.AckReexec)
-	if err != nil {
-		return err
 	}
 	metrics.Capture(m.TS09)
 
@@ -406,14 +402,63 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	metrics.Capture(m.TS10)
 
 	// wait StartExecve message on urunc.sock from urunc start process
-	err = unikontainers.ListenAndAwaitMsg(socketPath, unikontainers.StartExecve)
+	err = unikontainer.CreateListener(unikontainers.FromReexec)
 	if err != nil {
+		return fmt.Errorf("error creating listener on reexec socket: %w", err)
+	}
+	awaitErr := unikontainer.AwaitMsg(unikontainers.StartExecve)
+	// Before checking for any errors, make sure to clean up the socket
+	cleanErr := unikontainer.DestroyListener(unikontainers.FromReexec)
+	if cleanErr != nil {
+		logrus.WithError(cleanErr).Error("failed to destroy listener on reexec socket")
+		cleanErr = fmt.Errorf("error destroying listener on reexec socket: %w", cleanErr)
+	}
+	// NOTE: Currently, we do not fail in case the socket cleanup fails
+	// because urunc start has told reexec to start preparing the execution
+	// environment for the monitor. Therefore, if the socket cleanup affects the
+	// preparation the error will get manifested later. However, if environment
+	// setup goes well and the socket was not cleaned up correctly,
+	// we execve the monitor and we rely on Go's close-on-exec feature in all file
+	// descriptors. THerefore, we might want to rethink this in future and not rely
+	// on Go, but this requires quite a a lot of changes.
+	if awaitErr != nil {
+		awaitErr = fmt.Errorf("error waiting START message: %w", awaitErr)
+		err = errors.Join(awaitErr, cleanErr)
 		return err
 	}
 	metrics.Capture(m.TS14)
 
+	err = unikontainer.CreateConn(unikontainers.FromReexec)
+	if err != nil {
+		return fmt.Errorf("error creating connection to urunc socket: %w", err)
+	}
+	// NOTE: More changes are required for a proper handling of this cleanup.
+	// Currently, the cleanup will happen if something fails in the container
+	// setup and unikontainers.Exec returns with an error. In that case, we also
+	// ignore any errors, since it is a simple socket cleanup and the process exits.
+	// If unikontainers.Exec succeeds though, then we will never execute this
+	// cleanup, since we execve to the monitor process. In that case, we rely
+	// once more in Go's close on exec handling of all file descriptors.
+	// In the future, we might want to revisit this and rely less in Go.
+	defer func() {
+		tmpErr := unikontainer.DestroyConn(unikontainers.FromReexec)
+		if tmpErr != nil {
+			logrus.WithError(tmpErr).Error("failed to destroy connection on reexec socket")
+		}
+	}()
+
 	// execve
 	// we need to pass metrics to Exec() function, as the unikontainer
 	// struct does not have the part of urunc config that configures metrics
-	return unikontainer.Exec(metrics)
+	var sockErr error
+	err = unikontainer.Exec(metrics)
+	if err != nil {
+		logrus.WithError(err).Error("Setting up execution environment for monitor")
+		sockErr = unikontainer.SendMessage(unikontainers.StartErr)
+		if sockErr != nil {
+			logrus.WithError(sockErr).Error("failed to send error message to urunc socket")
+		}
+	}
+
+	return errors.Join(err, sockErr)
 }
