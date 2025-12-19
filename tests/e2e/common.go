@@ -30,8 +30,6 @@ type testTool interface {
 	getContainerID() string
 	setPodID(string)
 	setContainerID(string)
-	pullImage() error
-	rmImage() error
 	createPod() (string, error)
 	createContainer() (string, error)
 	startContainer(bool) (string, error)

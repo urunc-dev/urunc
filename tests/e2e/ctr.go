@@ -84,14 +84,6 @@ func (i *ctrInfo) setContainerID(cID string) {
 	i.containerID = cID
 }
 
-func (i *ctrInfo) pullImage() error {
-	return commonPull(ctrName, i.testArgs.Image)
-}
-
-func (i *ctrInfo) rmImage() error {
-	return commonRmImage(ctrName, i.testArgs.Image)
-}
-
 func (i *ctrInfo) createPod() (string, error) {
 	// Not supported by ctr
 	return "", errToolDoesNotSupport
