@@ -30,12 +30,15 @@ import (
 
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
-// getMountInfo checks if the path (given as argument) is a mountpoint
-// looking at /proc/self/mountinfo.
-// If the path is indeed a mount point then getMountInfo stores and returns
-// the respective info in a BlockDevParams struct.
-// If the path is not a mount point (not present in /proc/self/mountinfo)
-// then getMountInfo returns an empty BlockDevParams struct and ErrMountpoint error.
+// getMountInfo determines whether the provided path is a mount point
+// by inspecting /proc/self/mountinfo.
+// If the path is a mount point, it populates and returns a BlockDevParams struct.
+// Otherwise, it returns an error along with an empty BlockDevParams.
+// Additionally, when the path is a mount point, getMountInfo verifies
+// the mount source to ensure it can use the source as a block device.
+// There are cases (e.g. bind mounts) where mounts use the same underlying
+// source device as the original mount, so they can appear identical to
+// regular mounts when inspecting mount information.
 func getMountInfo(path string) (types.BlockDevParams, error) {
 	selfProcMountInfo := "/proc/self/mountinfo"
 
@@ -45,6 +48,8 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 	}
 	defer file.Close()
 
+	blockDev := types.BlockDevParams{}
+	nonSpecialSources := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
@@ -54,29 +59,48 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 			return types.BlockDevParams{}, fmt.Errorf("invalid mountinfo line in /proc/self/mountinfo")
 		}
 
-		fields := strings.Fields(parts[0])
-		if len(fields) < 5 || fields[4] != path {
+		preDash := strings.Fields(parts[0])
+		if len(preDash) < 5 {
 			continue
 		}
-		fields = strings.Fields(parts[1])
-		if len(fields) < 2 {
+		postDash := strings.Fields(parts[1])
+		if len(postDash) < 2 {
 			continue
 		}
-		uniklog.WithFields(logrus.Fields{
-			"mounted at": path,
-			"device":     fields[1],
-			"fstype":     fields[0],
-		}).Debug("Found container rootfs mount")
+		if preDash[4] == path {
+			uniklog.WithFields(logrus.Fields{
+				"mounted at": path,
+				"device":     postDash[1],
+				"fstype":     postDash[0],
+			}).Debug("Found block device")
 
-		return types.BlockDevParams{
-			Source:     fields[1],
-			FsType:     fields[0],
-			MountPoint: path,
-			ID:         "",
-		}, nil
+			blockDev.Source = postDash[1]
+			blockDev.FsType = postDash[0]
+			blockDev.MountPoint = path
+			blockDev.ID = ""
+			continue
+		}
+		// Store the source of all mounts with non-special fs
+		// (e.g. overlay, tmpfs) in a map
+		if postDash[0] != postDash[1] {
+			nonSpecialSources[postDash[1]] = struct{}{}
+		}
 	}
 
-	return types.BlockDevParams{}, ErrMountpoint
+	if blockDev.Source == "" {
+		return types.BlockDevParams{}, ErrMountpoint
+	}
+
+	// Check if the source of the mountpoint that refers to path
+	// exists i the map with the found sources. If this is the case,
+	// then we are not dealing with a mount regarding a block device
+	// that we can attach to the sandbox.
+	_, ok := nonSpecialSources[blockDev.Source]
+	if ok {
+		return types.BlockDevParams{}, ErrMountpoint
+	}
+
+	return blockDev, nil
 }
 
 // extractUnikernelFromBlock moves unikernel binary, initrd and urunc.json
