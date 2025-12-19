@@ -71,17 +71,6 @@ func runTest(tool testTool, t *testing.T) {
 			t.Skipf("Could not find %s", vol.Source)
 		}
 	}
-	err = tool.pullImage()
-	if err != nil {
-		t.Fatalf("Failed to pull container image: %s - %v", cntrArgs.Image, err)
-	}
-	t.Cleanup(func() {
-		err = tool.rmImage()
-		if err != nil {
-			t.Errorf("Failed to remove container image: %s - %v", cntrArgs.Image, err)
-		}
-
-	})
 	if cntrArgs.TestFunc == nil {
 		if tool.Name() == "crictl" {
 			// TODO: Add support for matchTest in crictl
