@@ -57,14 +57,6 @@ func (i *dockerInfo) setContainerID(cID string) {
 	i.containerID = cID
 }
 
-func (i *dockerInfo) pullImage() error {
-	return commonPull(dockerName, i.testArgs.Image)
-}
-
-func (i *dockerInfo) rmImage() error {
-	return commonRmImage(dockerName, i.testArgs.Image)
-}
-
 func (i *dockerInfo) createPod() (string, error) {
 	// Not supported by docker
 	return "", errToolDoesNotSupport

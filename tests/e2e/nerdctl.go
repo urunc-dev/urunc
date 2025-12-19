@@ -57,14 +57,6 @@ func (i *nerdctlInfo) setContainerID(cID string) {
 	i.containerID = cID
 }
 
-func (i *nerdctlInfo) pullImage() error {
-	return commonPull(nerdctlName, i.testArgs.Image)
-}
-
-func (i *nerdctlInfo) rmImage() error {
-	return commonRmImage(nerdctlName, i.testArgs.Image)
-}
-
 func (i *nerdctlInfo) createPod() (string, error) {
 	// Not supported by nerdctl
 	return "", errToolDoesNotSupport

@@ -157,30 +157,6 @@ func (i *crictlInfo) setContainerID(cID string) {
 	i.containerID = cID
 }
 
-func (i *crictlInfo) pullImage() error {
-	cmdBase := crictlName
-	cmdBase += " pull "
-	cmdBase += i.testArgs.Image
-	output, err := commonCmdExec(cmdBase)
-	if err != nil {
-		return fmt.Errorf("Pull: %s -- %v", output, err)
-	}
-
-	return nil
-}
-
-func (i *crictlInfo) rmImage() error {
-	cmdBase := crictlName
-	cmdBase += " rmi "
-	cmdBase += i.testArgs.Image
-	output, err := commonCmdExec(cmdBase)
-	if err != nil {
-		return fmt.Errorf("Remove image: %s -- %v", output, err)
-	}
-
-	return nil
-}
-
 func (i *crictlInfo) createPod() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
