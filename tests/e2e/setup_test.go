@@ -89,12 +89,13 @@ func filterTestCases(testFunc, subtestName string) []containerTestArgs {
 	if subtestName == "" {
 		return cases
 	}
+	var filtered []containerTestArgs
 	for _, tc := range cases {
-		if tc.Name == subtestName {
-			return []containerTestArgs{tc}
+		if strings.Contains(tc.Name, subtestName) {
+			filtered = append(filtered, tc)
 		}
 	}
-	return nil
+	return filtered
 }
 
 func getTestImages(cases []containerTestArgs) []string {

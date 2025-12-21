@@ -299,6 +299,7 @@ sirupsen
 socker
 stretchr
 strictatime
+subtest
 superfences
 sworker
 symfollow
