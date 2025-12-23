@@ -91,11 +91,11 @@ jobs:
     - name: Upload urunc_${{ matrix.arch }}
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        name: urunc_${{ matrix.arch }}-${{ github.run_id }}
+        name: urunc_static_${{ matrix.arch }}-${{ github.run_id }}
         path: dist/urunc_static_${{ matrix.arch }}
     
     - name: Upload containerd-shim-urunc-v2 artifact
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        name: containerd-shim-urunc-v2_${{ matrix.arch }}-${{ github.run_id }}
+        name: containerd-shim-urunc-v2_static_${{ matrix.arch }}-${{ github.run_id }}
         path: dist/containerd-shim-urunc-v2_static_${{ matrix.arch }}

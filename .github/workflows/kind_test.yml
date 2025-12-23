@@ -127,13 +127,13 @@ jobs:
     - name: Download urunc artifact
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        name: urunc_${{ matrix.arch }}-${{ github.run_id }}
+        name: urunc_static_${{ matrix.arch }}-${{ github.run_id }}
         path: ./artifacts
 
     - name: Download containerd-shim artifact
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
-        name: containerd-shim-urunc-v2_${{ matrix.arch }}-${{ github.run_id }}
+        name: containerd-shim-urunc-v2_static_${{ matrix.arch }}-${{ github.run_id }}
         path: ./artifacts    
     
     - name: List artifacts dir

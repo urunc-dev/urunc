@@ -236,13 +236,13 @@ jobs:
     - name: Download urunc artifact
       uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
       with:
-        name: urunc_${{ matrix.arch }}-${{ github.run_id }}
+        name: urunc_static_${{ matrix.arch }}-${{ github.run_id }}
         path: ./
 
     - name: Download containerd-shim-urunc-v2 artifact
       uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
       with:
-        name: containerd-shim-urunc-v2_${{ matrix.arch }}-${{ github.run_id }}
+        name: containerd-shim-urunc-v2_static_${{ matrix.arch }}-${{ github.run_id }}
         path: ./
 
     - name: Install urunc
