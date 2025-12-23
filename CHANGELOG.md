@@ -1,3 +1,87 @@
+# v0.7.0
+
+## What's Changed
+
+### New features
+
+* Copy the files defined in the mount list of the container inside the block rootfs of the guest
+* Add support for `urunc` configuration file
+* Add support for virtiofs
+* Copy the files defined in the mount list of the container inside the initrd rootfs of the guest
+* Improve debugging of `urunc` created containers in the host side
+* Add support for attaching block-based mounts as block devices in the sandbox
+* add vAccel support to `urunc`
+
+### Breaking changes
+
+* Use an initrd file to pass information from `urunc` to [urunit](https://github.com/nubificus/urunit#) for the execution environment of the Linux guest
+
+### Internals
+
+* Fix json construction for rumprun unikernels adding support for environment variables
+* Update Go and dependencies
+* Use the MAC address of veth as the guest's interface MAC address
+* Improve network error logging and propagation
+* Fail early in invalid unikernel configuration
+* Set/Unset a [urunit](https://github.com/nubificus/urunit#) specific environment variable to instruct `urunit` to set the default route to eth0
+* Ensure monitor process is killed in force deleting containers
+* Slightly refactor the `Exec` monolith in unikontainers to improve guest's rootfs type selection and handling.
+* Fix crictl configuration generation in crictl testing
+* Fix container and snapshot deletion for ctr tests
+* Increase tests' timeout due to slow image pulling
+* Fix console parameter for Linux over Firecracker in aarch64 and update the seccomp filter of Solo5-hvt in aarch64
+* Small refactor of the container delete path and fix entering the container's namespace
+* Refactor and fix hook's execution context
+* Improve metrics handling in `urunc`
+* Fix handling of failures during the creation of the monitor's containerized environment
+
+### CI/CD
+
+* Complete the transition to the new [urunc repository](https://github.com/urunc-dev/urunc)
+* Add scorecard workflow
+* Use specific versions for tools and services
+* Fix the commit and repo spell checker
+* Add arm64 tests over Solo5-spt
+* Add automated release action
+* Add dependabot
+* Prefetch Go packages before running end-to-end tests
+* Add end-to-end Kubernetes tests using kind
+* Harden workflows
+* Apply security best practices
+* Refactor the handling of Go version for CI jobs
+* Set the correct image digest for Go alpine in urunc-deploy image building
+* Cancel rest of tests in case of an error
+* Introduce nightly tests
+* Remove dependency on self-hosted runners
+* Add testing for `urunc-deploy`
+
+### Documentation
+
+* Update Kubernetes tutorial
+* Update Linux tutorial with the role of [urunit](https://github.com/nubificus/urunit#)
+* Update instructions for installing Go and remove obsolete image references
+* Add tutorial for using `urunc` with kind
+* Centralize the version definition of the tools mentioned in docs
+* Add instructions fo using blockfile snapshotter with `urunc`
+* Provide documentation for using the new [monitors-build repository](https://github.com/urunc-dev/monitors-build)
+
+## New Contributors
+
+Big thanks for all new contributors in `urunc`:
+
+* [Maria Gkeka](https://github.com/mgkeka-nbfc)
+* [Panagiotis Mavrikos](https://github.com/panosmaurikos)
+* [zyfy29](https://github.com/zyfy29)
+* [Dionisia Koronellou](https://github.com/DionisiaK4)
+* [sankalp](https://github.com/codesmith25103)
+* [Vasilis Liaskovitis](https://github.com/vliaskov)
+* [Anastasia Mallikopoulou](https://github.com/amallikopoulou)
+* [Medfouni Khitem](https://github.com/KhitemMed)
+
+**Full Changelog**: https://github.com/urunc-dev/urunc/compare/v0.6.0...v0.7.0
+
+# Previous Releases:
+
 # v0.6.0
 
 ## What's Changed
@@ -21,7 +105,7 @@
 * Improve logging and error handling
 * Update Unikraft cli handling to replicate kraftkit's behavior
 
-### CIC/CD
+### CI/CD
 
 * Add workflow to publish docs automatically
 * Migrate to GH runners for all CI actions
@@ -38,8 +122,6 @@
 * Update README with new info about urunc's community, Slack channel, roadmap and OpenSSF badge.
 
 **Full Changelog**: https://github.com/urunc-dev/urunc/compare/v0.5.0...v0.6.0
-
-# Previous Releases:
 
 ## v0.5.0
 
