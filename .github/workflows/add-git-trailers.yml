@@ -58,7 +58,7 @@ jobs:
           git config --global user.email "urunc-bot[bot]@users.noreply.github.com"
 
       - name: Append git trailers
-        uses: nubificus/git-trailers@18fd322f3fbfd505b4de728974a4ac1f32f758a7 # feat_auto_merge
+        uses: nubificus/git-trailers@8e08c91bb4c1fd9cb1ccbd9cc8029c31acf8da66 # feat_auto_merge
         with:
           user_info: .github/contributors.yaml
 
