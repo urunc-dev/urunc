@@ -160,6 +160,17 @@ jobs:
           /usr/local/bin/urunc --version
         '
 
+    - name: Configure urunc with debug logging
+      run: |
+        docker exec urunc-test-control-plane bash -c '
+          mkdir -p /etc/urunc
+          cat > /etc/urunc/config.toml <<EOF
+        [log]
+        level = "debug"
+        syslog = true
+        EOF
+        '
+
     - name: Install QEMU inside kind node (amd64 only)
       if: matrix.arch == 'amd64'
       run: |
@@ -340,4 +351,6 @@ jobs:
           echo "=== Logs ==="
           kubectl logs hello-spt-rumprun-block || true
         fi
-        
+        echo "=== urunc debug logs ==="
+        docker exec urunc-test-control-plane journalctl --identifier=urunc --no-pager || true
+

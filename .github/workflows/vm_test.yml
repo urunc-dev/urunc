@@ -253,7 +253,16 @@ jobs:
         sudo mv urunc_static_${{ matrix.arch }} /usr/local/bin/urunc
         sudo mv containerd-shim-urunc-v2_static_${{ matrix.arch }} /usr/local/bin/containerd-shim-urunc-v2
         urunc --version
-  
+
+    - name: Configure urunc with debug logging
+      run: |
+        sudo mkdir -p /etc/urunc
+        sudo tee /etc/urunc/config.toml > /dev/null <<'EOF'
+        [log]
+        level = "debug"
+        syslog = true
+        EOF
+
     - name: Add runner user to KVM group
       if: ${{ matrix.arch == 'amd64' }}
       id: kvm-setup
@@ -287,3 +296,9 @@ jobs:
         else
           sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}
         fi
+
+    - name: Dump urunc logs on failure
+      if: failure()
+      run: |
+        echo "=== urunc debug logs ==="
+        sudo journalctl --identifier=urunc --no-pager
