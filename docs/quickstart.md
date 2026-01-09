@@ -39,7 +39,7 @@ Then we need `urunc`:
 ```bash
 sudo apt install -y git make
 git clone https://github.com/urunc-dev/urunc.git
-docker run --rm -ti -v $PWD/urunc:/urunc -w /urunc golang:1.24 bash -c "git config --global --add safe.directory /urunc && make"
+docker run --rm -ti -v $PWD/urunc:/urunc -w /urunc golang:1.25 bash -c "git config --global --add safe.directory /urunc && make"
 sudo make -C urunc install
 ```
 

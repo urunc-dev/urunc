@@ -22,14 +22,14 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ github.sha }}
-      go_version: "1.24.6"
+      go_version: "1.25.4"
 
   unit_test:
     name: Unit tests
     uses: ./.github/workflows/unit_test.yml
     with:
       ref: ${{ github.sha }}
-      go_version: "1.24.6"
+      go_version: "1.25.4"
 
   vm_test:
     needs: [build]
@@ -44,7 +44,7 @@ jobs:
       crictl_version: 'v1.30.0'
       firecracker_version: 'v1.7.0'
       solo5_version: 'v0.9.3'
-      go_version: "1.24.6"
+      go_version: "1.25.4"
 
   kind_test:
     needs: [build]
