@@ -21,13 +21,16 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
-	testNerdctl = "TestNerdctl"
-	testCtr     = "TestCtr"
-	testCrictl  = "TestCrictl"
-	testDocker  = "TestDocker"
+	testNerdctl    = "TestNerdctl"
+	testCtr        = "TestCtr"
+	testCrictl     = "TestCrictl"
+	testDocker     = "TestDocker"
+	maxPullRetries = 5
+	pullRetryDelay = 2 * time.Second
 )
 
 func TestMain(m *testing.M) {
@@ -114,7 +117,7 @@ func getTestImages(cases []containerTestArgs) []string {
 func pullAllImages(testFunc string, images []string) error {
 	for _, image := range images {
 		log.Printf("Pulling image: %s", image)
-		if err := pullImageForTest(testFunc, image); err != nil {
+		if err := pullImageWithRetry(testFunc, image); err != nil {
 			return fmt.Errorf("failed to pull %s: %w", image, err)
 		}
 	}
@@ -128,6 +131,20 @@ func removeAllImages(testFunc string, images []string) {
 			log.Printf("Warning: failed to remove %s: %v", image, err)
 		}
 	}
+}
+
+func pullImageWithRetry(testFunc string, image string) error {
+	var err error
+	for i := 0; i < maxPullRetries; i++ {
+		err = pullImageForTest(testFunc, image)
+		if err == nil {
+			return nil
+		}
+
+		fmt.Printf("Attempt %d/%d failed to pull %s: %v. Retrying in %v...\n", i+1, maxPullRetries, image, err, pullRetryDelay)
+		time.Sleep(pullRetryDelay)
+	}
+	return fmt.Errorf("failed to pull %s after %d attempts: %w", image, maxPullRetries, err)
 }
 
 func pullImageForTest(testFunc string, image string) error {
