@@ -65,7 +65,7 @@ func ensureValidSockAddr(sockAddr string) error {
 	return nil
 }
 
-// sockAddrExists returns true if if given sock address exists
+// sockAddrExists returns true if given sock address exists
 // returns false if any error is encountered
 func SockAddrExists(sockAddr string) bool {
 	_, err := os.Stat(sockAddr)

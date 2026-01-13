@@ -39,9 +39,9 @@ jobs:
           go-version: ${{ inputs.go_version }}
           cache: false
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
         with:
-          version: v1.64
+          version: v2.7
 
           # show only new issues if it's a pull request. The default value is `false`.
           only-new-issues: true

@@ -310,6 +310,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 	return nil
 }
 
+// nolint:gocyclo
 // prepareMonRootfs prepares the rootfs where the monitor will execute. It
 // essentially sets up the devices (KVM, snapshotter block device) that are required
 // for the guest execution and any other files (e.g. binaries).

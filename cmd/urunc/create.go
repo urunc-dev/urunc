@@ -421,7 +421,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	// setup goes well and the socket was not cleaned up correctly,
 	// we execve the monitor and we rely on Go's close-on-exec feature in all file
 	// descriptors. THerefore, we might want to rethink this in future and not rely
-	// on Go, but this requires quite a a lot of changes.
+	// on Go, but this requires quite a lot of changes.
 	if awaitErr != nil {
 		awaitErr = fmt.Errorf("error waiting START message: %w", awaitErr)
 		err = errors.Join(awaitErr, cleanErr)

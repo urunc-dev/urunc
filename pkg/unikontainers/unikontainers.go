@@ -200,6 +200,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 	return netArgs, nil
 }
 
+// nolint:gocyclo
 func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(m.TS15)
 
@@ -341,7 +342,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	// Setup the rootfs for the the monitor execution, creating necessary
+	// Setup the rootfs for the monitor execution, creating necessary
 	// devices and the monitor's binary.
 	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), u.UruncCfg.Monitors[vmmType].DataPath, vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
@@ -624,7 +625,7 @@ func (u *Unikontainer) Delete() error {
 	// if the monitorRootfsDirName directory exists under the bundle.
 	_, err = os.Stat(monRootfs)
 	if !os.IsNotExist(err) {
-		// Since there was no no block defined for the unikernel
+		// Since there was no block defined for the unikernel
 		// and we created a new rootfs for the monitor, we need to
 		// clean it up.
 		dirs = append(dirs, monitorRootfsDirName)
@@ -843,6 +844,7 @@ func loadUnikontainerState(stateFilePath string) (*specs.State, error) {
 	return &state, nil
 }
 
+// nolint:gocyclo
 // FormatNsenterInfo encodes namespace info in netlink binary format
 // as a io.Reader, in order to send the info to nsenter.
 // The implementation is inspired from:
