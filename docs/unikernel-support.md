@@ -10,8 +10,10 @@ the cloud-native ecosystem. For that reason, `urunc` aims to support all the
 available unikernel frameworks and similar technologies.
 
 For the time being, `urunc` provides support for
-[Unikraft](https://unikraft.org/) and
-[Rumprun](https://github.com/cloudkernels/rumprun) unikernels.
+[Unikraft](https://unikraft.org/),
+[Rumprun](https://github.com/cloudkernels/rumprun) and
+[OSv](https://github.com/cloudius-systems/osv)
+unikernels.
 
 ## Unikraft
 
@@ -275,6 +277,68 @@ sudo nerdctl run -m 512M --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.i
 
 > Note: As far as we understand, Mewz requires at least 512M of memory to properly boot.
 
+## OSv
+
+[OSv](https://github.com/cloudius-systems/osv) is a specialized operating
+system designed specifically to run as a single application on top of a
+hypervisor. Unlike traditional unikernel frameworks that require significant
+application modifications, [OSv](https://github.com/cloudius-systems/osv)
+provides strong POSIX compatibility and supports unmodified applications written
+in various programming languages including Java, Node.js, Python, Ruby, and Go.
+
+[OSv](https://github.com/cloudius-systems/osv) was designed with cloud
+environments in mind, optimizing for minimal overhead and fast boot times.
+It includes a built-in ZFS filesystem for reliable storage and provides
+efficient memory management tailored for single-application workloads. The
+framework is particularly well-suited for database applications, microservices,
+and other cloud-native workloads that benefit from reduced OS overhead.
+
+One of the key advantages of [OSv](https://github.com/cloudius-systems/osv) is
+its ability to run complex applications with minimal modification. Applications
+that depend on threading, networking, and file I/O work seamlessly on
+[OSv](https://github.com/cloudius-systems/osv), making it an excellent choice
+for migrating existing applications to a unikernel environment.
+
+### VMMs and other sandbox monitors
+
+[OSv](https://github.com/cloudius-systems/osv) is designed to run on KVM-based
+hypervisors and supports [Qemu](https://www.qemu.org/) as its primary VMM.
+It leverages standard virtio drivers for both networking (virtio-net) and
+storage (virtio-blk), providing high-performance I/O operations.
+
+[OSv](https://github.com/cloudius-systems/osv) takes full advantage of
+hardware virtualization extensions and is optimized for KVM, delivering
+near-native performance for many workloads. The framework includes support for
+multiple virtual CPUs and can efficiently utilize available hardware resources.
+
+### OSv and `urunc`
+
+In the case of [OSv](https://github.com/cloudius-systems/osv), `urunc` provides
+support for [Qemu](https://www.qemu.org/). When configured with network access,
+`urunc` automatically sets up virtio-net devices for
+[OSv](https://github.com/cloudius-systems/osv) unikernels with proper IP
+configuration including address, netmask, and gateway settings.
+
+For storage, `urunc` supports attaching block devices to
+[OSv](https://github.com/cloudius-systems/osv) unikernels using virtio-blk.
+[OSv](https://github.com/cloudius-systems/osv)'s built-in ZFS filesystem can
+be used to provide reliable and efficient storage for applications.
+
+Network and environment variable configuration is passed to
+[OSv](https://github.com/cloudius-systems/osv) through its command-line
+interface, allowing seamless integration with container orchestration platforms.
+
+For more information on packaging
+[OSv](https://github.com/cloudius-systems/osv) unikernels for `urunc`, take
+a look at our [packaging](../package/) page.
+
+An example of [OSv](https://github.com/cloudius-systems/osv) on top of
+[Qemu](https://qemu.org) with `urunc`:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/httpserver-qemu-osv:latest
+```
+
 ## Linux
 
 [Linux](https://github.com/torvalds/linux) is maybe the most widely used kernel
@@ -341,12 +405,3 @@ An example of a Redis alpine image transformed to a block file on top of
 ```bash
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-firecracker-linux-block:latest
 ```
-
-## Future unikernels and frameworks:
-
-In the near future, we plan to add support for the following frameworks:
-
-[OSv](https://github.com/cloudius-systems/osv): An OS designed specifically to
-run as a single application on top of a hypervisor. OSv is known for its
-performance optimization and supports a wide range of programming languages,
-including Java, Node.js, and Python.
