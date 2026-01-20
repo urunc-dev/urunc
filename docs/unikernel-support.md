@@ -11,11 +11,9 @@ available unikernel frameworks and similar technologies.
 
 For the time being, `urunc` provides support for
 [Unikraft](https://unikraft.org/),
-[Rumprun](https://github.com/cloudkernels/rumprun),
-[MirageOS](https://github.com/mirage/mirage),
-[IncludeOS](https://github.com/includeos/IncludeOS),
-[Mewz](https://github.com/Mewz-project/Mewz) and
-[Linux](https://github.com/torvalds/linux) unikernels.
+[Rumprun](https://github.com/cloudkernels/rumprun) and
+[IncludeOS](https://github.com/includeos/IncludeOS)
+ unikernels.
 
 ## Unikraft
 
