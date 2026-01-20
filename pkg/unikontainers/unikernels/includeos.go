@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//      http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -43,25 +43,33 @@ type IncludeOSBlock struct {
 }
 
 func (i *IncludeOS) CommandString() (string, error) {
-	// IncludeOS typically accepts command-line arguments
-	// Network configuration is usually done via the unikernel image itself
-	// or via command-line arguments depending on the application
 	cmdParts := []string{}
 
-	// Add environment variables if any
-	for _, env := range i.Envs {
-		cmdParts = append(cmdParts, env)
-	}
-
-	// Add network configuration if present
+	// IncludeOS expects network config as a JSON string argument.
+	// We construct this manually to ensure it matches the specific schema required by the OS.
 	if i.Net.Address != "" {
-		cmdParts = append(cmdParts, fmt.Sprintf("--net=%s/%s", i.Net.Address, i.Net.Mask))
+		// Default to iface 0.
+		// Constructing JSON: {"net":[{"iface":0,"address":"...","netmask":"...","gateway":"..."}]}
+		gwPart := ""
 		if i.Net.Gateway != "" {
-			cmdParts = append(cmdParts, fmt.Sprintf("--gateway=%s", i.Net.Gateway))
+			gwPart = fmt.Sprintf(`,"gateway":"%s"`, i.Net.Gateway)
 		}
+
+		// We assume i.Net.Mask is in dotted-decimal format (e.g 255.255.255.0)
+		// If urunc provides CIDR conversion logic would be needed here
+		jsonConfig := fmt.Sprintf(
+			`{"net":[{"iface":0,"address":"%s","netmask":"%s"%s}]}`,
+			i.Net.Address,
+			i.Net.Mask,
+			gwPart,
+		)
+		cmdParts = append(cmdParts, jsonConfig)
 	}
 
-	// Add the main command
+	if len(i.Envs) > 0 {
+		cmdParts = append(cmdParts, i.Envs...)
+	}
+
 	if i.Command != "" {
 		cmdParts = append(cmdParts, i.Command)
 	}
@@ -90,8 +98,7 @@ func (i *IncludeOS) MonitorNetCli(ifName string, mac string) string {
 		netOption += " --net-mac:service=" + mac
 		return netOption
 	case "qemu":
-		// QEMU handles networking through its own options
-		// This is typically configured in the hypervisor layer
+		// QEMU handles networking through its own options in the hypervisor layer
 		return ""
 	default:
 		return ""
@@ -105,10 +112,10 @@ func (i *IncludeOS) MonitorBlockCli() []types.MonitorBlockArgs {
 
 	switch i.Monitor {
 	case "hvt", "spt":
-		// Solo5 monitors support block devices with specific IDs
+		// Solo5 monitors support block devices with specific IDs.
+		// Note: Solo5 typically supports a single block device.
 		blockArgs := make([]types.MonitorBlockArgs, 0, len(i.Block))
 		for _, blk := range i.Block {
-			// Use the first block device or a default ID
 			id := blk.ID
 			if id == "" {
 				id = "storage"
@@ -118,14 +125,13 @@ func (i *IncludeOS) MonitorBlockCli() []types.MonitorBlockArgs {
 				Path: blk.HostPath,
 			})
 		}
-		// Solo5 typically supports a single block device, so return the first one
+		// Return only the first block device to ensure compatibility with Solo5
 		if len(blockArgs) > 0 {
 			return blockArgs[:1]
 		}
 		return blockArgs
 	case "qemu":
 		// QEMU handles block devices through its own options
-		// This is typically configured in the hypervisor layer
 		return nil
 	default:
 		return nil
@@ -138,14 +144,12 @@ func (i *IncludeOS) MonitorCli() types.MonitorCliArgs {
 }
 
 func (i *IncludeOS) Init(data types.UnikernelParams) error {
-	// Initialize network configuration if provided
 	if data.Net.Mask != "" {
 		i.Net.Address = data.Net.IP
 		i.Net.Gateway = data.Net.Gateway
 		i.Net.Mask = data.Net.Mask
 	}
 
-	// Initialize block devices if provided
 	i.Block = make([]IncludeOSBlock, 0, len(data.Block))
 	for _, blk := range data.Block {
 		newBlk := IncludeOSBlock{
@@ -155,7 +159,6 @@ func (i *IncludeOS) Init(data types.UnikernelParams) error {
 		i.Block = append(i.Block, newBlk)
 	}
 
-	// Set command line and environment variables
 	i.Command = strings.Join(data.CmdLine, " ")
 	i.Monitor = data.Monitor
 	i.Envs = data.EnvVars
@@ -164,6 +167,5 @@ func (i *IncludeOS) Init(data types.UnikernelParams) error {
 }
 
 func newIncludeOS() *IncludeOS {
-	includeosStruct := new(IncludeOS)
-	return includeosStruct
+	return &IncludeOS{}
 }
