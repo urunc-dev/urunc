@@ -10,8 +10,12 @@ the cloud-native ecosystem. For that reason, `urunc` aims to support all the
 available unikernel frameworks and similar technologies.
 
 For the time being, `urunc` provides support for
-[Unikraft](https://unikraft.org/) and
-[Rumprun](https://github.com/cloudkernels/rumprun) unikernels.
+[Unikraft](https://unikraft.org/),
+[Rumprun](https://github.com/cloudkernels/rumprun),
+[MirageOS](https://github.com/mirage/mirage),
+[IncludeOS](https://github.com/includeos/IncludeOS),
+[Mewz](https://github.com/Mewz-project/Mewz) and
+[Linux](https://github.com/torvalds/linux) unikernels.
 
 ## Unikraft
 
@@ -274,6 +278,64 @@ sudo nerdctl run -m 512M --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.i
 ```
 
 > Note: As far as we understand, Mewz requires at least 512M of memory to properly boot.
+
+## IncludeOS
+
+[IncludeOS](https://github.com/includeos/IncludeOS) is a unikernel framework
+written in C++, designed for building fast, secure, and resource-efficient
+cloud applications. [IncludeOS](https://github.com/includeos/IncludeOS) enables
+developers to write C++ applications that compile directly into bootable
+unikernels, eliminating the need for a traditional operating system.
+[IncludeOS](https://github.com/includeos/IncludeOS) is particularly well-suited
+for web services and cloud-native applications, providing a minimal attack
+surface and excellent performance characteristics.
+
+[IncludeOS](https://github.com/includeos/IncludeOS) provides a modern C++
+standard library implementation and includes networking capabilities with TCP/IP
+stack support. The framework focuses on simplicity and performance, making it
+ideal for microservices and cloud functions.
+
+### VMMs and other sandbox monitors
+
+[IncludeOS](https://github.com/includeos/IncludeOS) can execute on top of
+various hypervisors and monitors. It supports execution on
+[Qemu](https://www.qemu.org/) and can also run on top of
+[Solo5](https://github.com/Solo5/solo5), which provides portability across
+different virtualization backends. [IncludeOS](https://github.com/includeos/IncludeOS)
+can access the network through virtio-net in the case of
+[Qemu](https://qemu.org) and using [Solo5](https://github.com/Solo5/solo5)'s
+I/O interface in the case of [Solo5](https://github.com/Solo5/solo5). For
+storage, [IncludeOS](https://github.com/includeos/IncludeOS) supports
+block-based storage through virtio-block and
+[Solo5](https://github.com/Solo5/solo5)'s I/O interface.
+
+### IncludeOS and `urunc`
+
+In the case of [IncludeOS](https://github.com/includeos/IncludeOS), `urunc`
+provides support for both [Qemu](https://www.qemu.org/) and
+[Solo5](https://github.com/Solo5/solo5) monitors (including
+[Solo5-hvt](https://github.com/Solo5/solo5) and
+[Solo5-spt](https://github.com/Solo5/solo5)). For all monitors, `urunc` allows
+access to both network and block storage through the respective monitor's I/O
+interface.
+
+For more information on packaging
+[IncludeOS](https://github.com/includeos/IncludeOS) unikernels for `urunc`,
+take a look at our [packaging](../package/) page.
+
+An example of [IncludeOS](https://github.com/includeos/IncludeOS) on top of
+[Solo5-hvt](https://github.com/Solo5/solo5) with `urunc`:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/includeos-hvt:latest
+```
+
+An example of [IncludeOS](https://github.com/includeos/IncludeOS) on top of
+[Qemu](https://qemu.org) with `urunc`:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/includeos-qemu:latest
+```
 
 ## Linux
 

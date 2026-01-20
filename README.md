@@ -144,6 +144,7 @@ supported VM/Sandbox monitors and unikernels:
 | Rumprun    | Solo5-hvt, Solo5-spt       | x86,aarch64  | Block/Devmapper                         |
 | Unikraft   | QEMU, Firecracker          | x86          | Initrd, 9pfs                            |
 | MirageOS   | QEMU, Solo5-hvt, Solo5-spt | x86,aarch64  | Block/Devmapper                         |
+| IncludeOS  | QEMU, Solo5-hvt, Solo5-spt | x86,aarch64  | Block/Devmapper                         |
 | Mewz       | QEMU                       | x86          | In-memory                               |
 | Linux      | QEMU, Firecracker          | x86          | Initrd, Block/Devmapper, 9pfs, Virtiofs |
 
