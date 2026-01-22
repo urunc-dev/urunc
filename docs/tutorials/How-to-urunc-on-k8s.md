@@ -179,18 +179,21 @@ During installation, the following steps take place:
 - A RBAC role is created to allow `urunc-deploy` to run with privileged access.
 - The `urunc-deploy` Pod is deployed with privileges on the host, and the `containerd` configuration is mounted inside the Pod.
 - `urunc-deploy` performs the following tasks:
-    * Copies `urunc` and hypervisor binaries to the host under `usr/local/bin`.
+    * Copies `urunc` and hypervisor binaries to the host under `/opt/urunc/bin`.
+    * Installs `virtiofsd` to `/opt/urunc/libexec` and QEMU data files to `/opt/urunc/share`.
+    * Installs the urunc configuration file at `/etc/urunc/config.toml` with paths pointing to `/opt/urunc`.
     * Creates a backup of the current `containerd` configuration file.
     * Edits the `containerd` configuration file to add `urunc` as a supported runtime.
     * Restarts `containerd`, if necessary.
     * Labels the Node with label `urunc.io/urunc-runtime=true`.
 - Finally, `urunc` is added as a runtime class in k8s.
 
-> Note: `urunc-deploy` will install a static version of QEMU in `/usr/local/bin/` along with the QEMU BIOS files in `/usr/local/share/`. Therefore, files with the same names under these directories will get overwritten.
+> Note: `urunc-deploy` installs all artifacts under `/opt/urunc` to avoid overwriting existing system files. The urunc configuration file is installed as a static file that points to these locations.
 
 During cleanup, these changes are reverted:
 
-- The `urunc` and hypervisor binaries are deleted.
+- The `/opt/urunc` directory and all its contents are removed.
+- The urunc configuration file at `/etc/urunc/config.toml` is removed.
 - The `containerd` configuration file is restored to the pre-`urunc-deploy` state.
 - The `urunc.io/urunc-runtime=true` label is removed from the Node.
 - The RBAC role, the `urunc-deploy` Pod and the runtime class are removed.

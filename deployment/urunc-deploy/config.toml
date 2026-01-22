@@ -1,0 +1,19 @@
+# urunc configuration file
+# Installed by urunc-deploy
+
+[monitors.qemu]
+path = "/opt/urunc/bin/qemu-system-x86_64"
+data_path = "/opt/urunc/share"
+
+[monitors.firecracker]
+path = "/opt/urunc/bin/firecracker"
+
+[monitors.hvt]
+path = "/opt/urunc/bin/solo5-hvt"
+
+[monitors.spt]
+path = "/opt/urunc/bin/solo5-spt"
+
+[extra_binaries.virtiofsd]
+path = "/opt/urunc/libexec/virtiofsd"
+
