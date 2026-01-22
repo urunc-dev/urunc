@@ -69,3 +69,12 @@ other container runtimes, they can still be stored and distributed via generic
 container registries, such as Docker Hub or Harbor. This ensures compatibility
 with standard cloud-native workflows for building, shipping, and deploying
 applications.
+
+## Network Handling
+
+Due to urunc's execution model, where unikernels run inside VMs, special network
+handling is required to connect the VM's virtual network interface to the
+container's network namespace. urunc creates a TAP device for each VM and bridges
+it with the CNI-created virtual ethernet interface using Traffic Control (TC)
+rules. For detailed information about urunc's network architecture, including
+dynamic and static network modes, see the [Network](network.md) design page.
