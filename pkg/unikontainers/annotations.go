@@ -83,8 +83,10 @@ var supportedGuestMonitorPairs = map[guestMonitorPair]bool{
 	{hypervisors.QemuVmm, unikernels.UnikraftUnikernel}:         true,
 	{hypervisors.QemuVmm, unikernels.LinuxUnikernel}:            true,
 	{hypervisors.QemuVmm, unikernels.HermitUnikernel}:           true,
+	{hypervisors.QemuVmm, unikernels.FreeBSDUnikernel}:          true,
 	{hypervisors.FirecrackerVmm, unikernels.LinuxUnikernel}:     true,
 	{hypervisors.FirecrackerVmm, unikernels.UnikraftUnikernel}:  true,
+	{hypervisors.FirecrackerVmm, unikernels.FreeBSDUnikernel}:   true,
 	{hypervisors.CloudHypervisorVmm, unikernels.LinuxUnikernel}: true,
 	{hypervisors.HyperlightVmm, unikernels.UnikraftUnikernel}:   true,
 }
