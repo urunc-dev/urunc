@@ -54,3 +54,7 @@ We plan to create and maintain multi-platform images soon, as well as enrich thi
 - harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/busybox-firecracker-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/busybox-cloud-hypervisor-linux-raw:latest
+- harbor.nbfc.io/nubificus/urunc/caddy-qemu-freebsd-raw:latest
+- harbor.nbfc.io/nubificus/urunc/caddy-qemu-freebsd-block:latest
+- harbor.nbfc.io/nubificus/urunc/caddy-firecracker-freebsd-raw:latest
+- harbor.nbfc.io/nubificus/urunc/caddy-firecracker-freebsd-block:latest
