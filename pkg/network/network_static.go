@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/urunc-dev/urunc/internal/constants"
-	"github.com/vishvananda/netlink"
 )
 
 var StaticIPAddr = fmt.Sprintf("%s/24", constants.StaticNetworkTapIP)
@@ -92,16 +91,16 @@ func setNATRule(iface string, sourceIP string) error {
 func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
 	newTapName := strings.ReplaceAll(DefaultTap, "X", "0")
 	addTCRules := false
-	redirectLink, err := netlink.LinkByName(DefaultInterface)
+	redirectLink, err := discoverContainerIface()
 	if err != nil {
-		netlog.Errorf("failed to find %s interface", DefaultInterface)
+		netlog.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %v", err)
 		return nil, err
 	}
 	newTapDevice, err := networkSetup(newTapName, StaticIPAddr, redirectLink, addTCRules, uid, gid)
 	if err != nil {
 		return nil, err
 	}
-	err = setNATRule(DefaultInterface, StaticIPAddr)
+	err = setNATRule(redirectLink.Attrs().Name, StaticIPAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +110,7 @@ func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkIn
 			IP:             constants.StaticNetworkUnikernelIP,
 			DefaultGateway: constants.StaticNetworkTapIP,
 			Mask:           "255.255.255.0",
-			Interface:      DefaultInterface, // or tap0_urunc?
+			Interface:      redirectLink.Attrs().Name, // or tap0_urunc?
 			MAC:            redirectLink.Attrs().HardwareAddr.String(),
 		},
 	}, nil

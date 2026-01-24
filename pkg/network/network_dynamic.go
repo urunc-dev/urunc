@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/vishvananda/netlink"
 )
 
 type DynamicNetwork struct {
@@ -43,10 +41,9 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 		return nil, fmt.Errorf("unsupported operation: can't spawn multiple unikernels in the same network namespace")
 	}
 
-	netlog.Debugf("trying LinkByName(%s)", DefaultInterface)
-	redirectLink, err := netlink.LinkByName(DefaultInterface)
+	redirectLink, err := discoverContainerIface()
 	if err != nil {
-		return nil, fmt.Errorf("failed to find interface %s: %w", DefaultInterface, err)
+		return nil, fmt.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %w", err)
 	}
 	netlog.Debugf("found interface %s (index=%d)", redirectLink.Attrs().Name, redirectLink.Attrs().Index)
 
@@ -59,10 +56,10 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 	}
 	netlog.Debugf("tap device created: %s", newTapDevice.Attrs().Name)
 
-	netlog.Debugf("fetching info for %s", DefaultInterface)
-	ifInfo, err := getInterfaceInfo(DefaultInterface)
+	netlog.Debugf("fetching info for %s", redirectLink.Attrs().Name)
+	ifInfo, err := getInterfaceInfo(redirectLink.Attrs().Name)
 	if err != nil {
-		return nil, fmt.Errorf("getInterfaceInfo(%s) failed: %w", DefaultInterface, err)
+		return nil, fmt.Errorf("getInterfaceInfo(%s) failed: %w", redirectLink.Attrs().Name, err)
 	}
 
 	return &UnikernelNetworkInfo{
