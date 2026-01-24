@@ -260,7 +260,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// ExecArgs
 	// If memory limit is set in spec, use it instead of the config default value
-	if u.Spec.Linux.Resources.Memory != nil {
+	if u.Spec.Linux != nil && u.Spec.Linux.Resources != nil && u.Spec.Linux.Resources.Memory != nil {
 		if u.Spec.Linux.Resources.Memory.Limit != nil {
 			if *u.Spec.Linux.Resources.Memory.Limit > 0 {
 				vmmArgs.MemSizeB = uint64(*u.Spec.Linux.Resources.Memory.Limit) // nolint:gosec
@@ -270,7 +270,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// ExecArgs
 	// Check if container is set to unconfined -- disable seccomp
-	if u.Spec.Linux.Seccomp == nil {
+	if u.Spec.Linux == nil || u.Spec.Linux.Seccomp == nil {
 		uniklog.Warn("Seccomp is disabled")
 		vmmArgs.Seccomp = false
 	}
