@@ -331,7 +331,11 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// Prepare Monitor rootfs
 	// Make sure that rootfs is mounted with the correct propagation
 	// flags so we can later pivot if needed.
-	err = prepareRoot(rootfsParams.MonRootfs, u.Spec.Linux.RootfsPropagation)
+	var rootfsPropagation string
+	if u.Spec.Linux != nil {
+		rootfsPropagation = u.Spec.Linux.RootfsPropagation
+	}
+	err = prepareRoot(rootfsParams.MonRootfs, rootfsPropagation)
 	if err != nil {
 		return err
 	}
@@ -454,11 +458,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	vmmArgs.Command = unikernelCmd
 
 	// pivot
-	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
-	// We just want to check if a mount namespace was define din the list
+	// We just want to check if a mount namespace was defined in the list.
 	// Therefore, if there was no error and the mount namespace was found
-	// we can pivot.
-	withPivot := err != nil
+	// we can pivot. If Linux spec is nil, assume no mount namespace defined.
+	withPivot := true
+	if u.Spec.Linux != nil {
+		_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
+		withPivot = err != nil
+	}
 	err = changeRoot(rootfsParams.MonRootfs, withPivot)
 	if err != nil {
 		return err
@@ -636,6 +643,9 @@ func (u *Unikontainer) Delete() error {
 // This function should be called only from a locked thread
 // (i.e. runtime. LockOSThread())
 func (u Unikontainer) joinSandboxNetNs() error {
+	if u.Spec.Linux == nil {
+		return ErrNotExistingNS
+	}
 	netNsPath, err := findNS(u.Spec.Linux.Namespaces, specs.NetworkNamespace)
 	if err != nil && !errors.Is(err, ErrNotExistingNS) {
 		return err
@@ -825,6 +835,10 @@ func loadUnikontainerState(stateFilePath string) (*specs.State, error) {
 // The implementation is inspired from:
 // https://github.com/opencontainers/runc/blob/c8737446d2f99c1b7f2fcf374a7ee5b4519b2051/libcontainer/container_linux.go#L1047
 func (u *Unikontainer) FormatNsenterInfo() (rdr io.Reader, retErr error) {
+	if u.Spec.Linux == nil {
+		return nil, fmt.Errorf("Linux spec is required for namespace configuration")
+	}
+
 	r := nl.NewNetlinkRequest(int(initMsg), 0)
 
 	// Our custom messages cannot bubble up an error using returns, instead
