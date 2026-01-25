@@ -555,18 +555,23 @@ func (u *Unikontainer) Kill() error {
 	if err != nil {
 		return err
 	}
-	err = vmm.Stop(u.State.Pid)
-	if err != nil {
-		return err
+	// Attempt to stop VMM process. If it's already dead, vmm.Stop() returns nil.
+	// We save any error but continue with network cleanup regardless.
+	stopErr := vmm.Stop(u.State.Pid)
+	if stopErr != nil {
+		uniklog.Warnf("vmm.Stop returned error (will continue with cleanup): %v", stopErr)
 	}
 
+	// Always clean up network resources, regardless of VMM state.
+	// The TAP device and TC rules exist independently of the VMM process.
 	// TODO: tap0_urunc should not be hardcoded
-	err = network.Cleanup("tap0_urunc")
-	if err != nil {
-		uniklog.Errorf("failed to delete tap0_urunc: %v", err)
+	cleanupErr := network.Cleanup("tap0_urunc")
+	if cleanupErr != nil {
+		uniklog.Errorf("failed to delete tap0_urunc: %v", cleanupErr)
 	}
 
-	return nil
+	// Return vmm.Stop error if any (network cleanup errors are logged but not fatal)
+	return stopErr
 }
 
 // Delete removes the containers base directory and its contents
