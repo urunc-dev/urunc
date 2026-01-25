@@ -41,6 +41,12 @@ const (
 	maxRetries               = 50
 	waitTime                 = 5 * time.Millisecond
 	FromReexec               = true
+	// IPCAcceptTimeout is the maximum time to wait for a connection on the IPC socket.
+	// This prevents processes from hanging indefinitely if the counterpart never connects
+	// (e.g., due to containerd restart, node pressure, or orchestration failures).
+	IPCAcceptTimeout = 60 * time.Second
+	// IPCReadTimeout is the maximum time to wait for reading a message after connection.
+	IPCReadTimeout = 10 * time.Second
 )
 
 func getSockAddr(dir string, name string) string {
@@ -145,27 +151,48 @@ func createListener(socketAddress string, mustBeValid bool) (*net.UnixListener, 
 	return listener, nil
 }
 
-// awaitMessage opens a new connection to socketAddress
-// and waits for a given message
+// AwaitMessage waits for a connection on the listener and reads an expected message.
+// It uses timeouts to prevent indefinite blocking if the counterpart process
+// never connects (e.g., due to orchestration failures, crashes, or restarts).
 func AwaitMessage(listener *net.UnixListener, expectedMessage IPCMessage) error {
+	// Set accept deadline to prevent indefinite blocking.
+	// This is critical for preventing orphaned processes when urunc start
+	// never runs after urunc create, or when reexec fails silently.
+	if err := listener.SetDeadline(time.Now().Add(IPCAcceptTimeout)); err != nil {
+		return fmt.Errorf("failed to set listener deadline: %w", err)
+	}
+
 	conn, err := listener.AcceptUnix()
 	if err != nil {
-		return err
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return fmt.Errorf("timeout waiting for IPC connection (waited %v): counterpart process may have failed or not started", IPCAcceptTimeout)
+		}
+		return fmt.Errorf("failed to accept connection: %w", err)
 	}
 	defer func() {
-		err = conn.Close()
-		if err != nil {
-			logrus.WithError(err).Error("failed to close connection")
+		if closeErr := conn.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Error("failed to close connection")
 		}
 	}()
+
+	// Set read deadline to prevent hanging on slow or stuck writers
+	if err := conn.SetReadDeadline(time.Now().Add(IPCReadTimeout)); err != nil {
+		return fmt.Errorf("failed to set read deadline: %w", err)
+	}
+
 	buf := make([]byte, len(expectedMessage))
 	n, err := conn.Read(buf)
 	if err != nil {
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return fmt.Errorf("timeout reading IPC message (waited %v): counterpart process may be stuck", IPCReadTimeout)
+		}
 		return fmt.Errorf("failed to read from socket: %w", err)
 	}
 	msg := string(buf[0:n])
 	if msg != string(expectedMessage) {
-		return fmt.Errorf("received unexpected message: %s", msg)
+		return fmt.Errorf("received unexpected message: %s (expected: %s)", msg, expectedMessage)
 	}
 	return nil
 }

@@ -176,3 +176,56 @@ func TestAwaitMessage(t *testing.T) {
 	err = AwaitMessage(listener, expectedMessage)
 	assert.NoError(t, err, "Expected no error in awaiting message")
 }
+
+func TestAwaitMessageTimeout(t *testing.T) {
+	socketAddress := "/tmp/test_await_message_timeout.sock"
+	expectedMessage := ReexecStarted
+
+	listener, err := createListener(socketAddress, true)
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	// Don't send any message - this should trigger a timeout
+	// Note: For testing, we need shorter timeouts than production.
+	// The actual timeout check is that it returns an error containing "timeout"
+	// rather than blocking forever.
+
+	// Set a shorter deadline for testing purposes
+	listener.SetDeadline(time.Now().Add(100 * time.Millisecond))
+
+	err = AwaitMessage(listener, expectedMessage)
+	assert.Error(t, err, "Expected timeout error when no connection arrives")
+	assert.Contains(t, err.Error(), "timeout", "Expected error message to mention timeout")
+}
+
+func TestAwaitMessageWrongMessage(t *testing.T) {
+	socketAddress := "/tmp/test_await_wrong_message.sock"
+	expectedMessage := ReexecStarted
+	wrongMessage := StartExecve
+
+	listener, err := createListener(socketAddress, true)
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		conn, err := net.Dial("unix", socketAddress)
+		if err != nil {
+			t.Errorf("Failed to dial connection: %v", err)
+		}
+		defer conn.Close()
+
+		// Send wrong message
+		_, err = conn.Write([]byte(wrongMessage))
+		if err != nil {
+			t.Errorf("Failed to send message: %v", err)
+		}
+	}()
+
+	err = AwaitMessage(listener, expectedMessage)
+	assert.Error(t, err, "Expected error for unexpected message")
+	assert.Contains(t, err.Error(), "unexpected message", "Expected error to mention unexpected message")
+}

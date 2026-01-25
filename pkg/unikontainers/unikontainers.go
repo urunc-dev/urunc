@@ -753,8 +753,8 @@ func (u *Unikontainer) executeHooksConcurrently(name string, hooks []specs.Hook,
 				uniklog.WithFields(logrus.Fields{
 					"id":    u.State.ID,
 					"name":  name,
-					"path":  hooks[i].Path,
-					"args":  hooks[i].Args,
+					"path":  h.Path,
+					"args":  h.Args,
 					"error": err,
 				}).Error("Executing hook failed")
 				errChan <- err
@@ -1121,7 +1121,7 @@ func (u *Unikontainer) SendMessage(message IPCMessage) error {
 
 // isRunning returns true if the PID is alive or hedge.ListVMs returns our containerID
 func (u *Unikontainer) isRunning() bool {
-	vmmType := hypervisors.VmmType(u.State.Annotations[annotType])
+	vmmType := hypervisors.VmmType(u.State.Annotations[annotHypervisor])
 	if vmmType != hypervisors.HedgeVmm {
 		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
 	}
