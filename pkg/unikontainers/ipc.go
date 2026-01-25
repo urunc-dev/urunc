@@ -169,3 +169,58 @@ func AwaitMessage(listener *net.UnixListener, expectedMessage IPCMessage) error 
 	}
 	return nil
 }
+
+// AwaitMessageWithErrorCheck waits for a success message, then briefly waits for
+// a potential error message to catch Execve failures after StartSuccess is sent.
+func AwaitMessageWithErrorCheck(listener *net.UnixListener, successMsg, errorMsg IPCMessage, errorCheckTimeout time.Duration) error {
+	conn, err := listener.AcceptUnix()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeErr := conn.Close()
+		if closeErr != nil {
+			logrus.WithError(closeErr).Error("failed to close connection")
+		}
+	}()
+
+	bufSize := len(successMsg)
+	if len(errorMsg) > bufSize {
+		bufSize = len(errorMsg)
+	}
+
+	buf := make([]byte, bufSize)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("failed to read from socket: %w", err)
+	}
+	msg := string(buf[0:n])
+
+	if msg == string(errorMsg) {
+		return fmt.Errorf("container execution failed: received error signal from reexec")
+	}
+
+	if msg != string(successMsg) {
+		return fmt.Errorf("received unexpected message: %s", msg)
+	}
+
+	// Wait briefly for potential error after success (catches Execve failures)
+	if errorCheckTimeout > 0 {
+		if err = conn.SetReadDeadline(time.Now().Add(errorCheckTimeout)); err != nil {
+			logrus.WithError(err).Warn("failed to set read deadline for error check")
+			return nil
+		}
+
+		errBuf := make([]byte, len(errorMsg))
+		n, readErr := conn.Read(errBuf)
+		if readErr == nil && n > 0 {
+			errMsg := string(errBuf[0:n])
+			if errMsg == string(errorMsg) {
+				return fmt.Errorf("VMM execution failed after signaling start")
+			}
+			logrus.WithField("message", errMsg).Warn("received unexpected message after success")
+		}
+	}
+
+	return nil
+}

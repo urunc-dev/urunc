@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
@@ -493,12 +494,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(m.TS18)
-	// metrics.Wait()
-	// TODO: We set the state to running and notify urunc Start that the monitor
-	// started, but we might encounter issues with the monitor execution. We need
-	// to revisit this and check if a failed monitor execution affects this approach.
-	// If it affects then we need to re-design the whole spawning of the monitor.
-	// Notify urunc start
+	// Notify urunc start. If Execve fails after this, urunc start will detect it
+	// via AwaitMsgWithErrorCheck which waits briefly for a potential StartErr.
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
@@ -1102,9 +1099,14 @@ func (u *Unikontainer) DestroyConn(isReexec bool) error {
 	return nil
 }
 
-// AwaitMessage waits for a specific message in the listener of unikontainer instance
+// AwaitMsg waits for a specific message in the listener of unikontainer instance
 func (u *Unikontainer) AwaitMsg(msg IPCMessage) error {
 	return AwaitMessage(u.Listener, msg)
+}
+
+// AwaitMsgWithErrorCheck waits for success, then checks for a follow-up error message
+func (u *Unikontainer) AwaitMsgWithErrorCheck(successMsg, errorMsg IPCMessage, errorTimeout time.Duration) error {
+	return AwaitMessageWithErrorCheck(u.Listener, successMsg, errorMsg, errorTimeout)
 }
 
 // SendMessage sends message over the active connection

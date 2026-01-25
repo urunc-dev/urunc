@@ -19,12 +19,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
 	m "github.com/urunc-dev/urunc/internal/metrics"
 	"github.com/urunc-dev/urunc/pkg/unikontainers"
 )
+
+const execveErrorCheckTimeout = 100 * time.Millisecond
 
 var startCommand = &cli.Command{
 	Name:  "start",
@@ -98,10 +101,10 @@ func startUnikontainer(cmd *cli.Command) error {
 	}
 	metrics.Capture(m.TS13)
 
-	// wait ContainerStarted message on start.sock from reexec process
-	err = unikontainer.AwaitMsg(unikontainers.StartSuccess)
+	// Wait for success, then briefly check for error (catches Execve failures)
+	err = unikontainer.AwaitMsgWithErrorCheck(unikontainers.StartSuccess, unikontainers.StartErr, execveErrorCheckTimeout)
 	if err != nil {
-		err = fmt.Errorf("failed to get message from successful start from reexec: %w", err)
+		err = fmt.Errorf("failed to start container: %w", err)
 		return err
 	}
 
