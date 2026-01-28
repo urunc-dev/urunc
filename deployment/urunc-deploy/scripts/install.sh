@@ -24,6 +24,14 @@ containerd_conf_tmpl_file=""
 use_containerd_drop_in_conf_file="false"
 containerd_drop_in_conf_file="/etc/containerd/config.d/urunc-deploy.toml"
 
+# urunc installation directories
+urunc_install_dir="/opt/urunc"
+urunc_bin_dir="${urunc_install_dir}/bin"
+urunc_share_dir="${urunc_install_dir}/share"
+urunc_libexec_dir="${urunc_install_dir}/libexec"
+urunc_config_dir="/etc/urunc"
+urunc_config_file="${urunc_config_dir}/config.toml"
+
 HYPERVISORS="${HYPERVISORS:-"firecracker qemu solo5-hvt solo5-spt"}"
 IFS=' ' read -a hypervisors <<< "$HYPERVISORS"
 
@@ -45,6 +53,9 @@ function install_artifact() {
 function install_artifacts() {
     echo "copying urunc artifacts onto host"
     mkdir -p /host/usr/local/bin
+    mkdir -p /host${urunc_bin_dir}
+    mkdir -p /host${urunc_share_dir}
+    mkdir -p /host${urunc_libexec_dir}
 
     install_artifact /urunc-artifacts/urunc /host/usr/local/bin/urunc
     install_artifact /urunc-artifacts/containerd-shim-urunc-v2 /host/usr/local/bin/containerd-shim-urunc-v2
@@ -58,23 +69,22 @@ function install_artifacts() {
             if which "qemu-system-$(uname -m)" >/dev/null 2>&1; then
                 echo "QEMU is already installed."
             else
-                install_artifact /urunc-artifacts/hypervisors/qemu-system-$(uname -m) /host/usr/local/bin/qemu-system-$(uname -m)
-                install_artifact /urunc-artifacts/libexec/virtiofsd /host/usr/libexec/virtiofsd
-                mkdir -p /host/usr/local/share/qemu/
-                cp -r /urunc-artifacts/opt/kata/share/kata-qemu/qemu /host/usr/local/share
+                install_artifact /urunc-artifacts/hypervisors/qemu-system-$(uname -m) /host${urunc_bin_dir}/qemu-system-$(uname -m)
+                install_artifact /urunc-artifacts/libexec/virtiofsd /host${urunc_libexec_dir}/virtiofsd
+                cp -r /urunc-artifacts/opt/kata/share/kata-qemu/qemu /host${urunc_share_dir}/
             fi
             ;;
         firecracker)
             echo "Installing firecracker"
-            install_artifact /urunc-artifacts/hypervisors/firecracker /host/usr/local/bin/firecracker
+            install_artifact /urunc-artifacts/hypervisors/firecracker /host${urunc_bin_dir}/firecracker
             ;;
         solo5-spt)
             echo "Installing solo5-spt"
-            install_artifact /urunc-artifacts/hypervisors/solo5-spt /host/usr/local/bin/solo5-spt
+            install_artifact /urunc-artifacts/hypervisors/solo5-spt /host${urunc_bin_dir}/solo5-spt
             ;;
         solo5-hvt)
             echo "Installing solo5-hvt"
-            install_artifact /urunc-artifacts/hypervisors/solo5-hvt /host/usr/local/bin/solo5-hvt
+            install_artifact /urunc-artifacts/hypervisors/solo5-hvt /host${urunc_bin_dir}/solo5-hvt
             ;;
         *)
             echo "Unsupported hypervisor: $hypervisor"
@@ -83,39 +93,21 @@ function install_artifacts() {
     done
 }
 
+function install_urunc_config() {
+    echo "Installing urunc configuration file"
+    mkdir -p /host${urunc_config_dir}
+    cp /deployment/config.toml /host${urunc_config_file}
+    echo "urunc configuration file installed at ${urunc_config_file}"
+}
+
 function remove_artifacts() {
+    # Remove urunc related artifacts
     rm -f /host/usr/local/bin/urunc
     rm -f /host/usr/local/bin/containerd-shim-urunc-v2
-    local hypervisors="${HYPERVISORS:-"firecracker qemu solo5-hvt solo5-spt"}"
-    for hypervisor in $hypervisors; do
-        case "$hypervisor" in
-        qemu)
-            if [ -e "/host/usr/local/bin/qemu-system-$(uname -m)" ]; then
-                rm -f "/host/usr/local/bin/qemu-system-$(uname -m)"
-                rm -rf /host/usr/local/share/qemu
-            fi
-            ;;
-        firecracker)
-            if [ -e "/host/usr/local/bin/firecracker" ]; then
-                rm -f "/host/usr/local/bin/firecracker"
-            fi
-            ;;
-        solo5-spt)
-            if [ -e "/host/usr/local/bin/solo5-spt" ]; then
-                rm -f "/host/usr/local/bin/solo5-spt"
-            fi
-            ;;
-        solo5-hvt)
-            if [ -e "/host/usr/local/bin/solo5-hvt" ]; then
-                rm -f "/host/usr/local/bin/solo5-hvt"
-            fi
-            ;;
-        *)
-            echo "Unsupported hypervisor: $hypervisor"
-            ;;
-        esac
-    done
-}
+
+    rm -rf /host${urunc_install_dir}
+    rm -rf /host${urunc_config_dir}
+    }
 
 
 die() {
@@ -377,6 +369,7 @@ function main() {
                 fi
             fi
             install_artifacts
+            install_urunc_config
             configure_cri_runtime "$runtime"
             kubectl label node "$NODE_NAME" --overwrite urunc.io/urunc-runtime=true
             echo "urunc-deploy completed successfully"

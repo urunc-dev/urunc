@@ -95,7 +95,7 @@ kubectl get pods
 
 [`urunc-deploy`](https://github.com/urunc-dev/urunc/tree/main/deployment/urunc-deploy) provides a Dockerfile, which contains all of the binaries
 and artifacts required to run `urunc`, as well as reference DaemonSets, which can
-be utilized to install `urunc` runtime  on a running Kubernetes cluster.
+be utilized to install `urunc` runtime on a running Kubernetes cluster.
 
 ### urunc-deploy in k3s
 
@@ -174,23 +174,28 @@ Now, we can create new `urunc` deployments using the [instruction provided in ma
 `urunc-deploy` consists of several components and steps that install `urunc` along with the supported hypervisors,
 configure `containerd` and Kubernetes (k8s) to use `urunc`, and provide a simple way to remove those components from the cluster.
 
+The daemonset automatically installs all required artifacts under `/opt/urunc` and configures `urunc` via a configuration file at `/etc/urunc/config.toml`.
+
 During installation, the following steps take place:
 
 - A RBAC role is created to allow `urunc-deploy` to run with privileged access.
 - The `urunc-deploy` Pod is deployed with privileges on the host, and the `containerd` configuration is mounted inside the Pod.
 - `urunc-deploy` performs the following tasks:
-    * Copies `urunc` and hypervisor binaries to the host under `usr/local/bin`.
+    * Copies `urunc` and `containerd-shim-urunc-v2` binaries to the host under `/usr/local/bin`.
+    * Copies hypervisor binaries to the host under `/opt/urunc/bin`.
+    * Copies QEMU data files to `/opt/urunc/share`.
+    * Installs a configuration file at `/etc/urunc/config.toml`.
     * Creates a backup of the current `containerd` configuration file.
     * Edits the `containerd` configuration file to add `urunc` as a supported runtime.
     * Restarts `containerd`, if necessary.
     * Labels the Node with label `urunc.io/urunc-runtime=true`.
 - Finally, `urunc` is added as a runtime class in k8s.
 
-> Note: `urunc-deploy` will install a static version of QEMU in `/usr/local/bin/` along with the QEMU BIOS files in `/usr/local/share/`. Therefore, files with the same names under these directories will get overwritten.
-
 During cleanup, these changes are reverted:
 
-- The `urunc` and hypervisor binaries are deleted.
+- The `urunc` and `containerd-shim-urunc-v2` binaries are deleted from `/usr/local/bin`.
+- The `/opt/urunc` directory containing hypervisor binaries and QEMU data files is deleted.
+- The `/etc/urunc` configuration directory is deleted.
 - The `containerd` configuration file is restored to the pre-`urunc-deploy` state.
 - The `urunc.io/urunc-runtime=true` label is removed from the Node.
 - The RBAC role, the `urunc-deploy` Pod and the runtime class are removed.

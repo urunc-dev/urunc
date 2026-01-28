@@ -95,6 +95,7 @@ COPY --from=intermediate /urunc-artifacts /urunc-artifacts
 COPY --from=intermediate /usr/bin/jq /usr/bin/jq
 COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
 COPY scripts/install.sh /urunc-artifacts/scripts/install.sh
+COPY config.toml /deployment/config.toml
 RUN apk update && \
     apk add --no-cache bash curl py3-pip && \
     pip install --no-cache-dir --break-system-packages yq==3.2.3 && \
