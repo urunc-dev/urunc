@@ -75,9 +75,9 @@ designed specifically for `urunc`. It performs the following actions:
    As a result, Linux kernel will fail to set the gateway.
 2. Groups multi-word arguments correctly.
 3. Mounts `/proc` and `/sys`.
-3. Reads and sets the environment variables for the application execution
-3. Reads and sets the uid,gid and working directory for the application execution
-3. Acts as a reaper, cleaning up zombie processes.
+4. Reads and sets the environment variables for the application execution
+5. Reads and sets the uid,gid and working directory for the application execution
+6. Acts as a reaper, cleaning up zombie processes.
 
 To pass the necessary information to
 [urunit](https://github.com/nubificus/urunit), `urunc` uses a configuration
