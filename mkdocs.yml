@@ -72,11 +72,11 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
 
-features:
-  - navigation.instant
-  - navigation.sections
-  - navigation.expand
-  - toc.integrate
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
 
 markdown_extensions:
   - footnotes

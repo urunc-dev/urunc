@@ -6,14 +6,14 @@
    Light Theme: urunc
    ======================= */
 [data-md-color-scheme="urunc"] {
-  --md-primary-fg-color: #FAFAFF;
+  --md-primary-fg-color: #fafaff;
   --md-primary-fg-color--light: #001524;
   --md-primary-fg-color--dark: #001524;
   --md-primary-bg-color: #001524;
   --md-primary-bg-color--light: #001524;
   --md-primary-bg-color--dark: #001524;
 
-  --md-accent-fg-color: #FF7D00;
+  --md-accent-fg-color: #ff7d00;
   --md-accent-fg-color--transparent: hsla(32, 100%, 55%, 0.1);
 
   --md-footer-logo-dark-mode: none;
@@ -29,7 +29,7 @@
   --md-primary-fg-color--dark: #001524;
   --md-primary-bg-color: #fff3f0;
 
-  --md-accent-fg-color: #FF7D00;
+  --md-accent-fg-color: #ff7d00;
   --md-accent-fg-color--transparent: hsla(32, 100%, 55%, 0.1);
 
   --md-footer-logo-dark-mode: block;
@@ -145,7 +145,7 @@
 
 .md-typeset code,
 .md-typeset pre {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
 }
 
 /* Fix active link color in dark mode sidebar */
@@ -179,3 +179,19 @@
   display: none; /* Hide light images in dark mode */
 }
 
+.md-clipboard {
+  opacity: 1 !important;
+}
+
+.md-clipboard:hover {
+  background-color: var(--md-accent-fg-color--transparent);
+}
+
+[data-md-color-scheme="slate"] .md-clipboard:not(:hover) {
+  color: var(--md-default-fg-color--light);
+}
+
+/* Hide copy button for console blocks (commands with output) */
+.language-console .md-code__nav {
+  display: none;
+}
