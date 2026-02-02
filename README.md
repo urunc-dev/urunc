@@ -28,7 +28,7 @@ and containerized environments, enabling seamless integration with cloud-native
 architectures. Designed to fully leverage the container semantics and benefits
 from the OCI tools and methodology, `urunc` aims to become “runc for
 unikernels”, while offering compatibility with the Container Runtime Interface
-(CRI). Unikernels are packaged inside OCI-compatible images and `urunc` launces
+(CRI). Unikernels are packaged inside OCI-compatible images and `urunc` launches
 the unikernel on top of the underlying Virtual Machine or seccomp monitors.
 Thus, developers and administrators can package, deliver, deploy and manage
 unikernels using familiar cloud-native practices.
