@@ -252,9 +252,10 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 
 	// Retrieve reexec cmd's pid and write to file and state
 	containerPid := reexecPid
+	pidFilePath := cmd.String("pid-file")
 	metrics.Capture(m.TS06)
 
-	err = unikontainer.Create(containerPid)
+	err = unikontainer.Create(containerPid, pidFilePath)
 	if err != nil {
 		return err
 	}

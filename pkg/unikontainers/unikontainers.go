@@ -147,9 +147,14 @@ func (u *Unikontainer) InitialSetup() error {
 }
 
 // Create sets the Unikernel status as created,
-// and saves the given PID in init.pid
-func (u *Unikontainer) Create(pid int) error {
-	err := writePidFile(filepath.Join(u.State.Bundle, initPidFilename), pid)
+// and saves the given PID in the provided pid file path.
+// If pidFilePath is empty, it falls back to the default init.pid path.
+func (u *Unikontainer) Create(pid int, pidFilePath string) error {
+	path := filepath.Join(u.State.Bundle, initPidFilename)
+	if pidFilePath != "" {
+		path = pidFilePath
+	}
+	err := writePidFile(path, pid)
 	if err != nil {
 		return err
 	}
