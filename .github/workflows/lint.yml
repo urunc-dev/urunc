@@ -39,7 +39,7 @@ jobs:
           go-version: ${{ inputs.go_version }}
           cache: false
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
+        uses: golangci/golangci-lint-action@9710a1764f12a3f4a0f19124d8934b67b1f30f90 # v6.3.2
         with:
           version: v1.64
 
