@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
@@ -129,4 +131,87 @@ func fatalWithCode(err error, ret int) {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	os.Exit(ret)
+}
+
+// Critical system paths that should never be deleted
+var criticalPaths = []string{
+	"/",
+	"/bin",
+	"/boot",
+	"/dev",
+	"/etc",
+	"/home",
+	"/lib",
+	"/lib64",
+	"/opt",
+	"/proc",
+	"/root",
+	"/sbin",
+	"/sys",
+	"/usr",
+	"/var",
+}
+
+// validateContainerID checks if the container ID is safe and doesn't contain path traversal
+func validateContainerID(containerID string) error {
+	// Check for empty ID
+	if containerID == "" {
+		return ErrEmptyContainerID
+	}
+
+	// Check for path traversal patterns
+	if strings.Contains(containerID, "..") {
+		return fmt.Errorf("container ID contains path traversal sequence (..): %s", containerID)
+	}
+
+	// Check for absolute paths
+	if filepath.IsAbs(containerID) {
+		return fmt.Errorf("container ID must not be an absolute path: %s", containerID)
+	}
+
+	// Check for directory separators (should be a simple name)
+	if strings.ContainsAny(containerID, "/\\") {
+		return fmt.Errorf("container ID must not contain path separators: %s", containerID)
+	}
+
+	return nil
+}
+
+// validateDeletionPath ensures a path is safe to delete
+func validateDeletionPath(targetPath, rootDir string) error {
+	// Clean and make absolute
+	targetPath = filepath.Clean(targetPath)
+	rootDir = filepath.Clean(rootDir)
+
+	// Ensure both are absolute paths
+	if !filepath.IsAbs(targetPath) {
+		return fmt.Errorf("target path must be absolute: %s", targetPath)
+	}
+	if !filepath.IsAbs(rootDir) {
+		return fmt.Errorf("root directory must be absolute: %s", rootDir)
+	}
+
+	// Check if target is within rootDir
+	relPath, err := filepath.Rel(rootDir, targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to compute relative path: %w", err)
+	}
+
+	// If relative path starts with "..", it's outside rootDir
+	if strings.HasPrefix(relPath, "..") {
+		return fmt.Errorf("target path %s is outside root directory %s", targetPath, rootDir)
+	}
+
+	// Check against critical system paths
+	for _, criticalPath := range criticalPaths {
+		if targetPath == criticalPath {
+			return fmt.Errorf("refusing to delete critical system path: %s", targetPath)
+		}
+		// Also check if target path is a parent of critical path
+		if strings.HasPrefix(criticalPath, targetPath+string(filepath.Separator)) {
+			return fmt.Errorf("target path %s contains critical system path %s", targetPath, criticalPath)
+		}
+	}
+
+	return nil
 }
