@@ -17,13 +17,38 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
 )
+
+var criticalPaths = []string{
+	"/", "/usr", "/lib", "/lib64", "/proc", "/dev", "/sys", "/etc", "/root", "/home",
+}
+
+// isSubdir checks if path is within base directory
+func isSubdir(base, path string) bool {
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
+}
+
+// isCriticalPath checks if path is a critical system path
+func isCriticalPath(path string) bool {
+	for _, critical := range criticalPaths {
+		if path == critical || strings.HasPrefix(path, critical+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
 
 var deleteCommand = &cli.Command{
 	Name:  "delete",
@@ -37,12 +62,21 @@ For example, if the container id is "ubuntu01" and runc list currently shows the
 status of "ubuntu01" as "stopped" the following will delete resources held for
 "ubuntu01" removing "ubuntu01" from the runc list of containers:
 
-	# urunc delete ubuntu01`,
+	# urunc delete ubuntu01
+
+Dry-run mode shows what would be deleted without actually deleting:
+
+	# urunc delete --dry-run ubuntu01`,
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "force",
 			Aliases: []string{"f"},
 			Usage:   "Forcibly deletes the container if it is still running (uses SIGKILL)",
+		},
+		&cli.BoolFlag{
+			Name:    "dry-run",
+			Aliases: []string{"n"},
+			Usage:   "Show what would be deleted without actually deleting",
 		},
 	},
 	Action: func(_ context.Context, cmd *cli.Command) error {
@@ -52,6 +86,8 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 		if err := checkArgs(cmd, 1, exactArgs); err != nil {
 			return err
 		}
+
+		dryRun := cmd.Bool("dry-run")
 
 		// get Unikontainer data from state.json
 		unikontainer, err := getUnikontainer(cmd)
@@ -63,6 +99,22 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 				}
 				rootDir := cmd.String("root")
 				containerDir := filepath.Join(rootDir, containerID)
+
+				// Safety guardrail: ensure containerDir is within rootDir
+				if !isSubdir(rootDir, containerDir) {
+					return fmt.Errorf("container directory %s is not within root directory %s", containerDir, rootDir)
+				}
+
+				// Safety guardrail: prevent deletion of critical system paths
+				if isCriticalPath(containerDir) {
+					return fmt.Errorf("refusing to delete critical system path: %s", containerDir)
+				}
+
+				if dryRun {
+					fmt.Printf("[DRY-RUN] Would delete container directory: %s\n", containerDir)
+					return nil
+				}
+
 				e := os.RemoveAll(containerDir)
 				if e != nil {
 					logrus.Errorf("remove %s: %v", containerDir, e)
@@ -74,11 +126,22 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 			return err
 		}
 		if cmd.Bool("force") {
-			err := unikontainer.Kill()
-			if err != nil {
-				return err
+			if dryRun {
+				fmt.Printf("[DRY-RUN] Would send SIGKILL to container\n")
+			} else {
+				err := unikontainer.Kill()
+				if err != nil {
+					return err
+				}
 			}
 		}
+
+		if dryRun {
+			fmt.Printf("[DRY-RUN] Would delete container resources\n")
+			fmt.Printf("[DRY-RUN] Would execute Poststop hooks\n")
+			return nil
+		}
+
 		err = unikontainer.Delete()
 		if err != nil {
 			return err
