@@ -14,37 +14,54 @@ image building and deployment.
     
 ## Environment Setup
 
-Install [Docker](/quickstart/#install-docker), Go >= 1.21, and `ko`:
+Install [Docker](/quickstart/#install-docker), Go >= `[[ versions.go ]]`, and `ko`:
 
-### Install Go 1.21  
+### Install Go `[[ versions.go ]]`
 ```bash
-sudo mkdir /usr/local/go1.21
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -zxvf go1.21.5.linux-amd64.tar.gz -C /usr/local/go1.21/
-rm go1.21.5.linux-amd64.tar.gz
+sudo mkdir /usr/local/go`[[ versions.go ]]`
+wget https://go.dev/dl/go`[[ versions.go ]]`.linux-amd64.tar.gz
+sudo tar -zxvf go`[[ versions.go ]]`.linux-amd64.tar.gz -C /usr/local/go`[[ versions.go ]]`/
+rm go`[[ versions.go ]]`.linux-amd64.tar.gz
 ```
 
-### Verify Go installation (Should be 1.21.5)
+### Verify Go installation (Should be `[[ versions.go ]]`)
 
 ```console
-$ export GOROOT=/usr/local/go1.21/go 
+$ export GOROOT=/usr/local/go`[[ versions.go ]]`/go 
 $ export PATH=$GOROOT/bin:$PATH  
 $ export GOPATH=$HOME/go 
 $ go version
-go version go1.21.5 linux/amd64
+go version go`[[ versions.go ]]` linux/amd64
 ```
 
-### Install ko VERSION=0.15.1
+### Install ko VERSION=`[[ versions.ko ]]`
 ```bash
+export VERSION=[[ versions.ko ]]
 export OS=Linux
 export ARCH=x86_64
 curl -sSfL "https://github.com/ko-build/ko/releases/download/v${VERSION}/ko_${VERSION}_${OS}_${ARCH}.tar.gz" -o ko.tar.gz
-sudo tar -zxvf ko.tar.gz -C /usr/local/bin` 
+sudo tar -zxvf ko.tar.gz -C /usr/local/bin 
 ```
 
-## Clone and Build Knative with the queue-proxy patch
+## Install Knative
 
-### Set your container registry  
+You can choose to install Knative using our pre-built manifests (Recommended) or build it from source.
+
+### Option 1: Pre-built (Recommended)
+
+You can use our latest build:
+
+```bash
+kubectl apply -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml
+```
+
+> Note: There are cases where due to the large manifests, kubectl fails. Try a second time, or use `kubectl create -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml`
+
+### Option 2: Clone and Build from Source (Advanced)
+
+If you prefer to build from source with the queue-proxy patch:
+
+#### Set your container registry  
 
 > Note: You should be able to use dockerhub for this. e.g. `<yourdockerhubid>/knative`
 
@@ -52,24 +69,25 @@ sudo tar -zxvf ko.tar.gz -C /usr/local/bin`
 export KO_DOCKER_REPO='harbor.nbfc.io/nubificus/knative-install-urunc'
 ```
 
-### Clone urunc-enabled Knative Serving 
+#### Clone urunc-enabled Knative Serving 
 ```bash
 git clone https://github.com/nubificus/serving -b feat_urunc 
 cd serving/
 ko resolve -Rf ./config/core/ > knative-custom.yaml
 ```
 
-### Apply knative's manifests to the local k8s
+#### Apply knative's manifests to the local k8s
 ```bash
 kubectl apply -f knative-custom.yaml
 ```
 
-Alternatively, you could use our latest build:
-```bash
-kubectl apply -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml
-```
+### Verify Knative Installation
 
-> Note: There are cases where due to the large manifests, kubectl fails. Try a second time, or use `kubectl create -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml`
+Ensure that all Knative components, including `activator`, `controller`, and `webhook` are running:
+
+```bash
+kubectl get pods -n knative-serving
+```
 
 ## Setup Networking (Kourier)
 
