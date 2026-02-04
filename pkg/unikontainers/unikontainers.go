@@ -777,8 +777,8 @@ func (u *Unikontainer) executeHooksConcurrently(name string, hooks []specs.Hook,
 				uniklog.WithFields(logrus.Fields{
 					"id":    u.State.ID,
 					"name":  name,
-					"path":  hooks[i].Path,
-					"args":  hooks[i].Args,
+					"path":  h.Path,
+					"args":  h.Args,
 					"error": err,
 				}).Error("Executing hook failed")
 				errChan <- err
