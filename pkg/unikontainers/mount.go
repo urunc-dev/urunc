@@ -64,7 +64,7 @@ func createTmpfs(monRootfs string, path string, flags uint64, mode string, size 
 
 	if mode == "1777" {
 		// sonarcloud:go:S2612 -- This is a tmpfs mount point, sticky bit 1777 is required (like /tmp), controlled path, safe by design
-		err := os.Chmod(path, 01777) // NOSONAR
+		err := os.Chmod(dstPath, 01777) // NOSONAR
 		if err != nil {
 			return fmt.Errorf("failed to chmod %s: %w", path, err)
 		}
