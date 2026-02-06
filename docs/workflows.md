@@ -90,45 +90,32 @@ View the status and history of all CI/CD workflows and their jobs.
 
   .run-status {
     display: flex;
-    gap: 4px;
+    gap: 6px;
     flex-wrap: wrap;
+    align-items: center;
   }
 
-  .status-badge {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border-radius: 3px;
-    font-size: 0.7em;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: bold;
-    cursor: help;
+  .status-text {
+    font-size: 0.85em;
+    font-weight: 600;
+    padding: 2px 0;
+    white-space: nowrap;
   }
 
   .status-pass {
-    background-color: #28a745;
+    color: #28a745;
   }
 
   .status-fail {
-    background-color: #dc3545;
+    color: #dc3545;
   }
 
   .status-skip {
-    background-color: #ffc107;
-    color: #333;
+    color: #ff9800;
   }
 
   .status-in-progress {
-    background-color: #007bff;
-    animation: pulse 1.5s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    color: #007bff;
   }
 
   .loading {
@@ -144,6 +131,29 @@ View the status and history of all CI/CD workflows and their jobs.
     border-radius: 4px;
     color: #b71c1c;
     margin-top: 20px;
+    line-height: 1.6;
+  }
+
+  .error-message strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 1.1em;
+  }
+
+  .error-message p {
+    margin: 8px 0;
+  }
+
+  .error-message ul {
+    margin: 8px 0;
+  }
+
+  .error-message code {
+    background: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
   }
 
   .info-message {
@@ -174,7 +184,7 @@ View the status and history of all CI/CD workflows and their jobs.
     }
 
     .jobs-table {
-      font-size: 0.9em;
+      font-size: 0.85em;
     }
 
     .jobs-table th,
@@ -182,9 +192,8 @@ View the status and history of all CI/CD workflows and their jobs.
       padding: 8px;
     }
 
-    .status-badge {
-      width: 16px;
-      height: 16px;
+    .status-text {
+      font-size: 0.75em;
     }
   }
 </style>
