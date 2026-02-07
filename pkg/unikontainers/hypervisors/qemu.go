@@ -61,7 +61,7 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 	cmdString += " -L /usr/share/qemu"   // Set the path for qemu bios/data
 	cmdString += " -cpu host"            // Choose CPU
 	cmdString += " -enable-kvm"          // Enable KVM to use CPU virt extensions
-	cmdString += " -nographic -vga none" // Disable graphic output
+	cmdString += " -display none -vga none -serial stdio -monitor null" // Disable graphic output
 
 	if args.VCPUs > 0 {
 		cmdString += fmt.Sprintf(" -smp %d", args.VCPUs)
