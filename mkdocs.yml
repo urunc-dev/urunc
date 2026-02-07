@@ -37,6 +37,7 @@ nav:
       - API Reference: https://pkg.go.dev/github.com/urunc-dev/urunc/pkg/unikontainers
   - Tutorials:
       - tutorials/*.md
+  - CI Dashboard: ci-dashboard.md
 
 theme:
   name: material
