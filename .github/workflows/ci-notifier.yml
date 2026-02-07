@@ -1,0 +1,35 @@
+name: CI Notification
+
+on:
+  workflow_run:
+    workflows: ["urunc CI (nightly)"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Notification Script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python3 scripts/ci-notify.py \
+            --repo "${{ github.repository }}" \
+            --workflow "ci_nightly.yml" \
+            --token "${{ secrets.GITHUB_TOKEN }}" \
+            --webhook "${{ secrets.SLACK_WEBHOOK_URL }}"
