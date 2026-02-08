@@ -104,6 +104,25 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 	// options in FC, since the string return value of the Monitor related
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
+	FCConfigJSON, exArgs, JSONConfigFile, err := fc.buildConfigAndCmd(args, ukernel)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(JSONConfigFile, FCConfigJSON, 0o644); err != nil { //nolint: gosec
+		return fmt.Errorf("failed to save Firecracker json config: %w", err)
+	}
+	vmmLog.WithField("Json", string(FCConfigJSON)).Debug("Firecracker json config")
+
+	vmmLog.WithField("Firecracker command", exArgs).Debug("Ready to execve Firecracker")
+
+	return syscall.Exec(fc.Path(), exArgs, args.Environment) //nolint: gosec
+}
+
+// buildConfigAndCmd constructs the Firecracker JSON config and returns the
+// JSON bytes, the command argument slice and the path where the config
+// should be written. This is separated for easier unit testing.
+func (fc *Firecracker) buildConfigAndCmd(args types.ExecArgs, ukernel types.Unikernel) ([]byte, []string, string, error) {
 	cmdString := fc.Path() + " --no-api --config-file "
 	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
 	cmdString += JSONConfigFile
@@ -149,7 +168,7 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 	}
 
 	// Block config for Firecracker
-	// TODO: Add support for block devices in FIrecracker
+	// TODO: Add support for block devices in Firecracker
 	FCDrives := make([]FirecrackerDrive, 0)
 
 	bArgs := ukernel.MonitorBlockCli()
@@ -187,14 +206,11 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 		NetIfs:  FCNet,
 		VSock:   FCVSockDev,
 	}
-	FCConfigJSON, _ := json.Marshal(FCConfig)
-	if err := os.WriteFile(JSONConfigFile, FCConfigJSON, 0o644); err != nil { //nolint: gosec
-		return fmt.Errorf("failed to save Firecracker json config: %w", err)
+	FCConfigJSON, err := json.Marshal(FCConfig)
+	if err != nil {
+		return nil, nil, "", err
 	}
-	vmmLog.WithField("Json", string(FCConfigJSON)).Debug("Firecracker json config")
 
 	exArgs := strings.Split(cmdString, " ")
-	vmmLog.WithField("Firecracker command", exArgs).Debug("Ready to execve Firecracker")
-
-	return syscall.Exec(fc.Path(), exArgs, args.Environment) //nolint: gosec
+	return FCConfigJSON, exArgs, JSONConfigFile, nil
 }
