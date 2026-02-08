@@ -24,12 +24,19 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// UnikraftUnikernel is the identifier for the Unikraft unikernel type.
 const UnikraftUnikernel string = "unikraft"
+
+// UnikraftCompatVersion is the compatible version of Unikraft.
 const UnikraftCompatVersion string = "0.16.1"
 
+// ErrUndefinedVersion indicates that the unikernel version is not defined.
 var ErrUndefinedVersion = errors.New("version is undefined, using default version")
+
+// ErrVersionParsing indicates that version parsing failed.
 var ErrVersionParsing = errors.New("failed to parse provided version, using default version")
 
+// Unikraft is a unikernel type representing a Unikraft-based unikernel.
 type Unikraft struct {
 	AppName string
 	Monitor string

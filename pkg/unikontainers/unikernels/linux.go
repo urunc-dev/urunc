@@ -38,6 +38,7 @@ const (
 	blkEndMarker     string = "UBE" // Block-based mounts end marker
 )
 
+// Linux is a unikernel type representing a Linux-based unikernel.
 type Linux struct {
 	App        string
 	Command    string
@@ -50,12 +51,14 @@ type Linux struct {
 	ProcConfig types.ProcessConfig
 }
 
+// LinuxNet holds network configuration for Linux unikernels.
 type LinuxNet struct {
 	Address string
 	Gateway string
 	Mask    string
 }
 
+// IsIPInSubnet checks if the IP address is within the configured subnet.
 func IsIPInSubnet(ln LinuxNet) bool {
 	ip := net.ParseIP(ln.Address)
 	gw := net.ParseIP(ln.Gateway)
@@ -65,6 +68,7 @@ func IsIPInSubnet(ln LinuxNet) bool {
 	return ip.Mask(mask).Equal(subnet)
 }
 
+// CommandString returns the command string for the Linux unikernel.
 func (l *Linux) CommandString() (string, error) {
 	rdinit := ""
 	bootParams := "panic=-1"
@@ -129,10 +133,12 @@ func (l *Linux) CommandString() (string, error) {
 	return bootParams, nil
 }
 
+// SupportsBlock returns whether the Linux unikernel supports block devices.
 func (l *Linux) SupportsBlock() bool {
 	return true
 }
 
+// SupportsFS returns whether the Linux unikernel supports the given filesystem type.
 func (l *Linux) SupportsFS(fsType string) bool {
 	switch fsType {
 	case "ext2":
@@ -150,10 +156,12 @@ func (l *Linux) SupportsFS(fsType string) bool {
 	}
 }
 
+// MonitorNetCli returns the monitor-specific network CLI arguments.
 func (l *Linux) MonitorNetCli(_ string, _ string) string {
 	return ""
 }
 
+// MonitorBlockCli returns the monitor-specific block device CLI arguments.
 func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 	if len(l.Blk) == 0 {
 		return nil
@@ -186,6 +194,7 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 	return blkArgs
 }
 
+// MonitorCli returns the monitor CLI arguments for the Linux unikernel.
 func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	switch l.Monitor {
 	case "qemu":
@@ -208,6 +217,7 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	}
 }
 
+// Init initializes the Linux unikernel with the provided parameters.
 func (l *Linux) Init(data types.UnikernelParams) error {
 	err := l.parseCmdLine(data.CmdLine)
 	if err != nil {

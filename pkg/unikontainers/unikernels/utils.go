@@ -43,11 +43,13 @@ func subnetMaskToCIDR(subnetMask string) (int, error) {
 }
 
 func createFile(path string, content string) error {
-	file, err := os.Create(path)
+	file, err := os.Create(path) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	_, err = file.WriteString(content)
 	if err != nil {

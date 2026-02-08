@@ -45,7 +45,7 @@ type testTool interface {
 	inspectPAndGet(string) (string, error)
 }
 
-var errToolDoesNotSupport = errors.New("Operation not support")
+var errToolDoesNotSupport = errors.New("operation not supported")
 
 func commonNewContainerCmd(a containerTestArgs) string {
 	cmdBase := "--runtime io.containerd.urunc.v2 "
@@ -95,7 +95,7 @@ func commonPull(tool string, image string) error {
 
 	output, err := commonCmdExec(pullCmd)
 	if err != nil {
-		return fmt.Errorf("Pull: %s -- %v", output, err)
+		return fmt.Errorf("pull: %s -- %v", output, err)
 	}
 
 	return nil
@@ -106,7 +106,7 @@ func commonRmImage(tool string, image string) error {
 
 	output, err := commonCmdExec(rmCmd)
 	if err != nil {
-		return fmt.Errorf("Remove image: %s -- %v", output, err)
+		return fmt.Errorf("remove image: %s -- %v", output, err)
 	}
 
 	return nil
@@ -211,7 +211,7 @@ func checkExpectedOut(expected string, output string, e error) error {
 	}
 
 	if expected != output {
-		return fmt.Errorf("Expecting %s, got %s", expected, output)
+		return fmt.Errorf("expecting %s, got %s", expected, output)
 	}
 
 	return nil

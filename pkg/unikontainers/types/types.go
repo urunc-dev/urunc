@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package types defines the interfaces and data structures used throughout the unikontainers system.
 package types
 
+// Unikernel is the interface that unikernel implementations must satisfy.
 type Unikernel interface {
 	Init(UnikernelParams) error
 	CommandString() (string, error)
@@ -24,6 +26,7 @@ type Unikernel interface {
 	MonitorCli() MonitorCliArgs
 }
 
+// VMM is the interface that Virtual Machine Monitor implementations must satisfy.
 type VMM interface {
 	Execve(args ExecArgs, ukernel Unikernel) error
 	Stop(int) error
@@ -33,6 +36,7 @@ type VMM interface {
 	Ok() error
 }
 
+// NetDevParams holds network device parameters.
 type NetDevParams struct {
 	IP      string // The veth device IP
 	Mask    string // The veth device mask
@@ -41,6 +45,7 @@ type NetDevParams struct {
 	TapDev  string // The tap device name
 }
 
+// BlockDevParams holds block device parameters.
 type BlockDevParams struct {
 	Source     string
 	MountPoint string
@@ -48,11 +53,13 @@ type BlockDevParams struct {
 	ID         string
 }
 
+// SharedfsParams holds shared filesystem parameters.
 type SharedfsParams struct {
 	Type string // The type of shared-fs 9p or virtiofs
 	Path string // The path in the host to share with guest
 }
 
+// RootfsParams holds rootfs parameters.
 type RootfsParams struct {
 	Type        string // The type of rootfs (block, initrd, 9pfs, virtiofs)
 	Path        string // The path in the host where rootfs resides
@@ -60,7 +67,7 @@ type RootfsParams struct {
 	MonRootfs   string // The rootfs for the monitor process
 }
 
-// Specific to Linux
+// ProcessConfig holds Linux-specific process configuration.
 type ProcessConfig struct {
 	UID     uint32 // The uid of the process inside the guest
 	GID     uint32 // The gid of the process inside the guest
@@ -98,11 +105,13 @@ type ExecArgs struct {
 	Sharedfs      SharedfsParams
 }
 
+// MonitorCliArgs holds monitor CLI arguments.
 type MonitorCliArgs struct {
 	ExtraInitrd string
 	OtherArgs   string
 }
 
+// MonitorBlockArgs holds monitor block device arguments.
 type MonitorBlockArgs struct {
 	ID        string
 	Path      string

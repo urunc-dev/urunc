@@ -44,7 +44,9 @@ func TestWritePidFile(t *testing.T) {
 	assert.Equal(t, strconv.Itoa(pid), string(content), "Expected PID file content to be %d", pid)
 
 	// Clean up
-	os.Remove(pidFilePath)
+	if err := os.Remove(pidFilePath); err != nil {
+		t.Logf("failed to remove: %v", err)
+	}
 }
 
 func TestGetInitPid(t *testing.T) {
@@ -65,7 +67,9 @@ func TestGetInitPid(t *testing.T) {
 
 		_, err = tmpFile.Write(jsonData)
 		assert.NoError(t, err)
-		tmpFile.Close()
+		if err := tmpFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Call the function and check the result
 		pid, err := getInitPid(tmpFile.Name())
@@ -88,7 +92,9 @@ func TestGetInitPid(t *testing.T) {
 		assert.NoError(t, err)
 		_, err = tmpFile.WriteString("{invalid json}")
 		assert.NoError(t, err)
-		tmpFile.Close()
+		if err := tmpFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Call the function and check the result
 		pid, err := getInitPid(tmpFile.Name())
@@ -110,7 +116,9 @@ func TestGetInitPid(t *testing.T) {
 
 		_, err = tmpFile.Write(jsonData)
 		assert.NoError(t, err)
-		tmpFile.Close()
+		if err := tmpFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Call the function and check the result
 		pid, err := getInitPid(tmpFile.Name())
@@ -132,7 +140,9 @@ func TestCopyFile(t *testing.T) {
 		content := "Hello, world!"
 		_, err = srcFile.WriteString(content)
 		assert.NoError(t, err)
-		srcFile.Close()
+		if err := srcFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Create a temporary target directory
 		targetDir := t.TempDir()
@@ -170,7 +180,9 @@ func TestCopyFile(t *testing.T) {
 		content := "Hello, world!"
 		_, err = srcFile.WriteString(content)
 		assert.NoError(t, err)
-		srcFile.Close()
+		if err := srcFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Use a target directory path that cannot be created
 		targetDir := filepath.Join(string(filepath.Separator), "invalid", "path")
@@ -191,15 +203,19 @@ func TestCopyFile(t *testing.T) {
 		content := "Hello, world!"
 		_, err = srcFile.WriteString(content)
 		assert.NoError(t, err)
-		srcFile.Close()
+		if err := srcFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Create a temporary target directory and a read-only file with the same name as the source file
 		targetDir := t.TempDir()
 		_, filename := filepath.Split(srcFile.Name())
 		targetFilePath := filepath.Join(targetDir, filename)
-		targetFile, err := os.OpenFile(targetFilePath, os.O_RDONLY|os.O_CREATE, 0444)
+		targetFile, err := os.OpenFile(targetFilePath, os.O_RDONLY|os.O_CREATE, 0444) //nolint:gosec
 		assert.NoError(t, err)
-		targetFile.Close()
+		if err := targetFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Call the function
 		err = copyFile(srcFile.Name(), targetFilePath)
@@ -219,7 +235,9 @@ func TestMoveFile(t *testing.T) {
 		content := "Hello, world!"
 		_, err = srcFile.WriteString(content)
 		assert.NoError(t, err)
-		srcFile.Close()
+		if err := srcFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Create a temporary target directory
 		targetDir := t.TempDir()
@@ -261,7 +279,9 @@ func TestMoveFile(t *testing.T) {
 		content := "Hello, world!"
 		_, err = srcFile.WriteString(content)
 		assert.NoError(t, err)
-		srcFile.Close()
+		if err := srcFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Use a target directory path that cannot be created
 		targetDir := filepath.Join(string(filepath.Separator), "invalid", "path")
@@ -286,7 +306,9 @@ func TestMoveFile(t *testing.T) {
 		content := "Hello, world!"
 		_, err = srcFile.WriteString(content)
 		assert.NoError(t, err)
-		srcFile.Close()
+		if err := srcFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Create a temporary target directory and a read-only file with the same name as the source file
 		targetDir := t.TempDir()
@@ -294,7 +316,9 @@ func TestMoveFile(t *testing.T) {
 		targetFilePath := filepath.Join(targetDir, filename)
 		targetFile, err := os.OpenFile(targetFilePath, os.O_RDONLY|os.O_CREATE, 0444)
 		assert.NoError(t, err)
-		targetFile.Close()
+		if err := targetFile.Close(); err != nil {
+			t.Logf("failed to close file: %v", err)
+		}
 
 		// Call the function
 		err = moveFile(srcFile.Name(), targetDir)

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package initrd provides utilities for creating and manipulating CPIO initrd archives.
 package initrd
 
 import (
@@ -24,6 +25,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
+// AddInitrdRecord adds a record to the initrd CPIO archive with the given content and metadata.
 func AddInitrdRecord(w *cpio.Writer, content []byte, fileInfo *syscall.Stat_t, name string) error {
 	hdr := &cpio.Header{
 		Name:    name,
@@ -45,15 +47,16 @@ func AddInitrdRecord(w *cpio.Writer, content []byte, fileInfo *syscall.Stat_t, n
 	return nil
 }
 
+// CopyFileToInitrd copies a file from the host to the initrd CPIO archive.
 func CopyFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
 	// Get the info of the original file
 	fi, err := os.Stat(srcFile)
 	if err != nil {
-		return fmt.Errorf("Could not Stat file %s: %w", srcFile, err)
+		return fmt.Errorf("could not stat file %s: %w", srcFile, err)
 	}
 	fileInfo := fi.Sys().(*syscall.Stat_t)
 	if fi.Mode().IsRegular() {
-		content, err := os.ReadFile(srcFile)
+		content, err := os.ReadFile(srcFile) //nolint:gosec
 		if err != nil {
 			return fmt.Errorf("could not read file %s: %w", srcFile, err)
 		}
@@ -66,12 +69,17 @@ func CopyFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
 	return nil
 }
 
+// CopyFileMountsToInitrd copies mounted files to an existing initrd archive.
 func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
-	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec
 	if err != nil {
-		return fmt.Errorf("Could not open %s: %v", oldInitrd, err)
+		return fmt.Errorf("could not open %s: %v", oldInitrd, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Printf("failed to close initrd file %s: %v\n", oldInitrd, err)
+		}
+	}()
 
 	w := cpio.NewWriter(f)
 	for _, m := range mounts {
@@ -80,23 +88,28 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 		}
 		err = CopyFileToInitrd(w, m.Source, m.Destination)
 		if err != nil {
-			return fmt.Errorf("Could not add file %s to initrd: %v", m.Source, err)
+			return fmt.Errorf("could not add file %s to initrd: %v", m.Source, err)
 		}
 	}
 	err = w.Close()
 	if err != nil {
-		return fmt.Errorf("Could not close initrd %v", err)
+		return fmt.Errorf("could not close initrd %v", err)
 	}
 
 	return nil
 }
 
+// AddFileToInitrd adds a file with the given data to an existing initrd archive.
 func AddFileToInitrd(oldInitrd string, data string, name string) error {
-	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("could not open %s: %v", oldInitrd, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Printf("failed to close initrd file %s: %v\n", oldInitrd, err)
+		}
+	}()
 
 	w := cpio.NewWriter(f)
 	fileInfo := syscall.Stat_t{
@@ -108,12 +121,12 @@ func AddFileToInitrd(oldInitrd string, data string, name string) error {
 	}
 	err = AddInitrdRecord(w, []byte(data), &fileInfo, name)
 	if err != nil {
-		return fmt.Errorf("Could not add file %s to initrd: %v", name, err)
+		return fmt.Errorf("could not add file %s to initrd: %v", name, err)
 	}
 
 	err = w.Close()
 	if err != nil {
-		return fmt.Errorf("Could not close initrd %v", err)
+		return fmt.Errorf("could not close initrd %v", err)
 	}
 
 	return nil

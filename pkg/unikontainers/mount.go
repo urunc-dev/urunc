@@ -46,7 +46,7 @@ func createTmpfs(monRootfs string, path string, flags uint64, mode string, size 
 	mountType := "tmpfs"
 	data := "mode=" + mode + ",size=" + size
 
-	err := os.MkdirAll(dstPath, 0755)
+	err := os.MkdirAll(dstPath, 0o750)
 	if err != nil {
 		return fmt.Errorf("failed to create %s dir: %w", path, err)
 	}
@@ -64,7 +64,7 @@ func createTmpfs(monRootfs string, path string, flags uint64, mode string, size 
 
 	if mode == "1777" {
 		// sonarcloud:go:S2612 -- This is a tmpfs mount point, sticky bit 1777 is required (like /tmp), controlled path, safe by design
-		err := os.Chmod(path, 01777) // NOSONAR
+		err := os.Chmod(path, 01777) // NOSONAR //nolint:gosec
 		if err != nil {
 			return fmt.Errorf("failed to chmod %s: %w", path, err)
 		}
@@ -107,7 +107,7 @@ func setupDev(monRootfs string, devPath string) error {
 	// the necessary directories
 	if filepath.Dir(devPath) != "/dev" {
 		dstDir := filepath.Dir(dstPath)
-		err = os.MkdirAll(dstDir, 0755)
+		err = os.MkdirAll(dstDir, 0o750)
 		if err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
 		}
@@ -218,7 +218,7 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 // bindMountFile bind mounts a file/directory to a new path
 func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, mFlags int, isDir bool) error {
 	var mountTarget string
-	err := os.MkdirAll(dstDir, 0755)
+	err := os.MkdirAll(dstDir, 0o750)
 	if err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
 	}
@@ -228,7 +228,9 @@ func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, 
 		if err1 != nil {
 			return fmt.Errorf("failed to create file %s: %w", dstPath, err1)
 		}
-		unix.Close(dstFile)
+		if err := unix.Close(dstFile); err != nil {
+			return fmt.Errorf("failed to close file descriptor %d: %w", dstFile, err)
+		}
 		mountTarget = dstPath
 	} else {
 		mountTarget = dstDir

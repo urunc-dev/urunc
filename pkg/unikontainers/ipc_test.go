@@ -59,27 +59,45 @@ func TestSockAddrExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temporary socket file: %v", err)
 	}
-	defer os.Remove(existingSockAddr)
-	f.Close()
+	defer func() {
+		if err := os.Remove(existingSockAddr); err != nil {
+			t.Logf("failed to remove temporary socket file: %v", err)
+		}
+	}()
+	if err := f.Close(); err != nil {
+		t.Logf("failed to close file: %v", err)
+	}
 
 	assert.True(t, SockAddrExists(existingSockAddr), "Expected socket address to exist")
 	assert.False(t, SockAddrExists(nonExistingSockAddr), "Expected socket address to not exist")
 }
 
 func readExpectedMsgFromSocket(socketAddr string, message IPCMessage, waitChan chan<- bool) error {
-	defer os.Remove(socketAddr)
+	// remove any stale socket file
+	_ = os.Remove(socketAddr)
+
 	listener, err := net.Listen("unix", socketAddr)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			fmt.Printf("failed to close listener: %v\n", err)
+		}
+	}()
+
+	// signal caller that listener is ready
 	waitChan <- true
 
 	conn, err := listener.Accept()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("failed to close connection: %v\n", err)
+		}
+	}()
 
 	buf := make([]byte, len(message))
 	n, err := conn.Read(buf)
@@ -145,7 +163,11 @@ func TestCreateListener(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Logf("failed to close listener: %v", err)
+		}
+	}()
 
 	assert.NotNil(t, listener, "Expected listener to be created")
 }
@@ -158,14 +180,22 @@ func TestAwaitMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Logf("failed to close listener: %v", err)
+		}
+	}()
 
 	go func() {
 		conn, err := net.Dial("unix", socketAddress)
 		if err != nil {
 			t.Errorf("Failed to dial connection: %v", err)
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				t.Logf("failed to close connection: %v", err)
+			}
+		}()
 
 		_, err = conn.Write([]byte(expectedMessage))
 		if err != nil {

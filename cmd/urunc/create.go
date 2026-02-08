@@ -179,21 +179,33 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 			err = fmt.Errorf("failed to setup pty and start reexec process: %w", err)
 			return err
 		}
-		defer ptm.Close()
+		defer func() {
+			if err := ptm.Close(); err != nil {
+				logrus.WithError(err).Warn("failed to close pty")
+			}
+		}()
 		consoleSocket := cmd.String("console-socket")
 		conn, err := net.Dial("unix", consoleSocket)
 		if err != nil {
 			err = fmt.Errorf("failed to dial console socker: %w", err)
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				logrus.WithError(err).Warn("failed to close console socket connection")
+			}
+		}()
 
 		uc, ok := conn.(*net.UnixConn)
 		if !ok {
 			err = fmt.Errorf("failed to cast unix socket")
 			return err
 		}
-		defer uc.Close()
+		defer func() {
+			if err := uc.Close(); err != nil {
+				logrus.WithError(err).Warn("failed to close unix connection")
+			}
+		}()
 
 		// Send file descriptor over socket.
 		oob := unix.UnixRights(int(ptm.Fd()))

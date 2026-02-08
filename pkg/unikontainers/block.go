@@ -43,7 +43,11 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 	if err != nil {
 		return types.BlockDevParams{}, fmt.Errorf("failed to open mountinfo: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			uniklog.WithError(err).Warn("failed to close mountinfo file")
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 
@@ -89,7 +93,7 @@ func extractFilesFromBlock(rootfsPath string, newRootfsPath string, unikernel st
 	targetUnikernelDir, _ := filepath.Split(targetUnikernelPath)
 	err := moveFile(currentUnikernelPath, targetUnikernelDir)
 	if err != nil {
-		return fmt.Errorf("Could not move %s to %s: %w", currentUnikernelPath, targetUnikernelPath, err)
+		return fmt.Errorf("could not move %s to %s: %w", currentUnikernelPath, targetUnikernelPath, err)
 	}
 
 	if initrd != "" {

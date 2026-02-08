@@ -202,7 +202,7 @@ func namespaceTest(tool testTool) error {
 	}
 
 	var spec specs.Spec
-	specData, err := os.ReadFile(configPath)
+	specData, err := os.ReadFile(configPath) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to read specification: %w", err)
 	}
@@ -312,7 +312,9 @@ func httpStaticNetTest(tool testTool) (err error) {
 		return fmt.Errorf("Failed to find network namespace of unikernel: %v", err)
 	}
 	origns, _ := netns.Get()
-	defer origns.Close()
+	defer func() {
+		_ = origns.Close() // ignore close error
+	}()
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	err = netns.Set(netNs)
