@@ -329,6 +329,7 @@ unikontainer
 unikontainers
 unikraft
 urandom
+userns
 urfave
 urunc
 urunc's

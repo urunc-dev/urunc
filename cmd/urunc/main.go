@@ -118,6 +118,18 @@ func main() {
 			// stateCommand,
 		},
 		Before: func(_ context.Context, cmd *cli.Command) (context.Context, error) {
+			if !cmd.IsSet("root") {
+				xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
+				if xdgRuntimeDir != "" && ShouldHonorXDGRuntimeDir() {
+					root := xdgRuntimeDir + "/urunc"
+					if err := prepareXDGRuntimeDir(root); err != nil {
+						return nil, err
+					}
+					if err := cmd.Set("root", root); err != nil {
+						return nil, err
+					}
+				}
+			}
 			if err := reviseRootDir(cmd); err != nil {
 				return nil, err
 			}
