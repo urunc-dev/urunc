@@ -224,7 +224,15 @@ func findValOfKey(searchArea string, key string) (string, error) {
 		return "", err
 	}
 	match := r.FindString(searchArea)
+	if match == "" {
+		return "", fmt.Errorf("key %s not found in search area", key)
+	}
+
 	keyValMatch := strings.Split(match, ":")
+	if len(keyValMatch) < 2 {
+		return "", fmt.Errorf("invalid format for key %s: %s", key, match)
+	}
+
 	val := strings.ReplaceAll(keyValMatch[1], "\"", "")
 	return strings.TrimSpace(val), nil
 }

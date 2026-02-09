@@ -165,7 +165,7 @@ func AwaitMessage(listener *net.UnixListener, expectedMessage IPCMessage) error 
 	}
 	msg := string(buf[0:n])
 	if msg != string(expectedMessage) {
-		return fmt.Errorf("received unexpected message: %s", msg)
+		return fmt.Errorf("received unexpected message: %s (expected %s)", msg, expectedMessage)
 	}
 	return nil
 }
