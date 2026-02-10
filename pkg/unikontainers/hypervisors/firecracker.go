@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -97,7 +96,7 @@ func (fc *Firecracker) Path() string {
 	return fc.binaryPath
 }
 
-func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
+func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	// FIXME: Note for getting unikernel specific options.
 	// Due to the way FC operates, we have not encountered any guest specific
 	// options yet. However, we need to revisit how we can use guest specific
@@ -189,12 +188,15 @@ func (fc *Firecracker) Execve(args types.ExecArgs, ukernel types.Unikernel) erro
 	}
 	FCConfigJSON, _ := json.Marshal(FCConfig)
 	if err := os.WriteFile(JSONConfigFile, FCConfigJSON, 0o644); err != nil { //nolint: gosec
-		return fmt.Errorf("failed to save Firecracker json config: %w", err)
+		return nil, fmt.Errorf("failed to save Firecracker json config: %w", err)
 	}
 	vmmLog.WithField("Json", string(FCConfigJSON)).Debug("Firecracker json config")
 
 	exArgs := strings.Split(cmdString, " ")
-	vmmLog.WithField("Firecracker command", exArgs).Debug("Ready to execve Firecracker")
+	return exArgs, nil
+}
 
-	return syscall.Exec(fc.Path(), exArgs, args.Environment) //nolint: gosec
+// PreExec performs pre-execution setup. Firecracker has no special pre-exec requirements.
+func (fc *Firecracker) PreExec(_ types.ExecArgs) error {
+	return nil
 }
