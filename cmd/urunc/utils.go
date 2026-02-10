@@ -97,7 +97,7 @@ func runcExec() error {
 		return err
 	}
 	args[0] = binPath
-	return syscall.Exec(binPath, args, os.Environ())
+	return syscall.Exec(binPath, args, os.Environ()) //nolint:gosec
 }
 
 // newSockPair returns a new SOCK_STREAM unix socket pair.

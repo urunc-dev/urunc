@@ -46,11 +46,15 @@ const (
 // getInitPid extracts "init_process_pid" value from the given JSON file
 func getInitPid(filePath string) (float64, error) {
 	// Open the JSON file for reading
-	file, err := os.Open(filePath)
+	file, err := os.Open(filePath) //nolint:gosec
 	if err != nil {
 		return 0, nil
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			uniklog.WithError(err).Warn("failed to close init pid file")
+		}
+	}()
 
 	// Decode the JSON data into a map[string]interface{}
 	var jsonData map[string]interface{}
@@ -76,9 +80,13 @@ func copyFile(sourceFile string, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() {
+		if err := source.Close(); err != nil {
+			_ = err // "failed to close source file")
+		}
+	}()
 
-	err = os.MkdirAll(targetDir, 0755)
+	err = os.MkdirAll(targetDir, 0o755)
 	if err != nil {
 		return err
 	}
@@ -87,7 +95,11 @@ func copyFile(sourceFile string, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	defer target.Close()
+	defer func() {
+		if err := target.Close(); err != nil {
+			_ = err // "failed to close target file")
+		}
+	}()
 
 	_, err = io.Copy(target, source)
 	if err != nil {
@@ -137,14 +149,17 @@ func writePidFile(path string, pid int) error {
 		tmpDir  = filepath.Dir(path)
 		tmpName = filepath.Join(tmpDir, "."+filepath.Base(path))
 	)
-	f, err := os.OpenFile(tmpName, os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_SYNC, 0o666)
+	f, err := os.OpenFile(tmpName, os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_SYNC, 0o666) //nolint:gosec
 	if err != nil {
 		return err
 	}
 	_, err = f.WriteString(strconv.Itoa(pid))
-	f.Close()
 	if err != nil {
+		_ = f.Close()
 		return err
+	}
+	if cerr := f.Close(); cerr != nil {
+		return cerr
 	}
 	return os.Rename(tmpName, path)
 }

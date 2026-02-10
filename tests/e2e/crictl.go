@@ -44,11 +44,15 @@ func newCrictlTool(args containerTestArgs) *crictlInfo {
 }
 
 func writeToFile(filename string, content string) error {
-	f, err := os.Create(filename)
+	f, err := os.Create(filename) //nolint:gosec
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Printf("failed to close file %s: %v\n", filename, err)
+		}
+	}()
 	_, err = f.WriteString(content)
 	if err != nil {
 		return err
@@ -67,12 +71,12 @@ func crictlNewPodConfig(path string, name string) (string, error) {
 	}
 	podConfigJSON, err := json.MarshalIndent(&podConfig, "", "    ")
 	if err != nil {
-		return "", fmt.Errorf("Failed to marshal pod config: %v", err)
+		return "", fmt.Errorf("failed to marshal pod config: %v", err)
 	}
 	absPodConf := filepath.Join(path, podConfigFilename)
 	err = writeToFile(absPodConf, string(podConfigJSON))
 	if err != nil {
-		return "", fmt.Errorf("Failed to write pod config: %v", err)
+		return "", fmt.Errorf("failed to write pod config: %v", err)
 	}
 	return absPodConf, nil
 }

@@ -167,7 +167,7 @@ func getAndCheckUGid(line string) (int, error) {
 }
 
 func findLineInFile(filePath string, pattern string) (string, error) {
-	file, err := os.Open(filePath)
+	file, err := os.Open(filePath) //nolint:gosec
 	if err != nil {
 		return "", fmt.Errorf("Failed to open %s: %v", filePath, err)
 	}

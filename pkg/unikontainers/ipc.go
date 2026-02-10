@@ -85,7 +85,11 @@ func SendIPCMessage(socketAddress string, message IPCMessage) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			uniklog.WithError(err).Warn("failed to close connection")
+		}
+	}()
 
 	if _, err := conn.Write([]byte(message)); err != nil {
 		return fmt.Errorf("failed to send message \"%s\" to \"%s\": %w", message, socketAddress, err)
@@ -153,8 +157,7 @@ func AwaitMessage(listener *net.UnixListener, expectedMessage IPCMessage) error 
 		return err
 	}
 	defer func() {
-		err = conn.Close()
-		if err != nil {
+		if err := conn.Close(); err != nil {
 			logrus.WithError(err).Error("failed to close connection")
 		}
 	}()

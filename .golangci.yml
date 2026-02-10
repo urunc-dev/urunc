@@ -1,13 +1,18 @@
+version: "2"
+
 linters:
   enable:
-  - errcheck
-  - gofmt
-  - goimports
-  - gosec
-  - gocritic
-  - misspell
-  - revive
-  - unused
+    - errcheck
+    - gosec
+    - gocritic
+    - misspell
+    - revive
+    - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 issues:
   uniq-by-line: false

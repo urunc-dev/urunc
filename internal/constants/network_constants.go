@@ -12,12 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package constants provides network-related constants for the urunc runtime.
 package constants
 
 const (
+	// StaticNetworkTapIP is the IP address of the static network TAP device.
 	StaticNetworkTapIP       = "172.16.1.1"
 	StaticNetworkUnikernelIP = "172.16.1.2"
 	// TODO: Experiment with DynamicNetworkTapIP starting from 172.16.X.1
+	// DynamicNetworkTapIP is the IP address of the dynamic network TAP device.
 	DynamicNetworkTapIP  = "172.16.X.2"
 	QueueProxyRedirectIP = "172.16.1.2"
 )

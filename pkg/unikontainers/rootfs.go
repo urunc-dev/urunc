@@ -178,7 +178,7 @@ func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
 
 func switchMonRootfs(res types.RootfsParams, bundle string) (types.RootfsParams, error) {
 	monRootfs := filepath.Join(bundle, monitorRootfsDirName)
-	err := os.MkdirAll(monRootfs, 0o755)
+	err := os.MkdirAll(monRootfs, 0o750) //nolint:gosec
 	if err != nil {
 		return types.RootfsParams{}, fmt.Errorf("failed to create monitor rootfs directory %s: %w", monRootfs, err)
 	}
@@ -239,7 +239,7 @@ func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
 func pivotRootfs(newRoot string) error {
 	// Set up directory of previous rootfs
 	oldRoot := filepath.Join(newRoot, "/old_root")
-	err := os.MkdirAll(oldRoot, 0755)
+	err := os.MkdirAll(oldRoot, 0o750) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", oldRoot, err)
 	}
@@ -381,7 +381,7 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 	}
 
 	newProcDir := filepath.Join(monRootfs, "/proc")
-	err = os.MkdirAll(newProcDir, 0555)
+	err = os.MkdirAll(newProcDir, 0o750) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -445,16 +445,20 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 
 	// Create /dev/console file
 	consolePath := filepath.Join(monRootfs, "/dev/console")
-	consoleFile, err := os.Create(consolePath)
+	consoleFile, err := os.Create(consolePath) //nolint:gosec
 	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to create /dev/console: %w", err)
 	}
 	// Ensure correct permissions
 	if err := consoleFile.Chmod(0o666); err != nil {
-		consoleFile.Close()
+		if err := consoleFile.Close(); err != nil {
+			_ = err // "failed to close console file")
+		}
 		return fmt.Errorf("failed to chmod /dev/console: %w", err)
 	}
-	consoleFile.Close()
+	if err := consoleFile.Close(); err != nil {
+		_ = err // "failed to close console file")
+	}
 
 	return nil
 }

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package constants provides global constants for the urunc runtime.
 package constants
 
+// TimestampTargetFile is the path to the timestamp target log file.
 const TimestampTargetFile = "/tmp/urunc.zlog"

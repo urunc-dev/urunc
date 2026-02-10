@@ -41,11 +41,15 @@ func setNATRule(iface string, sourceIP string) error {
 		return err
 	}
 
-	file, err := os.OpenFile("/proc/sys/net/ipv4/ip_forward", os.O_WRONLY, 0644)
+	file, err := os.OpenFile("/proc/sys/net/ipv4/ip_forward", os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to open /proc/sys/net/ipv4/ip_forward: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			netlog.WithError(err).Warn("failed to close ip_forward file")
+		}
+	}()
 
 	_, err = file.WriteString("1")
 	if err != nil {

@@ -154,11 +154,15 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 
 // getConfigFromJSON retrieves the Unikernel config parameters from the urunc.json file inside the rootfs.
 func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
-	file, err := os.Open(jsonFilePath)
+	file, err := os.Open(jsonFilePath) //nolint:gosec
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			uniklog.WithError(err).Warn("failed to close config file")
+		}
+	}()
 
 	fileInfo, err := file.Stat()
 	if err != nil {

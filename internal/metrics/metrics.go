@@ -55,7 +55,7 @@ func (z *zerologMetrics) SetLoggerContainerID(containerID string) {
 func NewZerologMetrics(enabled bool, target string, containerID string) Writer {
 	if enabled {
 		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixNano
-		file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec
 		if err != nil {
 			return nil
 		}

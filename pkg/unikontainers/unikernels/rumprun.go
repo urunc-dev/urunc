@@ -22,9 +22,13 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// RumprunUnikernel is the identifier for the Rumprun unikernel type.
 const RumprunUnikernel string = "rumprun"
+
+// SubnetMask125 is the subnet mask for /25 networks.
 const SubnetMask125 = "128.0.0.0"
 
+// Rumprun is a unikernel type representing a Rumprun-based unikernel.
 type Rumprun struct {
 	Command string
 	Monitor string
@@ -33,14 +37,17 @@ type Rumprun struct {
 	Blk     RumprunBlk
 }
 
+// RumprunCmd holds command configuration for Rumprun unikernels.
 type RumprunCmd struct {
 	CmdLine string `json:"cmdline"`
 }
 
+// RumprunEnv holds environment configuration for Rumprun unikernels.
 type RumprunEnv struct {
 	Env string `json:"env"`
 }
 
+// RumprunNet holds network configuration for Rumprun unikernels.
 type RumprunNet struct {
 	Interface string `json:"if"`
 	Cloner    string `json:"cloner"`
@@ -51,6 +58,7 @@ type RumprunNet struct {
 	Gateway   string `json:"gw"`
 }
 
+// RumprunBlk holds block device configuration for Rumprun unikernels.
 type RumprunBlk struct {
 	HostPath   string `json:"-"`
 	Source     string `json:"source"`
@@ -59,6 +67,7 @@ type RumprunBlk struct {
 	Mountpoint string `json:"mountpoint"`
 }
 
+// CommandString returns the command string for the Rumprun unikernel.
 func (r *Rumprun) CommandString() (string, error) {
 	// Rumprun accepts a JSON string to configure the unikernel. However,
 	// Rumprun does not use a valid JSON format. Therefore, we manually
@@ -73,7 +82,7 @@ func (r *Rumprun) CommandString() (string, error) {
 	}
 	cmdJSON, err := json.Marshal(cmd)
 	if err != nil {
-		return "", fmt.Errorf("Could not Marshal cmdline: %v", err)
+		return "", fmt.Errorf("could not marshal cmdline: %v", err)
 	}
 	cmdJSONString = string(cmdJSON)
 	for i, eVar := range r.Envs {
@@ -82,7 +91,7 @@ func (r *Rumprun) CommandString() (string, error) {
 		}
 		oneVarJSON, err := json.Marshal(eVar)
 		if err != nil {
-			return "", fmt.Errorf("Could not Marshal environment variable: %v", err)
+			return "", fmt.Errorf("could not marshal environment variable: %v", err)
 		}
 		if i != 0 {
 			envJSONString += ","
@@ -124,10 +133,12 @@ func (r *Rumprun) CommandString() (string, error) {
 	return finalJSONString, nil
 }
 
+// SupportsBlock returns whether the Rumprun unikernel supports block devices.
 func (r *Rumprun) SupportsBlock() bool {
 	return true
 }
 
+// SupportsFS returns whether the Rumprun unikernel supports the given filesystem type.
 func (r *Rumprun) SupportsFS(fsType string) bool {
 	switch fsType {
 	case "ext2":
@@ -137,6 +148,7 @@ func (r *Rumprun) SupportsFS(fsType string) bool {
 	}
 }
 
+// MonitorNetCli returns the monitor-specific network CLI arguments.
 func (r *Rumprun) MonitorNetCli(ifName string, mac string) string {
 	switch r.Monitor {
 	case "hvt", "spt":
@@ -148,6 +160,7 @@ func (r *Rumprun) MonitorNetCli(ifName string, mac string) string {
 	}
 }
 
+// MonitorBlockCli returns the monitor-specific block device CLI arguments.
 func (r *Rumprun) MonitorBlockCli() []types.MonitorBlockArgs {
 	switch r.Monitor {
 	case "hvt", "spt":
@@ -176,6 +189,7 @@ func (r *Rumprun) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{}
 }
 
+// Init initializes the Rumprun unikernel with the provided parameters.
 func (r *Rumprun) Init(data types.UnikernelParams) error {
 	// if Net.Mask is empty, there is no network support
 	if data.Net.Mask != "" {
