@@ -13,6 +13,7 @@ Debugf
 Devmapper
 Dockerfiles
 EUID
+Exec
 Execve
 GOARCH
 GOFLAGS
@@ -97,6 +98,7 @@ Unikraft
 Unikraft's
 Urunc
 Urunc's
+VMM
 VNET
 Vcpu
 Virt
@@ -256,6 +258,7 @@ pluginid
 posixacl
 practises
 prctl
+prebuild
 privs
 prlimit
 pwait
@@ -303,6 +306,7 @@ subtest
 superfences
 sworker
 symfollow
+syscall
 syscalls
 systemcalls
 tgkill

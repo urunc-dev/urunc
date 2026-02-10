@@ -18,7 +18,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
 
 	seccomp "github.com/elastic/go-seccomp-bpf"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -148,7 +147,7 @@ func (h *HVT) Ok() error {
 	return nil
 }
 
-func (h *HVT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
+func (h *HVT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	hvtMem := BytesToStringMB(args.MemSizeB)
 	cmdString := h.binaryPath + " --mem=" + hvtMem
 	if args.Net.TapDev != "" {
@@ -164,12 +163,16 @@ func (h *HVT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")
+	return cmdArgs, nil
+}
+
+// PreExec performs pre-execution setup for HVT.
+// HVT requires applying seccomp filters before syscall.Exec if Seccomp is enabled.
+func (h *HVT) PreExec(args types.ExecArgs) error {
 	if args.Seccomp {
-		err := applySeccompFilter()
-		if err != nil {
+		if err := applySeccompFilter(); err != nil {
 			return err
 		}
 	}
-	vmmLog.WithField("hvt command", cmdString).Debug("Ready to execve hvt")
-	return syscall.Exec(h.binaryPath, cmdArgs, args.Environment) //nolint: gosec
+	return nil
 }

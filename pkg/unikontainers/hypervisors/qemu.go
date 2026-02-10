@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -55,7 +54,7 @@ func (q *Qemu) Path() string {
 	return q.binaryPath
 }
 
-func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
+func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"
 	cmdString += " -L /usr/share/qemu"   // Set the path for qemu bios/data
@@ -137,6 +136,10 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 
 	exArgs := strings.Split(cmdString, " ")
 	exArgs = append(exArgs, "-append", args.Command)
-	vmmLog.WithField("qemu command", exArgs).Debug("Ready to execve qemu")
-	return syscall.Exec(q.Path(), exArgs, args.Environment) //nolint: gosec
+	return exArgs, nil
+}
+
+// PreExec performs pre-execution setup. QEMU has no special pre-exec requirements.
+func (q *Qemu) PreExec(_ types.ExecArgs) error {
+	return nil
 }

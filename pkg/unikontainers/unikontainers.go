@@ -498,18 +498,36 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(m.TS18)
-	// metrics.Wait()
-	// TODO: We set the state to running and notify urunc Start that the monitor
-	// started, but we might encounter issues with the monitor execution. We need
-	// to revisit this and check if a failed monitor execution affects this approach.
-	// If it affects then we need to re-design the whole spawning of the monitor.
-	// Notify urunc start
+
+	// Build the VMM command once and verify it can be constructed successfully.
+	// This ensures we don't report the container as started if command building fails.
+	execCmd, err := vmm.BuildExecCmd(vmmArgs, unikernel)
+	if err != nil {
+		uniklog.WithError(err).Error("failed to build VMM command")
+		return err
+	}
+
+	// Notify urunc start that the monitor is ready to execute.
+	// We send this after BuildExecCmd succeeds to avoid reporting a container
+	// as started when the VMM command cannot be built.
+	// TODO: The container can still be reported as running if the PreExec step
+	// (e.g., BPF/seccomp filter setup) fails after this point. We should find
+	// a way to handle that case as well.
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
 	}
 
-	return vmm.Execve(vmmArgs, unikernel)
+	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
+	err = vmm.PreExec(vmmArgs)
+	if err != nil {
+		uniklog.WithError(err).Error("failed to perform pre-exec setup")
+		return err
+	}
+
+	// Execute the VMM using the command we built earlier.
+	uniklog.WithField("command", execCmd).Debug("Ready to execve VMM")
+	return syscall.Exec(vmm.Path(), execCmd, vmmArgs.Environment) //nolint: gosec
 }
 
 func setupUser(user specs.User) error {
