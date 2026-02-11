@@ -4,11 +4,11 @@ title: "Contributing"
 description: "Contributing guidelines"
 ---
 
-Urunc is an open-source project licenced under the [Apache License
+Urunc is an open-source project licensed under the [Apache License
 2.0](https://github.com/urunc-dev/urunc/blob/main/LICENSE). We welcome anyone
 who would be interested in contributing to `urunc`. As a first step, please
 take a look at the following document and the [LLM
-policy](../developer-guide/llm-policy.md)).
+policy](../developer-guide/llm-policy.md).
 
 ## Table of contents:
 
@@ -54,7 +54,7 @@ project is very welcome to contribute in one of the following ways:
 
 ## Opening an issue
 
-We use Github issues to track bugs and requests for new features. Anyone is
+We use GitHub issues to track bugs and requests for new features. Anyone is
 welcome to open a new issue, which is either related to a bug or a request for
 a new feature. Please make sure to read the [LLM
 policy](../developer-guide/llm-policy.md) in cases where an LLM has been used.
@@ -94,15 +94,15 @@ A list of steps that can reproduce the issue.
 
 ### Requesting new features
 
-We will be very happy to listen from users about new features that they would like to see in `urunc`.
-One way to communicate such a request is using Github issues.
+We will be very happy to listen to users about new features that they would like to see in `urunc`.
+One way to communicate such a request is using GitHub issues.
 For the time being, we do not use any strict template for requesting new features.
 However, we kindly ask you to mark the issue with the enhancement label and provide a description of the new feature.
 
 ## Submitting a PR
 
 Anyone should feel free to submit a change or an addition to the codebase of `urunc`.
-Currently, we use Github's Pull Requests (PRs) to submit changes to `urunc`'s codebase.
+Currently, we use GitHub's Pull Requests (PRs) to submit changes to `urunc`'s codebase.
 Before creating a new PR, please follow the rules below:
 
 - Avoid opening PRs for non-existent issues. Please create an issue first.
@@ -120,8 +120,8 @@ Before creating a new PR, please follow the rules below:
 - Provide meaningful commit messages, describing shortly the changes.
 - Provide a meaningful PR message.
 
-The maintainers and andmins of the `urunc` project reserve the right to close
-PRs that do not comply with the above rules,with reference to this contribution
+The maintainers and admins of the `urunc` project reserve the right to close
+PRs that do not comply with the above rules, with reference to this contribution
 guide.
 
 A new (draft) PR triggers the following process:
@@ -143,7 +143,7 @@ A new (draft) PR triggers the following process:
 
 ## Labels for the CI
 
-We use github workflows to invoke some tests when a new PR opens for `urunc`.
+We use GitHub workflows to invoke some tests when a new PR opens for `urunc`.
 In particular, we perform the following workflows tests:
 
 - Linting of the commit message. Please check the [git commit message style](#git-commit-messages) below for more info.
@@ -171,7 +171,7 @@ three labels which can be used:
   docs to when the PR will be ready for review.
 - `takeover`: Changes the base branch for the PR from `main` to `main-pr<PRID>`.
   This is to facilitate adding git trailers on the commit messages, to mention
-  `Reviewers` and link to the original github PR for reference.
+  `Reviewers` and link to the original GitHub PR for reference.
 
 **Note**: Both `skip-build` and `skip-lint` assume that the `ok-to-test` label
 is added.
@@ -206,9 +206,9 @@ Please follow the below guidelines for your commit messages:
 - In case the PR is associated with an issue, please refer to it, using the git trailer `Fixes: #Nr_issue`
 - Always sign-off your commit message
 
-### Golang code styde
+### Golang code style
 
-We follow gofmt's rules on formatting GO code. Therefore, we ask all contributors to do the same.
+We follow gofmt's rules on formatting Go code. Therefore, we ask all contributors to do the same.
 Go provides the `gofmt` tool, which can be used for formatting your code.
 
 ## Contact
