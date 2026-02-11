@@ -56,26 +56,26 @@ following dependencies:
 Install Docker:
 
 ```bash
-$ curl -fsSL https://get.docker.com -o get-docker.sh
-$ sudo sh get-docker.sh
-$ rm get-docker.sh
-$ sudo groupadd docker
-$ sudo usermod -aG docker $USER
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+rm get-docker.sh
+sudo groupadd docker
+sudo usermod -aG docker $USER
 ```
 
 Install `urunc`:
 
 ```bash
-$ sudo apt-get install -y git
-$ git clone https://github.com/urunc-dev/urunc.git
-$ docker run --rm -ti -v $PWD/urunc:/urunc -w /urunc golang:latest bash -c "git config --global --add safe.directory /urunc && make"
-$ sudo make -C urunc install
+sudo apt-get install -y git
+git clone https://github.com/urunc-dev/urunc.git
+docker run --rm -ti -v $PWD/urunc:/urunc -w /urunc golang:latest bash -c "git config --global --add safe.directory /urunc && make"
+sudo make -C urunc install
 ```
 
 Install QEMU:
 
 ```bash
-$ sudo apt install -y qemu-kvm
+sudo apt install -y qemu-kvm
 ```
 
 Now we are ready to run nginx as a Unikraft unikernel using Docker and `urunc`:
