@@ -17,6 +17,7 @@ image building and deployment.
 Install [Docker](/quickstart/#install-docker), Go >= 1.21, and `ko`:
 
 ### Install Go 1.21  
+
 ```bash
 sudo mkdir /usr/local/go1.21
 wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz

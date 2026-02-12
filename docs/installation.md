@@ -467,7 +467,7 @@ Alternatively, to get the latest
 
 ```bash
 URUNC_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/urunc-dev/urunc/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
-URUNC_BINARY_FILENAME="urunc_static_v${URUNC_VERSION}_$(dpkg --print-architecture)"
+URUNC_BINARY_FILENAME="urunc_static_$(dpkg --print-architecture)"
 wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/$URUNC_BINARY_FILENAME
 chmod +x $URUNC_BINARY_FILENAME
 sudo mv $URUNC_BINARY_FILENAME /usr/local/bin/urunc
@@ -476,7 +476,7 @@ sudo mv $URUNC_BINARY_FILENAME /usr/local/bin/urunc
 And for `containerd-shim-urunc-v2`:
 
 ```bash
-CONTAINERD_BINARY_FILENAME="containerd-shim-urunc-v2_static_v${URUNC_VERSION}_$(dpkg --print-architecture)"
+CONTAINERD_BINARY_FILENAME="containerd-shim-urunc-v2_static_$(dpkg --print-architecture)"
 wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/$CONTAINERD_BINARY_FILENAME
 chmod +x $CONTAINERD_BINARY_FILENAME
 sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
