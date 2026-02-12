@@ -25,7 +25,7 @@ regarding the use of LLM in its development process:
   issues or PRs, ensuring correctness, quality, and relevance.
 - The use of LLMs to respond to comments in issues or PRs is not permitted.
   Contributors are expected to express their own thoughts and ideas.  Acting as
-  a mediator between another user and an LLM is not helpful..
+  a mediator between another user and an LLM is not helpful.
 - LLMs may assist in code review but can not replace human reviews. Human
   reviewer guidance takes precedence over any LLM comments.
 

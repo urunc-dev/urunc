@@ -3,7 +3,7 @@ refer to the [installation guide](../installation) for more detailed installatio
 instructions, or the [design](../design#architecture) document for more
 details regarding `urunc`'s architecture.
 
-We can quickly set `urunc` either with [docker](https://docs.docker.com/engine/install/ubuntu/) or [containerd](https://github.com/containerd/containerd) and [nerdctl](https://github.com/containerd/nerdctl/).
+We can quickly set up `urunc` either with [docker](https://docs.docker.com/engine/install/ubuntu/) or [containerd](https://github.com/containerd/containerd) and [nerdctl](https://github.com/containerd/nerdctl/).
 We assume a vanilla ubuntu 22.04 environment, although `urunc` is able to run
 on a number of GNU/Linux distributions.
 
@@ -49,8 +49,8 @@ We will try out a Unikraft unikernel over [Qemu](https://www.qemu.org/).
 
 #### Install Qemu
 
-Let's make sure that [Qemu](https://www.qemu.org/download/) is installed
-:
+Let's make sure that [Qemu](https://www.qemu.org/download/) is installed:
+
 ```bash
 sudo apt install -y qemu-system
 ```
@@ -154,7 +154,7 @@ sudo /usr/local/bin/scripts/dm_create.sh
 
 At last, we need to modify
 [containerd](https://github.com/containerd/containerd/tree/main) configuration
-for the new demapper snapshotter:
+for the new devmapper snapshotter:
 
 - In containerd v2.x:
 
@@ -222,7 +222,7 @@ chmod +x urunc_$(dpkg --print-architecture)
 sudo mv urunc_$(dpkg --print-architecture) /usr/local/bin/urunc
 ```
 
-Secondly, we will install the `containerd-shim-urunc-v2` binary:.
+Secondly, we will install the `containerd-shim-urunc-v2` binary:
 
 ```bash
 wget -q https://github.com/urunc-dev/urunc/releases/download/v$URUNC_VERSION/containerd-shim-urunc-v2_$(dpkg --print-architecture)

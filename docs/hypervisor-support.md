@@ -87,7 +87,7 @@ VM instantiation and guest OS boot.
 #### Installing Firecracker
 
 [Firecracker](https://firecracker-microvm.github.io/) is not available through
-a package manger, but it can easily be installed. The [Getting
+a package manager, but it can easily be installed. The [Getting
 Started](https://github.com/firecracker-microvm/firecracker/blob/main/docs/getting-started.md) guide
 of [Firecracker](https://firecracker-microvm.github.io/) describes how users
 can set up [Firecracker](https://firecracker-microvm.github.io/). Long story short,
@@ -146,7 +146,7 @@ VMM designed to run unikernels in a virtualized environment. As a part of the
 broader Solo5 project, [Solo5-hvt](https://github.com/Solo5/solo5) provides a
 minimal, efficient abstraction layer for running unikernels on modern hardware,
 leveraging hardware virtualization technologies Some of the key benefits of
-[Solo5-hvt](https://github.com/Solo5/solo5) is its simplicity and and extremely
+[Solo5-hvt](https://github.com/Solo5/solo5) is its simplicity and extremely
 fast boot times of unikernels. In contrast to the other VMMs,
 [Solo5-hvt](https://github.com/Solo5/solo5) does not provide support for virtIO
 devices. Instead, it defines its own interface, which can be used for network
@@ -199,7 +199,7 @@ Supported unikernel frameworks with `urunc`:
 - [Rumprun](../unikernel-support#rumprun)
 - [MirageOS](../unikernel-support#mirage)
 
-An example unikernel with a block image inside the conntainer's rootfs:
+An example unikernel with a block image inside the container's rootfs:
 
 ```bash
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-block:latest

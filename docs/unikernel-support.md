@@ -77,7 +77,7 @@ libraries that provide networking, storage and concurrency support that work
 under Unix during development, but become operating system drivers when being
 compiled for production deployment. We can easily set up and build
 [MirageOS](https://github.com/mirage/mirage) unikernels with `mirage`, which can
-be installed throgu the [Opam](https://opam.ocaml.org/) source package manager.
+be installed through the [Opam](https://opam.ocaml.org/) source package manager.
 The framework is fully event-driven, with no support for preemptive threading.
 
 [MirageOS](https://github.com/mirage/mirage) is characterized from the extremely
@@ -314,7 +314,7 @@ Focusing on the single-application notion of using the
 both [Qemu](https://qemu.org) and
 [Firecracker](https://github.com/firecracker-microvm/firecracker). For network,
 `urunc` will make use of virtio-net either through PCI or MMIO, depending on
-the monitor. In the case of storage, `urunc` can use initrd, virtio-block ,9pfs
+the monitor. In the case of storage, `urunc` can use initrd, virtio-block, 9pfs
 or Virtiofs. In particular, `urunc` takes advantage of the extensive filesystem
 support of [Linux](https://github.com/torvalds/linux) and can directly mount
 containerd's snapshot directly to a [Linux](https://github.com/torvalds/linux)
@@ -324,7 +324,7 @@ more information on setting up devmapper, please take a look on our
 
 For more information on packaging applications and executing them on top of
 [Linux](https://github.com/torvalds/linux) with `urunc` take a look at our
-[running existing containers tutorial.](../tutorials/exisitng-containers-linux)
+[running existing containers tutorial.](../tutorials/existing-container-linux)
 
 An example of a Nginx alpine image on top of [Qemu](https://qemu.org) and
 [Linux](https://github.com/torvalds/linux) with 'urunc' and devmapper as a
