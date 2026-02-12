@@ -398,3 +398,6 @@ Khitem
 unreviewed
 Ayush
 gocyclo
+gomega
+Logr
+onsi
