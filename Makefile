@@ -235,7 +235,7 @@ unittest: test_unikontainers test_metrics
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
-e2etest: test_nerdctl test_ctr test_crictl test_docker
+e2etest: test_nerdctl test_ctr test_crictl test_docker test_podman
 
 ## test_unikontainers Run unit tests for unikontainers package
 test_unikontainers:
@@ -277,6 +277,13 @@ test_docker:
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestDocker -v
 	@echo " "
 
+## test_podman Run all end-to-end tests with podman
+.PHONY: test_podman
+test_podman:
+	@echo "Testing podman"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestPodman -v
+	@echo " "
+
 ## test_nerdctl_[pattern] Run all end-to-end tests with nerdctl that match pattern
 .PHONY: test_nerdctl_%
 test_nerdctl_%:
@@ -303,6 +310,13 @@ test_crictl_%:
 test_docker_%:
 	@echo "Testing docker"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestDocker/$*"
+	@echo " "
+
+## test_podman_[pattern] Run all end-to-end tests with podman that match pattern
+.PHONY: test_podman_%
+test_podman_%:
+	@echo "Testing podman"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestPodman/$*"
 	@echo " "
 
 ## help Show this help message

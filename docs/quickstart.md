@@ -3,7 +3,7 @@ refer to the [installation guide](../installation) for more detailed installatio
 instructions, or the [design](../design#architecture) document for more
 details regarding `urunc`'s architecture.
 
-We can quickly set `urunc` either with [docker](https://docs.docker.com/engine/install/ubuntu/) or [containerd](https://github.com/containerd/containerd) and [nerdctl](https://github.com/containerd/nerdctl/).
+We can quickly set `urunc` with [docker](https://docs.docker.com/engine/install/ubuntu/), [Podman](https://podman.io/), or [containerd](https://github.com/containerd/containerd) and [nerdctl](https://github.com/containerd/nerdctl/).
 We assume a vanilla ubuntu 22.04 environment, although `urunc` is able to run
 on a number of GNU/Linux distributions.
 
@@ -88,6 +88,100 @@ $ curl 172.17.0.2
 </body>
 </html>
 ```
+
+## Using Podman
+
+We can run `urunc` with [Podman](https://podman.io/) by configuring Podman to use `urunc` as the OCI runtime.
+
+> Note: Currently `urunc` supports Podman only in rootful mode. Running Podman in rootless mode would require additional changes such as user namespaces support, which are not yet implemented.
+
+**Prerequisites:** [Podman](https://podman.io/), [QEMU](https://www.qemu.org/) (e.g. `sudo apt install qemu-system`), and the `urunc` binary. Install `urunc` from source as in [Install `urunc` from source](#install-urunc-from-source) above, or follow the [installation guide](installation.md).
+
+### Install Podman
+
+If Podman is not already installed:
+
+```bash
+sudo apt install podman
+```
+
+### Configure Podman to use urunc
+
+Copy the default configuration and register the `urunc` runtime:
+
+```bash
+sudo mkdir -p /etc/containers
+sudo cp /usr/share/containers/containers.conf /etc/containers/containers.conf
+```
+
+Edit `/etc/containers/containers.conf` and add:
+
+```toml
+[engine.runtimes]
+urunc = ["/usr/local/bin/urunc"]
+```
+
+### Configure urunc
+
+Create `/etc/urunc/config.toml` and set the monitor `path` for hypervisor (e.g. QEMU). See [configuration](configuration.md) for full options.
+
+```bash
+which qemu-system-$(uname -m)
+# Example output: /usr/bin/qemu-system-x86_64
+```
+
+```toml
+[monitors.qemu]
+default_memory_mb = 256
+default_vcpus = 1
+path = "/usr/bin/qemu-system-x86_64"
+# default_memory_mb, default_vcpus, etc. are optional; see configuration.md
+```
+
+### Run the unikernel with Podman
+
+Run the Nginx Unikraft unikernel:
+
+```bash
+sudo podman run --rm -d --runtime urunc harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft-initrd:latest
+88aa2508eb9ba7bc9932b5046f90eab8a57f27d99f19def8dd01ea7d98249217
+```
+
+Inspect and verify (replace the container ID with yours):
+
+```bash
+sudo podman ps
+CONTAINER ID  IMAGE                                                             COMMAND               CREATED         STATUS         PORTS       NAMES
+88aa2508eb9b  harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft-initrd:latest  -c /nginx/conf/ng...  About a minute  Up About a minute              compassionate_swanson
+```
+
+```bash
+sudo podman inspect 88aa2508eb9ba7bc9932b5046f90eab8a57f27d99f19def8dd01ea7d98249217 | grep IPAddress
+            "IPAddress": "10.88.0.2",
+                    "IPAddress": "10.88.0.2",
+```
+
+Verify connectivity (e.g. ping or curl the Nginx server):
+
+```bash
+ping -c 3 10.88.0.2
+PING 10.88.0.2 (10.88.0.2) 56(84) bytes of data.
+64 bytes from 10.88.0.2: icmp_seq=1 ttl=255 time=0.455 ms
+...
+
+curl 10.88.0.2
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hello, world!</title>
+</head>
+<body>
+  <h1>Hello, world!</h1>
+  <p>Powered by <a href="http://unikraft.org">Unikraft</a>.</p>
+</body>
+</html>
+```
+
 ## Using containerd and nerdctl
 
 The second way to quickly start with `urunc` would be by setting up a high-level

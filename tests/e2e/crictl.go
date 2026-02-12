@@ -334,3 +334,7 @@ func (i *crictlInfo) inspectPAndGet(key string) (string, error) {
 
 	return findValOfKey(output, key)
 }
+
+func (i *crictlInfo) configPath() (string, error) {
+	return containerdConfigPath(i.containerID)
+}

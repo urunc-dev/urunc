@@ -18,7 +18,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -43,12 +45,17 @@ type testTool interface {
 	searchPod(string) (bool, error)
 	inspectCAndGet(string) (string, error)
 	inspectPAndGet(string) (string, error)
+	configPath() (string, error)
 }
 
 var errToolDoesNotSupport = errors.New("Operation not support")
 
-func commonNewContainerCmd(a containerTestArgs) string {
-	cmdBase := "--runtime io.containerd.urunc.v2 "
+func commonNewContainerCmd(tool string, a containerTestArgs) string {
+	runtime := "io.containerd.urunc.v2"
+	if tool == "podman" {
+		runtime = "/usr/local/bin/urunc"
+	}
+	cmdBase := "--runtime " + runtime + " "
 	if a.Devmapper {
 		cmdBase += "--snapshotter devmapper "
 	}
@@ -114,7 +121,7 @@ func commonRmImage(tool string, image string) error {
 
 func commonCreate(tool string, cntrArgs containerTestArgs) (output string, err error) {
 	cmdBase := tool + " create "
-	cmdBase += commonNewContainerCmd(cntrArgs)
+	cmdBase += commonNewContainerCmd(tool, cntrArgs)
 	return commonCmdExec(cmdBase)
 }
 
@@ -139,7 +146,7 @@ func commonRun(tool string, cntrArgs containerTestArgs, detach bool) (output str
 	if detach {
 		cmdBase += "-d "
 	}
-	cmdBase += commonNewContainerCmd(cntrArgs)
+	cmdBase += commonNewContainerCmd(tool, cntrArgs)
 	return commonCmdExec(cmdBase)
 }
 
@@ -187,6 +194,20 @@ func commonInspectCAndGet(tool string, containerID string, key string) (string, 
 	}
 
 	return findValOfKey(output, key)
+}
+
+func containerdConfigPath(containerID string) (string, error) {
+	paths := []string{
+		filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/default/", containerID, "/config.json"),
+		filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/k8s.io/", containerID, "/config.json"),
+		filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/moby/", containerID, "/config.json"),
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("config.json not found for container %s", containerID)
 }
 
 func searchCID(searchArea string, containerID string) bool {

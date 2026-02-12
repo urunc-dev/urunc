@@ -29,6 +29,7 @@ const (
 	testCtr        = "TestCtr"
 	testCrictl     = "TestCrictl"
 	testDocker     = "TestDocker"
+	testPodman     = "TestPodman"
 	maxPullRetries = 5
 	pullRetryDelay = 2 * time.Second
 )
@@ -77,12 +78,15 @@ func getTestCases(testFunc string) []containerTestArgs {
 		return crictlTestCases()
 	case testDocker:
 		return dockerTestCases()
+	case testPodman:
+		return podmanTestCases()
 	default:
 		var allCases []containerTestArgs
 		allCases = append(allCases, nerdctlTestCases()...)
 		allCases = append(allCases, ctrTestCases()...)
 		allCases = append(allCases, crictlTestCases()...)
 		allCases = append(allCases, dockerTestCases()...)
+		allCases = append(allCases, podmanTestCases()...)
 		return allCases
 	}
 }
@@ -160,6 +164,8 @@ func pullImageForTest(testFunc string, image string) error {
 		return commonPull(nerdctlName, image)
 	case testDocker:
 		return commonPull(dockerName, image)
+	case testPodman:
+		return commonPull(podmanName, image)
 	default:
 		return commonPull(ctrName, image)
 	}
@@ -178,6 +184,8 @@ func removeImageForTest(testFunc string, image string) error {
 		return commonRmImage(nerdctlName, image)
 	case testDocker:
 		return commonRmImage(dockerName, image)
+	case testPodman:
+		return commonRmImage(podmanName, image)
 	default:
 		return commonRmImage(ctrName, image)
 	}

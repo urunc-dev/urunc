@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	probing "github.com/prometheus-community/pro-bing"
@@ -53,16 +54,41 @@ func compareNS(cntr string, defNS string, specPath string) error {
 			return fmt.Errorf("Unikernel's namespace is the default")
 		}
 	} else {
-		nsLink, err := os.Readlink(specPath)
+		if nsLink, err := os.Readlink(specPath); err == nil {
+			if cntr != nsLink {
+				return fmt.Errorf("Unikernel's namespace differs from spec's namespace")
+			}
+			return nil
+		}
+		// Some runtimes bind-mount netns paths; Readlink fails. Fall back to inode compare.
+		statInfo, err := os.Stat(specPath)
 		if err != nil {
 			return err
 		}
-		if cntr != nsLink {
+		sys, ok := statInfo.Sys().(*syscall.Stat_t)
+		if !ok || sys == nil {
+			return fmt.Errorf("failed to stat namespace path")
+		}
+		specInode := sys.Ino
+		cntrInode, err := parseNSInode(cntr)
+		if err != nil {
+			return err
+		}
+		if specInode != cntrInode {
 			return fmt.Errorf("Unikernel's namespace differs from spec's namespace")
 		}
 	}
 
 	return nil
+}
+
+func parseNSInode(nsLink string) (uint64, error) {
+	start := strings.Index(nsLink, "[")
+	end := strings.Index(nsLink, "]")
+	if start == -1 || end == -1 || end <= start+1 {
+		return 0, fmt.Errorf("invalid namespace link: %s", nsLink)
+	}
+	return strconv.ParseUint(nsLink[start+1:end], 10, 64)
 }
 
 func getProcNS(proc string) (map[string]string, error) {

@@ -69,3 +69,17 @@ func TestDocker(t *testing.T) {
 		})
 	}
 }
+
+func TestPodman(t *testing.T) {
+	kvmGroup, err := getKVMGroupID()
+	if err != nil {
+		t.Errorf("Failed to get KVM grou id")
+	}
+	tests := podmanTestCases(kvmGroup)
+	for _, tc := range tests {
+		t.Run(tc.Name, func(t *testing.T) {
+			podmanTool := newPodmanTool(tc)
+			runTest(podmanTool, t)
+		})
+	}
+}

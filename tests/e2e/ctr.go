@@ -198,3 +198,7 @@ func (i *ctrInfo) inspectPAndGet(string) (string, error) {
 	// Not supported by ctr
 	return "", errToolDoesNotSupport
 }
+
+func (i *ctrInfo) configPath() (string, error) {
+	return containerdConfigPath(i.containerID)
+}

@@ -20,7 +20,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
@@ -185,20 +184,9 @@ func seccompTest(tool testTool) error {
 func namespaceTest(tool testTool) error {
 	// We need to retrieve the container's config, in order to get
 	// the namespaces that the container should have joined.
-	containerID := tool.getContainerID()
-	// Try /run/containerd/io.containerd.runtime.v2.task/default/containerID first
-	configPath := filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/default/", containerID, "/config.json")
-	_, err := os.Stat(configPath)
-	if os.IsNotExist(err) {
-		configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/k8s.io/", containerID, "/config.json")
-		_, err = os.Stat(configPath)
-		if os.IsNotExist(err) {
-			configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/moby/", containerID, "/config.json")
-			_, err = os.Stat(configPath)
-		}
-	}
+	configPath, err := tool.configPath()
 	if err != nil {
-		return fmt.Errorf("Could not retrieve container's config file")
+		return fmt.Errorf("Could not retrieve container's config file: %v", err)
 	}
 
 	var spec specs.Spec

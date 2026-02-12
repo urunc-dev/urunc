@@ -129,3 +129,7 @@ func (i *nerdctlInfo) inspectPAndGet(string) (string, error) {
 	// Not supported by nerdctl
 	return "", errToolDoesNotSupport
 }
+
+func (i *nerdctlInfo) configPath() (string, error) {
+	return containerdConfigPath(i.containerID)
+}

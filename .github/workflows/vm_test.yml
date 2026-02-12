@@ -54,7 +54,7 @@ jobs:
     strategy:
       matrix:
         arch: ${{ fromJSON(inputs.runner-archs) }}
-        test: ["test_ctr","test_nerdctl","test_crictl","test_docker"]
+        test: ["test_ctr","test_nerdctl","test_crictl","test_docker","test_podman"]
         include:
           - arch: amd64
             runner: ubuntu-22.04
@@ -107,7 +107,7 @@ jobs:
     - name: Install base dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system
+        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system podman
         wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
         sudo chmod +x virtiofsd
         sudo mv virtiofsd /usr/libexec/virtiofsd
@@ -254,14 +254,51 @@ jobs:
         sudo mv containerd-shim-urunc-v2_static_${{ matrix.arch }} /usr/local/bin/containerd-shim-urunc-v2
         urunc --version
 
+    - name: Configure podman runtime
+      run: |
+        sudo mkdir -p /etc/containers
+        # Try to base our config on the system default if it exists, like in the docs.
+        if [ -f /usr/share/containers/containers.conf ]; then
+          sudo cp /usr/share/containers/containers.conf /etc/containers/containers.conf
+        fi
+        # Always ensure a runtime entry for urunc is present.
+        sudo tee -a /etc/containers/containers.conf > /dev/null <<'EOF'
+        [engine.runtimes]
+        urunc = ["/usr/local/bin/urunc"]
+        "io.containerd.urunc.v2" = "/usr/local/bin/urunc"
+        EOF
+
     - name: Configure urunc with debug logging
       run: |
+        QEMU_BIN="/usr/bin/qemu-system-$(uname -m)"
         sudo mkdir -p /etc/urunc
-        sudo tee /etc/urunc/config.toml > /dev/null <<'EOF'
+        sudo tee /etc/urunc/config.toml > /dev/null <<EOF
         [log]
         level = "debug"
         syslog = true
+
+        [monitors.qemu]
+        path = "${QEMU_BIN}"
+
+        [monitors.firecracker]
+        path = "/usr/local/bin/firecracker"
+
+        [monitors.hvt]
+        path = "/usr/local/bin/solo5-hvt"
+
+        [monitors.spt]
+        path = "/usr/local/bin/solo5-spt"
         EOF
+
+    - name: Verify VMM binaries
+      run: |
+        QEMU_BIN="/usr/bin/qemu-system-$(uname -m)"
+        for bin in "$QEMU_BIN" "/usr/local/bin/firecracker" "/usr/local/bin/solo5-hvt" "/usr/local/bin/solo5-spt"; do
+          if [ ! -x "$bin" ]; then
+            echo "Required VMM binary not found or not executable: $bin"
+            exit 1
+          fi
+        done
 
     - name: Add runner user to KVM group
       if: ${{ matrix.arch == 'amd64' }}

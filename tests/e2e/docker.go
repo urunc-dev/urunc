@@ -129,3 +129,7 @@ func (i *dockerInfo) inspectPAndGet(string) (string, error) {
 	// Not supported by docker
 	return "", errToolDoesNotSupport
 }
+
+func (i *dockerInfo) configPath() (string, error) {
+	return containerdConfigPath(i.containerID)
+}
