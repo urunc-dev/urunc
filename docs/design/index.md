@@ -42,7 +42,7 @@ higher-level runtime (`containerd`) level:
   `createContainer` hooks.
 - When `Containerd` starts the container `urunc` configures any required
   resources such as block devices or  network interfaces and runs the
-  `statContainer` hooks.
+  `startContainer` hooks.
 - Depending on the specified unikernel type and annotations, `urunc` selects the
   appropriate VMM or sandbox monitor (e.g.  Qemu, Solo5-spt) and boots the
   unikernel. The unikernel runs inside its own isolated environment, interacting

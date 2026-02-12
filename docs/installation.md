@@ -140,7 +140,7 @@ directory](https://github.com/urunc-dev/urunc/tree/main/script/dm_create.sh).
 The first
 [dm\_create.sh](https://github.com/urunc-dev/urunc/tree/main/script/dm_create.sh)
 creates a thinpool, while the second
-[dm\_relosd.sh](https://github.com/urunc-dev/urunc/tree/main/script/dm_relosd.sh)
+[dm\_reload.sh](https://github.com/urunc-dev/urunc/tree/main/script/dm_reload.sh)
 reloads the same thinpool that has been created from
 [dm\_create.sh](https://github.com/urunc-dev/urunc/tree/main/script/dm_create.sh).
 
@@ -222,7 +222,7 @@ io.containerd.snapshotter.v1              devmapper                linux/amd64  
 
 #### Setting and configuring blockfile
 
-THe first stpe of setting up `blockfile` is the creation of the
+The first step of setting up `blockfile` is the creation of the
 scratch file, which will be used from the snapshotter:
 
 ```bash
@@ -282,8 +282,8 @@ $ sudo ctr plugin ls | grep blockfile
 ### Install nerdctl
 
 To easily interact with containerd,
-[nerdctl](https://github.com/containerd/nerdctl) offers a Dockerompatible CLI
-exprerience. The following commands download and install the latest release.
+[nerdctl](https://github.com/containerd/nerdctl) offers a Docker-compatible CLI
+experience. The following commands download and install the latest release.
 
 ```bash
 NERDCTL_VERSION=$(curl -L -s -o /dev/null -w '%{url_effective}' "https://github.com/containerd/nerdctl/releases/latest" | grep -oP "v\d+\.\d+\.\d+" | sed 's/v//')
@@ -299,7 +299,7 @@ This section includes the installation of all supported monitors and
 [monitors-build repository](https://github.com/urunc-dev/monitors-build)
 contains releases with various versions of these monitors and tools.
 Alternatively, each monitor can be downloaded and installed following the
-respective installtion guide.
+respective installation guide.
 
 ### Option 1: Using the monitors-build repository
 
@@ -380,7 +380,7 @@ sudo cp tenders/spt/solo5-spt /usr/local/bin
 ### Qemu
 
 [Qemu](https://www.qemu.org/) is a popular VMM and emulator which is available
-as apcakge from the vast majority of Linux distributions. In apt-based
+as a package from the vast majority of Linux distributions. In apt-based
 distributions:
 
 ```bash
@@ -417,7 +417,7 @@ virtiofsd](https://gitlab.com/virtio-fs/virtiofsd):
 
 ```
 wget https://gitlab.com/-/project/21523468/uploads/0298165d4cd2c73ca444a8c0f6a9ecc7/virtiofsd-v1.13.2.zip
-unzip virtiofsd-v1.13.2.zi
+unzip virtiofsd-v1.13.2.zip
 sudo mv target/x86_64-unknown-linux-musl/release/virtiofsd /usr/libexec/
 rm -rf target virtiofsd-v1.13.2.zip
 ```
