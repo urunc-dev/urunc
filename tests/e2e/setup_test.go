@@ -26,7 +26,6 @@ import (
 
 const (
 	testNerdctl    = "TestNerdctl"
-	testCtr        = "TestCtr"
 	testCrictl     = "TestCrictl"
 	testDocker     = "TestDocker"
 	maxPullRetries = 5
@@ -72,7 +71,8 @@ func getTestCases(testFunc string) []containerTestArgs {
 	case testNerdctl:
 		return nerdctlTestCases()
 	case testCtr:
-		return ctrTestCases()
+		// Images managed by BeforeAll in ctr_test.go
+		return []containerTestArgs{}
 	case testCrictl:
 		return crictlTestCases()
 	case testDocker:
@@ -80,7 +80,6 @@ func getTestCases(testFunc string) []containerTestArgs {
 	default:
 		var allCases []containerTestArgs
 		allCases = append(allCases, nerdctlTestCases()...)
-		allCases = append(allCases, ctrTestCases()...)
 		allCases = append(allCases, crictlTestCases()...)
 		allCases = append(allCases, dockerTestCases()...)
 		return allCases

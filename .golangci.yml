@@ -35,6 +35,10 @@ linters:
       - path: _test\.go|tests/e2e/(nerdctl|docker|ctr)\.go
         linters:
           - dupl
+      - path: tests/e2e/.*_test\.go
+        text: "dot-imports"
+        linters:
+          - revive
     paths:
       - docs$
       - dist$

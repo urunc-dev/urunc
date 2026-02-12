@@ -32,16 +32,6 @@ func TestNerdctl(t *testing.T) {
 	}
 }
 
-func TestCtr(t *testing.T) {
-	tests := ctrTestCases()
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			ctrTool := newCtrTool(tc)
-			runTest(ctrTool, t)
-		})
-	}
-}
-
 func TestCrictl(t *testing.T) {
 	kvmGroup, err := getKVMGroupID()
 	if err != nil {
