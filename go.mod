@@ -15,15 +15,15 @@ require (
 	github.com/nubificus/hedge_cli v0.0.3
 	github.com/opencontainers/runc v1.3.4
 	github.com/opencontainers/runtime-spec v1.2.1
-	github.com/prometheus-community/pro-bing v0.7.0
+	github.com/prometheus-community/pro-bing v0.8.0
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.6.2
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.40.0
-	k8s.io/cri-api v0.35.0
+	golang.org/x/sys v0.41.0
+	k8s.io/cri-api v0.35.1
 )
 
 require (
