@@ -412,6 +412,22 @@ func nerdctlTestCases(kvmGroup ...int64) []containerTestArgs {
 			ExpectOut:      "",
 			TestFunc:       blockMountTest,
 		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/httpserver-qemu-osv:latest",
+			Name:           "Qemu-osv-httpserver",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
+		},
 	}
 }
 
@@ -689,6 +705,22 @@ func ctrTestCases() []containerTestArgs {
 			ExpectOut:      "UID: 0 GID: 42 WD: /test_dir URUNC: urunc",
 			TestFunc:       matchTest,
 		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/httpserver-qemu-osv:latest",
+			Name:           "Qemu-osv-httpserver",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
+		},
 	}
 }
 
@@ -905,6 +937,22 @@ func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
 			SideContainers: []string{},
 			Skippable:      false,
 			TestFunc:       userGroupTest,
+		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/httpserver-qemu-osv:latest",
+			Name:           "Qemu-osv-httpserver",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
 		},
 	}
 }
@@ -1154,6 +1202,22 @@ func dockerTestCases(kvmGroup ...int64) []containerTestArgs {
 			SideContainers: []string{},
 			Skippable:      false,
 			TestFunc:       namespaceTest,
+		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/httpserver-qemu-osv:latest",
+			Name:           "Qemu-osv-httpserver",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
 		},
 	}
 }
