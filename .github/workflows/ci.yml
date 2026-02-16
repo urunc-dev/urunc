@@ -1,3 +1,17 @@
+# urunc Continuous Integration (CI) reusable workflow
+#
+# This workflow defines the core CI pipeline for urunc.
+# It is triggered via `workflow_call` by other workflows.
+#
+# The pipeline performs:
+# - File and commit validation
+# - Code linting
+# - Build
+# - Unit tests
+# - End-to-end VM tests (multi-architecture)
+# - Kubernetes (kind) tests
+#
+# Inputs allow skipping build/lint steps and specifying Go version.
 name: urunc CI
 on:
   workflow_call:
@@ -27,6 +41,7 @@ permissions:
 
 jobs:
   validate-files-and-commits:
+    # Ensures file structure and commit messages follow project guidelines
     if: ${{ inputs.skip-lint != 'yes' }}
     name: Lint Files & commits 
     uses: ./.github/workflows/validate-files-and-commits.yml
@@ -35,6 +50,7 @@ jobs:
     secrets: inherit
 
   lint:
+    # Runs static analysis and formatting checks
     name: Lint code
     if: ${{ inputs.skip-lint != 'yes' }}
     uses: ./.github/workflows/lint.yml
@@ -44,6 +60,7 @@ jobs:
     secrets: inherit
 
   build:
+    # Compiles the urunc binary
     if: ${{ inputs.skip-build != 'yes' }}
     name: Build
     uses: ./.github/workflows/build.yml
@@ -53,6 +70,7 @@ jobs:
     secrets: inherit
 
   unit_test:
+    # Executes unit tests to verify core functionality
     if: ${{ inputs.skip-build != 'yes' }}
     name: Unit tests
     uses: ./.github/workflows/unit_test.yml
@@ -62,6 +80,8 @@ jobs:
     secrets: inherit
 
   vm_test:
+    # Runs end-to-end tests inside virtual machine environments
+    # Includes multi-architecture testing (amd64, arm64)
     if: ${{ inputs.skip-build != 'yes' }}
     needs: [build, unit_test]
     name: E2E test
@@ -80,6 +100,7 @@ jobs:
     secrets: inherit
 
   kind_test:
+    # Runs integration tests inside a Kubernetes cluster using kind
     if: ${{ inputs.skip-build != 'yes' }}
     needs: [build, unit_test]
     name:  Kubernetes test
