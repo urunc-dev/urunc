@@ -115,22 +115,6 @@ For a detailed installation guide please check [Documentation](#Documentation)
 and particularly the [installation guide
 page](https://urunc.io/installation/).
 
-## Continuous Integration (CI)
-
-urunc uses GitHub Actions to validate code changes automatically.
-
-The CI pipeline includes:
-
-- File and commit validation
-- Linting
-- Build verification
-- Unit testing
-- End-to-end VM testing
-- Kubernetes integration testing
-
-The main reusable workflow is defined in:
-`.github/workflows/ci.yml`
-
 ## Documentation
 
 We keep an up to date documentation for `urunc` at 
