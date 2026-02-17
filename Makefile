@@ -231,7 +231,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics
+unittest: test_unikontainers test_metrics test_network
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -247,6 +247,12 @@ test_unikontainers:
 test_metrics:
 	@echo "Unit testing in internal/metrics"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./internal/metrics -v
+	@echo " "
+
+## test_network Run unit tests for network package
+test_network:
+	@echo "Unit testing in pkg/network"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/network -v
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
