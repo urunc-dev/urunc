@@ -443,7 +443,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// unikernel
 	err = unikernel.Init(unikernelParams)
-	if err == unikernels.ErrUndefinedVersion || err == unikernels.ErrVersionParsing {
+	if errors.Is(err, unikernels.ErrUndefinedVersion) ||
+		errors.Is(err, unikernels.ErrVersionParsing) {
 		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
 	} else if err != nil {
 		return err
@@ -1146,7 +1147,7 @@ func (u *Unikontainer) SendMessage(message IPCMessage) error {
 
 // isRunning returns true if the PID is alive or hedge.ListVMs returns our containerID
 func (u *Unikontainer) isRunning() bool {
-	vmmType := hypervisors.VmmType(u.State.Annotations[annotType])
+	vmmType := hypervisors.VmmType(u.State.Annotations[annotHypervisor])
 	if vmmType != hypervisors.HedgeVmm {
 		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
 	}

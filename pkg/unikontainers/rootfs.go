@@ -446,16 +446,16 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 
 	// Create /dev/console file
 	consolePath := filepath.Join(monRootfs, "/dev/console")
-	consoleFile, err := os.Create(consolePath)
-	if err != nil && !os.IsExist(err) {
+	consoleFile, err := os.OpenFile(consolePath, os.O_CREATE|os.O_WRONLY, 0o666)
+	if err != nil {
 		return fmt.Errorf("failed to create /dev/console: %w", err)
 	}
+	defer consoleFile.Close()
+
 	// Ensure correct permissions
 	if err := consoleFile.Chmod(0o666); err != nil {
-		consoleFile.Close()
 		return fmt.Errorf("failed to chmod /dev/console: %w", err)
 	}
-	consoleFile.Close()
 
 	return nil
 }

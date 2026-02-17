@@ -57,7 +57,6 @@ func getInitPid(filePath string) (float64, error) {
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&jsonData); err != nil {
 		return 0, nil
-
 	}
 
 	// Extract the specific value "init_process_pid"

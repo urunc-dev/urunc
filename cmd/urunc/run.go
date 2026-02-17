@@ -16,7 +16,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -75,6 +74,6 @@ var runCommand = &cli.Command{
 		if err := startUnikontainer(cmd); err != nil {
 			return err
 		}
-		return fmt.Errorf("urunc run failed: %w", nil)
+		return nil
 	},
 }
