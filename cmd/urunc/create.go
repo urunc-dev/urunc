@@ -183,7 +183,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		consoleSocket := cmd.String("console-socket")
 		conn, err := net.Dial("unix", consoleSocket)
 		if err != nil {
-			err = fmt.Errorf("failed to dial console socker: %w", err)
+			err = fmt.Errorf("failed to dial console socket: %w", err)
 			return err
 		}
 		defer conn.Close()

@@ -36,7 +36,7 @@ filesystem.
 The specification file includes an args parameter. The args parameter is used
 to specify command(s) that get run when the container is started. To change the
 command(s) that get executed on start, edit the args parameter of the spec. See
-"runc spec --help" for more explanation.`
+"urunc spec --help" for more explanation.`
 
 var runCommand = &cli.Command{
 	Name:        "run",

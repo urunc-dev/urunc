@@ -186,8 +186,11 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 		NetIfs:  FCNet,
 		VSock:   FCVSockDev,
 	}
-	FCConfigJSON, _ := json.Marshal(FCConfig)
-	if err := os.WriteFile(JSONConfigFile, FCConfigJSON, 0o644); err != nil { //nolint: gosec
+	FCConfigJSON, err := json.Marshal(FCConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal Firecracker config: %w", err)
+	}
+	if err = os.WriteFile(JSONConfigFile, FCConfigJSON, 0o644); err != nil { //nolint: gosec
 		return nil, fmt.Errorf("failed to save Firecracker json config: %w", err)
 	}
 	vmmLog.WithField("Json", string(FCConfigJSON)).Debug("Firecracker json config")

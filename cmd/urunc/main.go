@@ -86,7 +86,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "log",
 				Value: "",
-				Usage: "set the log file to write runc logs to (default is '/dev/stderr')",
+				Usage: "set the log file to write urunc logs to (default is '/dev/stderr')",
 			},
 			&cli.StringFlag{
 				Name:  "log-format",
