@@ -274,7 +274,7 @@ func pivotRootfs(newRoot string) error {
 	// We no longer need the old rootfs
 	err = os.RemoveAll("old_root")
 	if err != nil {
-		return fmt.Errorf("failed to remobe old_root: %w", err)
+		return fmt.Errorf("failed to remove old_root: %w", err)
 	}
 
 	return nil
