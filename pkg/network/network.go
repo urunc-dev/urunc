@@ -387,7 +387,7 @@ func deleteAllTCFilters(device netlink.Link) error {
 	parent := uint32(netlink.HANDLE_ROOT)
 	tapFilters, err := netlink.FilterList(device, parent)
 	if err != nil {
-		return nil
+		return err
 	}
 	allFilters = append(allFilters, tapFilters...)
 	device, err = discoverContainerIface()
