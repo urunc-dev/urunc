@@ -131,4 +131,5 @@ type MonitorConfig struct {
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
 	BinaryPath      string `toml:"path,omitempty"`      // Optional path to the hypervisor binary
 	DataPath        string `toml:"data_path,omitempty"` // Optional path to the hypervisor data files (e.g. qemu bios stuff)
+	Vhost           bool   `toml:"vhost,omitempty"`     // Optional: enable vhost for network performance optimization
 }

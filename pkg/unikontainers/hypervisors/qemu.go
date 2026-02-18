@@ -30,6 +30,7 @@ const (
 type Qemu struct {
 	binaryPath string
 	binary     string
+	vhost      bool
 }
 
 func (q *Qemu) Stop(pid int) error {
@@ -94,6 +95,9 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 			netcli += args.Net.MAC
 			netcli += " -net tap,script=no,downscript=no,ifname="
 			netcli += args.Net.TapDev
+			if q.vhost {
+				netcli += ",vhost=on"
+			}
 		}
 		cmdString += netcli
 	} else {

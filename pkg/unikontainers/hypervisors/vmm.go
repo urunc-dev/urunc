@@ -32,25 +32,33 @@ var vmmLog = logrus.WithField("subsystem", "monitors")
 
 type VMMFactory struct {
 	binary     string
-	createFunc func(binary, binaryPath string) types.VMM
+	createFunc func(binary, binaryPath string, vhost bool) types.VMM
 }
 
 var vmmFactories = map[VmmType]VMMFactory{
 	SptVmm: {
-		binary:     SptBinary,
-		createFunc: func(binary, binaryPath string) types.VMM { return &SPT{binary: binary, binaryPath: binaryPath} },
+		binary: SptBinary,
+		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
+			return &SPT{binary: binary, binaryPath: binaryPath}
+		},
 	},
 	HvtVmm: {
-		binary:     HvtBinary,
-		createFunc: func(binary, binaryPath string) types.VMM { return &HVT{binary: binary, binaryPath: binaryPath} },
+		binary: HvtBinary,
+		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
+			return &HVT{binary: binary, binaryPath: binaryPath}
+		},
 	},
 	QemuVmm: {
-		binary:     QemuBinary,
-		createFunc: func(binary, binaryPath string) types.VMM { return &Qemu{binary: binary, binaryPath: binaryPath} },
+		binary: QemuBinary,
+		createFunc: func(binary, binaryPath string, vhost bool) types.VMM {
+			return &Qemu{binary: binary, binaryPath: binaryPath, vhost: vhost}
+		},
 	},
 	FirecrackerVmm: {
-		binary:     FirecrackerBinary,
-		createFunc: func(binary, binaryPath string) types.VMM { return &Firecracker{binary: binary, binaryPath: binaryPath} },
+		binary: FirecrackerBinary,
+		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
+			return &Firecracker{binary: binary, binaryPath: binaryPath}
+		},
 	},
 }
 
@@ -80,7 +88,7 @@ func NewVMM(vmmType VmmType, monitors map[string]types.MonitorConfig) (vmm types
 		return nil, err
 	}
 
-	return factory.createFunc(factory.binary, vmmPath), nil
+	return factory.createFunc(factory.binary, vmmPath, monitors[string(vmmType)].Vhost), nil
 }
 
 func getVMMPath(vmmType VmmType, binary string, monitors map[string]types.MonitorConfig) (string, error) {
