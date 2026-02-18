@@ -125,6 +125,7 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"default_vcpus"] = strconv.FormatUint(uint64(hvCfg.DefaultVCPUs), 10)
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
 		cfgMap[prefix+"data_path"] = hvCfg.DataPath
+		cfgMap[prefix+"vhost"] = strconv.FormatBool(hvCfg.Vhost)
 	}
 	for eb, ebCfg := range p.ExtraBins {
 		prefix := "urunc_config.extra_binaries." + eb + "."
@@ -171,6 +172,13 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			hvCfg.BinaryPath = val
 		case "data_path":
 			hvCfg.DataPath = val
+		case "vhost":
+			boolVal, err := strconv.ParseBool(val)
+			if err != nil {
+				uniklog.Warnf("Invalid vhost value '%s' for monitor '%s': %v. Using default (false).", val, hv, err)
+			} else {
+				hvCfg.Vhost = boolVal
+			}
 		}
 		cfg.Monitors[hv] = hvCfg
 	}

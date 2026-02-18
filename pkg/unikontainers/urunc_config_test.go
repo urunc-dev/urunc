@@ -27,6 +27,7 @@ const (
 	testQemuVCPUsKey     = "urunc_config.monitors.qemu.default_vcpus"
 	testQemuBinaryKey    = "urunc_config.monitors.qemu.binary_path"
 	testQemuDataKey      = "urunc_config.monitors.qemu.data_path"
+	testQemuVhostKey     = "urunc_config.monitors.qemu.vhost"
 	testHvtMemoryKey     = "urunc_config.monitors.hvt.default_memory_mb"
 	testVirtiofsdPathKey = "urunc_config.extra_binaries.virtiofsd.path"
 	testVirtiofsdOptsKey = "urunc_config.extra_binaries.virtiofsd.options"
@@ -56,6 +57,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuVCPUsKey:  "2",
 			testQemuBinaryKey: testQemuBinaryPath,
 			testQemuDataKey:   testQemuDataPath,
+			testQemuVhostKey:  "true",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
@@ -67,6 +69,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, uint(2), qemuConfig.DefaultVCPUs)
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
 		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
+		assert.True(t, qemuConfig.Vhost)
 	})
 
 	t.Run("multiple monitors", func(t *testing.T) {
@@ -323,6 +326,34 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, testVirtiofsdDefOpts, vfsConfig.Options)
 	})
 
+	t.Run("vhost false is parsed correctly", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testQemuMemoryKey: "512",
+			testQemuVhostKey:  "false",
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		qemuConfig := config.Monitors["qemu"]
+		assert.False(t, qemuConfig.Vhost)
+	})
+
+	t.Run("invalid vhost value defaults to false", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testQemuMemoryKey: "512",
+			testQemuVhostKey:  "invalid",
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		qemuConfig := config.Monitors["qemu"]
+		assert.False(t, qemuConfig.Vhost, "invalid vhost value should default to false")
+	})
+
 }
 
 func TestUruncConfigMap(t *testing.T) {
@@ -415,6 +446,24 @@ func TestUruncConfigMap(t *testing.T) {
 		assert.NotNil(t, cfgMap)
 		assert.Empty(t, cfgMap)
 	})
+
+	t.Run("vhost true is serialized correctly", func(t *testing.T) {
+		t.Parallel()
+		config := &UruncConfig{
+			Monitors: map[string]types.MonitorConfig{
+				"qemu": {
+					DefaultMemoryMB: 512,
+					DefaultVCPUs:    2,
+					Vhost:           true,
+				},
+			},
+			ExtraBins: map[string]types.ExtraBinConfig{},
+		}
+
+		cfgMap := config.Map()
+
+		assert.Equal(t, "true", cfgMap[testQemuVhostKey])
+	})
 }
 
 func TestDefaultConfigs(t *testing.T) {
@@ -449,6 +498,7 @@ func TestDefaultConfigs(t *testing.T) {
 			assert.Equal(t, uint(256), hvConfig.DefaultMemoryMB)
 			assert.Equal(t, uint(1), hvConfig.DefaultVCPUs)
 			assert.Equal(t, "", hvConfig.BinaryPath)
+			assert.False(t, hvConfig.Vhost, "vhost should be false by default")
 		}
 	})
 
