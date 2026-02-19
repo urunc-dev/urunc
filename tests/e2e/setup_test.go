@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	testNerdctl    = "TestNerdctl"
+	testE2E        = "TestE2E"
 	testCrictl     = "TestCrictl"
 	testDocker     = "TestDocker"
 	maxPullRetries = 5
@@ -68,10 +68,8 @@ func parseTestPattern() (string, string) {
 
 func getTestCases(testFunc string) []containerTestArgs {
 	switch testFunc {
-	case testNerdctl:
-		return nerdctlTestCases()
-	case testCtr:
-		// Images managed by BeforeAll in ctr_test.go
+	case testE2E:
+		// Images managed by BeforeAll in Ginkgo specs
 		return []containerTestArgs{}
 	case testCrictl:
 		return crictlTestCases()
@@ -79,7 +77,6 @@ func getTestCases(testFunc string) []containerTestArgs {
 		return dockerTestCases()
 	default:
 		var allCases []containerTestArgs
-		allCases = append(allCases, nerdctlTestCases()...)
 		allCases = append(allCases, crictlTestCases()...)
 		allCases = append(allCases, dockerTestCases()...)
 		return allCases
