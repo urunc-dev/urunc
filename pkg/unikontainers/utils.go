@@ -374,3 +374,53 @@ func executeHook(hook specs.Hook, state []byte) error {
 
 	return nil
 }
+
+// Critical system paths that should never be deleted
+var criticalSystemPaths = []string{
+	"/",
+	"/bin",
+	"/boot",
+	"/dev",
+	"/etc",
+	"/home",
+	"/lib",
+	"/lib64",
+	"/opt",
+	"/proc",
+	"/root",
+	"/sbin",
+	"/sys",
+	"/usr",
+	"/var",
+}
+
+// validatePathSafety ensures a path is safe to delete
+func validatePathSafety(targetPath string) error {
+	// Clean the path
+	targetPath = filepath.Clean(targetPath)
+
+	// Check if path is empty or just "."
+	if targetPath == "" || targetPath == "." {
+		return fmt.Errorf("target path is empty or current directory")
+	}
+
+	// If path is not absolute, it's relative which could be problematic
+	// but we'll allow it since it's relative to the process working directory
+	if !filepath.IsAbs(targetPath) {
+		return fmt.Errorf("target path must be absolute: %s", targetPath)
+	}
+
+	// Check against critical system paths
+	for _, criticalPath := range criticalSystemPaths {
+		if targetPath == criticalPath {
+			return fmt.Errorf("refusing to delete critical system path: %s", targetPath)
+		}
+	}
+
+	// Check if target contains any critical paths (e.g., if rootfsDir becomes /)
+	if strings.HasPrefix(targetPath, "//") || targetPath == "/" {
+		return fmt.Errorf("refusing to delete root filesystem")
+	}
+
+	return nil
+}

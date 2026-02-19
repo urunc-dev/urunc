@@ -44,6 +44,11 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 			Aliases: []string{"f"},
 			Usage:   "Forcibly deletes the container if it is still running (uses SIGKILL)",
 		},
+		&cli.BoolFlag{
+			Name:    "dry-run",
+			Aliases: []string{"n"},
+			Usage:   "Print what would be deleted without actually deleting",
+		},
 	},
 	Action: func(_ context.Context, cmd *cli.Command) error {
 		runtime.GOMAXPROCS(1)
@@ -53,16 +58,35 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 			return err
 		}
 
+		containerID := cmd.Args().First()
+		if containerID == "" {
+			return ErrEmptyContainerID
+		}
+
+		// Validate containerID for safety
+		if err := validateContainerID(containerID); err != nil {
+			return err
+		}
+
+		dryRun := cmd.Bool("dry-run")
+
 		// get Unikontainer data from state.json
 		unikontainer, err := getUnikontainer(cmd)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				containerID := cmd.Args().First()
-				if containerID == "" {
-					return ErrEmptyContainerID
-				}
 				rootDir := cmd.String("root")
 				containerDir := filepath.Join(rootDir, containerID)
+
+				// Validate the path is safe
+				if err := validateDeletionPath(containerDir, rootDir); err != nil {
+					return err
+				}
+
+				if dryRun {
+					logrus.Infof("would remove: %s", containerDir)
+					return nil
+				}
+
 				e := os.RemoveAll(containerDir)
 				if e != nil {
 					logrus.Errorf("remove %s: %v", containerDir, e)
@@ -73,6 +97,11 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 			}
 			return err
 		}
+
+		if dryRun {
+			return unikontainer.DryRunDelete()
+		}
+
 		if cmd.Bool("force") {
 			err := unikontainer.Kill()
 			if err != nil {

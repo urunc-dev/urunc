@@ -618,6 +618,14 @@ func (u *Unikontainer) Delete() error {
 	}
 	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
 
+	// Validate bundle and rootfs paths are safe
+	if err := validatePathSafety(bundleDir); err != nil {
+		return fmt.Errorf("unsafe bundle path: %w", err)
+	}
+	if err := validatePathSafety(rootfsDir); err != nil {
+		return fmt.Errorf("unsafe rootfs path: %w", err)
+	}
+
 	// TODO: We might not need to remove any of the directories and let
 	// the kernel cleanup the mounts and shim to remove directories.
 	// However, just to be on the safe side, we remove all the newly
@@ -654,7 +662,77 @@ func (u *Unikontainer) Delete() error {
 		return err
 	}
 
+	// Validate BaseDir before deleting
+	if err := validatePathSafety(u.BaseDir); err != nil {
+		return fmt.Errorf("unsafe BaseDir path: %w", err)
+	}
+
 	return os.RemoveAll(u.BaseDir)
+}
+
+// DryRunDelete prints what would be deleted without actually deleting
+func (u *Unikontainer) DryRunDelete() error {
+	var dirs []string
+	var prefPath string
+
+	if u.isRunning() {
+		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
+	}
+
+	// get a monitor instance of the running monitor
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
+	if err != nil {
+		return err
+	}
+
+	// Make sure paths are clean
+	bundleDir := filepath.Clean(u.State.Bundle)
+	rootfsDir := filepath.Clean(u.Spec.Root.Path)
+	if !filepath.IsAbs(rootfsDir) {
+		rootfsDir = filepath.Join(bundleDir, rootfsDir)
+	}
+	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
+
+	// Validate paths
+	if err := validatePathSafety(bundleDir); err != nil {
+		return fmt.Errorf("unsafe bundle path: %w", err)
+	}
+	if err := validatePathSafety(rootfsDir); err != nil {
+		return fmt.Errorf("unsafe rootfs path: %w", err)
+	}
+
+	_, err = os.Stat(monRootfs)
+	if !os.IsNotExist(err) {
+		dirs = append(dirs, monitorRootfsDirName)
+		prefPath = bundleDir
+	} else {
+		dirs = []string{
+			"/lib",
+			"/lib64",
+			"/usr",
+			"/proc",
+			"/dev",
+			"/tmp",
+		}
+		dirs = append(dirs, vmm.Path())
+		prefPath = rootfsDir
+	}
+
+	// Print what would be deleted
+	uniklog.Infof("Dry-run mode: would delete the following paths:")
+	for _, d := range dirs {
+		path := filepath.Join(prefPath, d)
+		uniklog.Infof("  would remove: %s", path)
+	}
+
+	// Validate BaseDir
+	if err := validatePathSafety(u.BaseDir); err != nil {
+		return fmt.Errorf("unsafe BaseDir path: %w", err)
+	}
+
+	uniklog.Infof("  would remove: %s", u.BaseDir)
+	return nil
 }
 
 // joinSandboxNetns joins the network namespace of the sandbox
