@@ -15,17 +15,35 @@
 package urunce2etesting
 
 import (
+	"os"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 )
 
-func TestCtr(t *testing.T) {
+const (
+	defaultTimeout  = 10 * time.Second
+	defaultInterval = 1 * time.Second
+)
+
+func TestE2E(t *testing.T) {
 	format.MaxLength = 0 // Do not truncate failure output
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Ctr E2E Suite")
+	RunSpecs(t, "E2E Suite")
+}
+
+// setupTestDir switches to a temp directory, restored via DeferCleanup.
+func setupTestDir() {
+	cwd, err := os.Getwd()
+	Expect(err).NotTo(HaveOccurred())
+	testDir := GinkgoT().TempDir()
+	Expect(os.Chdir(testDir)).To(Succeed())
+	DeferCleanup(func() {
+		Expect(os.Chdir(cwd)).To(Succeed())
+	})
 }
 
 // toTableEntries converts a slice of containerTestArgs into Ginkgo TableEntry
@@ -36,4 +54,15 @@ func toTableEntries(cases []containerTestArgs) []TableEntry {
 		entries = append(entries, Entry(tc.Name, tc))
 	}
 	return entries
+}
+
+// selectTestCases returns cases with or without a TestFunc.
+func selectTestCases(cases []containerTestArgs, hasTestFunc bool) []containerTestArgs {
+	var out []containerTestArgs
+	for _, tc := range cases {
+		if (tc.TestFunc != nil) == hasTestFunc {
+			out = append(out, tc)
+		}
+	}
+	return out
 }

@@ -25,10 +25,7 @@ import (
 const testCtr = "TestCtr"
 
 var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
-	var (
-		tool *ctrInfo
-		cwd  string
-	)
+	var tool *ctrInfo
 
 	BeforeAll(func() {
 		cases := ctrTestCases()
@@ -42,15 +39,7 @@ var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 	})
 
 	BeforeEach(func() {
-		var err error
-		cwd, err = os.Getwd()
-		Expect(err).NotTo(HaveOccurred())
-		testDir := GinkgoT().TempDir()
-		Expect(os.Chdir(testDir)).To(Succeed())
-
-		DeferCleanup(func() {
-			Expect(os.Chdir(cwd)).To(Succeed())
-		})
+		setupTestDir()
 	})
 
 	ReportAfterEach(func(report SpecReport) {

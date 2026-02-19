@@ -18,16 +18,6 @@ import (
 	"testing"
 )
 
-func TestNerdctl(t *testing.T) {
-	tests := nerdctlTestCases()
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			nerdctlTool := newNerdctlTool(tc)
-			runTest(nerdctlTool, t)
-		})
-	}
-}
-
 func TestCrictl(t *testing.T) {
 	tests := crictlTestCases()
 	for _, tc := range tests {

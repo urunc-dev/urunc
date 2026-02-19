@@ -265,14 +265,14 @@ test_hypervisors:
 .PHONY: test_nerdctl
 test_nerdctl:
 	@echo "Testing nerdctl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestNerdctl -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Nerdctl"
 	@echo " "
 
 ## test_ctr Run all end-to-end tests with ctr
 .PHONY: test_ctr
 test_ctr:
 	@echo "Testing ctr"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestCtr -v --ginkgo.v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Ctr"
 	@echo " "
 
 ## test_crictl Run all end-to-end tests with crictl
@@ -293,14 +293,14 @@ test_docker:
 .PHONY: test_nerdctl_%
 test_nerdctl_%:
 	@echo "Testing nerdctl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestNerdctl/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Nerdctl.*$*"
 	@echo " "
 
 ## test_ctr_[pattern] Run all end-to-end tests with ctr that match pattern
 .PHONY: test_ctr_%
 test_ctr_%:
 	@echo "Testing ctr"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestCtr --ginkgo.focus="$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Ctr.*$*"
 	@echo " "
 
 ## test_crictl_[pattern] Run all end-to-end tests with crictl that match pattern
