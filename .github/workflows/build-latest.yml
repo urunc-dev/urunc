@@ -211,6 +211,13 @@ jobs:
           VAR=`docker manifest push ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.TAG }} | tail -1`
           echo "manifest_sha=$VAR" >> "$GITHUB_OUTPUT"
 
+          # Also tag with commit hash on main branch
+          if [[ "${{ github.ref }}" == "refs/heads/main" && "${{ inputs.version-tag }}" != "true" ]]; then
+            docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.SHA_SHORT }} \
+              ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.TAG }}
+          fi
+
+
       - name: Install cosign
         uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # main
 

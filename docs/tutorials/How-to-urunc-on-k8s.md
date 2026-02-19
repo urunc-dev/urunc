@@ -97,6 +97,13 @@ kubectl get pods
 and artifacts required to run `urunc`, as well as reference DaemonSets, which can
 be utilized to install `urunc` runtime on a running Kubernetes cluster.
 
+By default, the `latest` tag is used, which corresponds to the main branch. To deploy a specific version, replace `latest` with the respective commit hash (e.g., `abc1234`) in the manifest using:
+
+```bash
+sed -i 's|ghcr.io/urunc-dev/urunc/urunc-deploy:latest|ghcr.io/urunc-dev/urunc/urunc-deploy:abc1234|' deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
+```
+
+
 ### urunc-deploy in k3s
 
 To install in a k3s cluster, first we need to create the RBAC:
