@@ -164,14 +164,8 @@ To create the thinpool:
 sudo /usr/local/bin/scripts/dm_create.sh
 ```
 
-However, when the system reboots, the thinpool needs to get reloaded:
-
-```bash
-sudo /usr/local/bin/scripts/dm_reload.sh
-```
-
-Alternatively, a [systemd](https://systemd.io/) service can automatically reload
-the existing thinpool when a system reboots. The `urunc` repository contains
+The thinpool needs to get reloaded on reboots. On systemd-based systems, a service can automatically reload 
+the existing thinpool. The `urunc` repository contains
 [such a
 service](https://github.com/urunc-dev/urunc/tree/main/script/dm_reload.service)
 
@@ -181,6 +175,13 @@ sudo chmod 644 /usr/local/lib/systemd/system/dm_reload.service
 sudo chown root:root /usr/local/lib/systemd/system/dm_reload.service
 sudo systemctl daemon-reload
 sudo systemctl enable dm_reload.service
+```
+
+However, on systems without systemd, `dm_reload.sh` can be invoked directly at boot time through your 
+init system's equivalent mechanism or by running:
+
+```bash
+sudo /usr/local/bin/scripts/dm_reload.sh
 ```
 
 At last, update the containerd configuration for devmapper:
