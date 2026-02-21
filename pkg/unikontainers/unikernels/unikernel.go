@@ -39,6 +39,9 @@ func New(unikernelType string) (types.Unikernel, error) {
 	case LinuxUnikernel:
 		unikernel := newLinux()
 		return unikernel, nil
+	case OSvUnikernel:
+		unikernel := newOSv()
+		return unikernel, nil
 	default:
 		return nil, ErrNotSupportedUnikernel
 	}
