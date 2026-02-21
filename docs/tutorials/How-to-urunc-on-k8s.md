@@ -97,6 +97,7 @@ kubectl get pods
 and artifacts required to run `urunc`, as well as reference DaemonSets, which can
 be utilized to install `urunc` runtime on a running Kubernetes cluster.
 
+
 ### urunc-deploy in k3s
 
 To install in a k3s cluster, first we need to create the RBAC:
@@ -105,10 +106,21 @@ To install in a k3s cluster, first we need to create the RBAC:
 kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployment/urunc-deploy/urunc-rbac/urunc-rbac.yaml
 ```
 
-Then, we create the `urunc-deploy` Daemonset, followed by the k3s customization:
+Then, we create the `urunc-deploy` Daemonset, followed by the k3s customization.
+
+The below command will install the latest version from the main branch. If you want to deploy a specific version, follow the instructions below this command.
 
 ```bash
 kubectl apply -k https://github.com/urunc-dev/urunc//deployment/urunc-deploy/urunc-deploy/overlays/k3s?ref=main
+```
+
+If you want to deploy a specific version (e.g., `abc1234`), download the required files locally, set the version, update the image tag using `sed` and apply:
+
+```bash
+VERSION=abc1234
+git clone https://github.com/urunc-dev/urunc.git && cd urunc
+sed -i "s|ghcr.io/urunc-dev/urunc/urunc-deploy:latest|ghcr.io/urunc-dev/urunc/urunc-deploy:${VERSION}|" deployment/urunc-deploy/urunc-deploy/base/urunc-deploy.yaml
+kubectl apply -k deployment/urunc-deploy/urunc-deploy/overlays/k3s
 ```
 
 Finally, we need to create the appropriate k8s runtime class:
