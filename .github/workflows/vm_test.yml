@@ -35,6 +35,9 @@ on:
       firecracker_version:
         required: true
         type: string
+      cloud_hypervisor_version:
+        required: true
+        type: string
       solo5_version:
         required: true
         type: string
@@ -72,6 +75,7 @@ jobs:
         NERDCTL_VERSION: ${{ inputs.nerdctl_version }}
         CRICTL_VERSION: ${{ inputs.crictl_version }}
         FIRECRACKER_VERSION: ${{ inputs.firecracker_version }}
+        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
         SOLO5_VERSION: ${{ inputs.solo5_version }}
       run: |
         SAFE_GO_VERSION="$GO_VERSION"
@@ -81,9 +85,10 @@ jobs:
         SAFE_NERDCTL_VERSION="$NERDCTL_VERSION"
         SAFE_CRICTL_VERSION="$CRICTL_VERSION"
         SAFE_FIRECRACKER_VERSION="$FIRECRACKER_VERSION"
+        SAFE_CLOUD_HYPERVISOR_VERSION="$CLOUD_HYPERVISOR_VERSION"
         SAFE_SOLO5_VERSION="$SOLO5_VERSION"
 
-        for var in SAFE_GO_VERSION SAFE_RUNC_VERSION SAFE_CONTAINERD_VERSION SAFE_CNI_VERSION SAFE_NERDCTL_VERSION SAFE_CRICTL_VERSION SAFE_FIRECRACKER_VERSION SAFE_SOLO5_VERSION; do
+        for var in SAFE_GO_VERSION SAFE_RUNC_VERSION SAFE_CONTAINERD_VERSION SAFE_CNI_VERSION SAFE_NERDCTL_VERSION SAFE_CRICTL_VERSION SAFE_FIRECRACKER_VERSION SAFE_CLOUD_HYPERVISOR_VERSION SAFE_SOLO5_VERSION; do
           value="${!var}"
           if ! [[ "$value" =~ ^v?[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo "Invalid format for $var: $value"
@@ -221,6 +226,15 @@ jobs:
         curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
         sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker
         rm -fr "release-${SAFE_FC}-${ARCH}"
+
+    - name: Install Cloud Hypervisor
+      env:
+        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
+      run: |
+        SAFE_CLOUD_HYPERVISOR="${CLOUD_HYPERVISOR_VERSION}"
+        curl -sL "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${SAFE_CLOUD_HYPERVISOR}/cloud-hypervisor-static" -o cloud-hypervisor
+        chmod +x cloud-hypervisor
+        sudo mv cloud-hypervisor /usr/local/bin/cloud-hypervisor
 
     - name: Install solo5
       env:

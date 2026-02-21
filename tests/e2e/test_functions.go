@@ -160,23 +160,38 @@ func seccompTest(tool testTool) error {
 	if err != nil {
 		return fmt.Errorf("Failed to extract unikernel PID: %v", err)
 	}
-	procPath := "/proc/" + unikernelPID + "/status"
-	seccompLine, err := findLineInFile(procPath, "Seccomp")
+
+	// Check all threads (tasks) of the process for seccomp status.
+	// Some VMMs (e.g. Cloud Hypervisor) apply seccomp filters to
+	// worker threads rather than the main thread.
+	taskDir := "/proc/" + unikernelPID + "/task"
+	entries, err := os.ReadDir(taskDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to read task directory %s: %v", taskDir, err)
 	}
-	wordsInLine := strings.Split(seccompLine, ":")
-	if len(wordsInLine) != 2 {
-		return fmt.Errorf("Invalid format of line. Expecting 2 values, got %d", len(wordsInLine))
+
+	seccompEnabled := false
+	for _, entry := range entries {
+		procPath := filepath.Join(taskDir, entry.Name(), "status")
+		seccompLine, err := findLineInFile(procPath, "Seccomp")
+		if err != nil {
+			continue // thread may have exited
+		}
+		wordsInLine := strings.Split(seccompLine, ":")
+		if len(wordsInLine) != 2 {
+			return fmt.Errorf("Invalid format of line. Expecting 2 values, got %d", len(wordsInLine))
+		}
+		if strings.TrimSpace(wordsInLine[1]) == "2" {
+			seccompEnabled = true
+			break
+		}
 	}
-	if strings.TrimSpace(wordsInLine[1]) == "2" {
-		if !args.Seccomp {
-			return fmt.Errorf("Seccomp should not be enabled")
-		}
-	} else {
-		if args.Seccomp {
-			return fmt.Errorf("Seccomp should be enabled")
-		}
+
+	if args.Seccomp && !seccompEnabled {
+		return fmt.Errorf("Seccomp should be enabled (mode 2) on at least one thread, but none found")
+	}
+	if !args.Seccomp && seccompEnabled {
+		return fmt.Errorf("Seccomp should not be enabled, but found mode 2 on a thread")
 	}
 
 	return nil

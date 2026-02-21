@@ -487,11 +487,12 @@ func TestDefaultConfigs(t *testing.T) {
 		t.Parallel()
 		config := defaultMonitorsConfig()
 
-		assert.Len(t, config, 4)
+		assert.Len(t, config, 5)
 		assert.Contains(t, config, "qemu")
 		assert.Contains(t, config, "hvt")
 		assert.Contains(t, config, "spt")
 		assert.Contains(t, config, "firecracker")
+		assert.Contains(t, config, "cloud-hypervisor")
 
 		// Check default values for each monitor
 		for _, hvConfig := range config {
@@ -522,7 +523,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.False(t, config.Log.Syslog)
 		assert.False(t, config.Timestamps.Enabled)
 		assert.Equal(t, testTimestampsPath, config.Timestamps.Destination)
-		assert.Len(t, config.Monitors, 4)
+		assert.Len(t, config.Monitors, 5)
 		assert.Len(t, config.ExtraBins, 1)
 	})
 

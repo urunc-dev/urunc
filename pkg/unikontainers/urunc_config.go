@@ -80,10 +80,11 @@ func defaultTimestampsConfig() UruncTimestamps {
 
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
-		"qemu":        {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"hvt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"spt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"firecracker": {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"qemu":             {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"hvt":              {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"spt":              {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"firecracker":      {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"cloud-hypervisor": {DefaultMemoryMB: 256, DefaultVCPUs: 1},
 	}
 }
 

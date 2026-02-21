@@ -19,9 +19,10 @@ somewhere in the `$PATH`.
 VMMs use hardware-assisted virtualization technologies in order to create a
 Virtual Machine (VM) where a guest OS will execute. It is one of the most
 widely used technology for providing strong isolation in multi-tenant
-environments. For the time being `urunc` supports 3 types of such VMMs: 1)
+environments. For the time being `urunc` supports 4 types of such VMMs: 1)
 [Qemu](https://www.qemu.org/), 2)
-[Firecracker](https://firecracker-microvm.github.io/) and 3) [Solo5-hvt](https://github.com/Solo5/solo5).
+[Firecracker](https://firecracker-microvm.github.io/), 3)
+[Cloud Hypervisor](https://www.cloudhypervisor.org/) and 4) [Solo5-hvt](https://github.com/Solo5/solo5).
 
 ### Qemu
 
@@ -137,6 +138,51 @@ An example unikernel:
 
 ```bash
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-firecracker-unikraft-initrd:latest
+```
+
+### Cloud Hypervisor
+
+[Cloud Hypervisor](https://www.cloudhypervisor.org/) is an open-source Virtual
+Machine Monitor (VMM) that runs on top of the KVM hypervisor. It is based on the
+rust-vmm project and works in a similar way to Firecracker. Cloud Hypervisor
+provides a modern, secure, and efficient VMM with a focus on cloud workloads.
+It supports virtio devices and offers fast boot times with minimal overhead.
+
+#### Installing Cloud Hypervisor
+
+Cloud Hypervisor can be installed by downloading a pre-built binary from the
+[releases page](https://github.com/cloud-hypervisor/cloud-hypervisor/releases).
+
+```bash
+ARCH="$(uname -m)"
+VERSION="v50.0"
+release_url="https://github.com/cloud-hypervisor/cloud-hypervisor/releases"
+if [ "$ARCH" = "x86_64" ]; then
+  curl -L ${release_url}/download/${VERSION}/cloud-hypervisor-static -o cloud-hypervisor
+else
+  curl -L ${release_url}/download/${VERSION}/cloud-hypervisor-static-${ARCH} -o cloud-hypervisor
+fi
+chmod +x cloud-hypervisor
+sudo mv cloud-hypervisor /usr/local/bin/
+```
+
+#### Cloud Hypervisor and `urunc`
+
+In the case of [Cloud Hypervisor](https://www.cloudhypervisor.org/), `urunc`
+makes use of its `virtio-net` device to provide network support for the
+guest through a tap device. `urunc` can also leverage Cloud Hypervisor's
+initramfs option to provide the guest with an initial RamFS. Cloud
+Hypervisor supports virtio-block for storage and virtiofs for shared
+filesystems between the host and guest.
+
+Supported guests with `urunc`:
+
+- [Linux](../unikernel-support#linux)
+
+An example guest:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest
 ```
 
 ### Solo5-hvt
