@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -138,19 +137,6 @@ func verifyNoStaleFiles(containerID string) error {
 	}
 
 	return nil
-}
-
-func getKVMGroupID() (int64, error) {
-	kvmGroup, err := user.LookupGroup("kvm")
-	if err != nil {
-		return 0, err
-	}
-	kvmGid, err := strconv.Atoi(kvmGroup.Gid)
-	if err != nil {
-		return 0, err
-	}
-
-	return int64(kvmGid), nil
 }
 
 func getAndCheckUGid(line string) (int, error) {

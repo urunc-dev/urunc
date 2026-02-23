@@ -14,11 +14,7 @@
 
 package urunce2etesting
 
-func nerdctlTestCases(kvmGroup ...int64) []containerTestArgs {
-	var group int64
-	if len(kvmGroup) > 0 {
-		group = kvmGroup[0]
-	}
+func nerdctlTestCases() []containerTestArgs {
 	return []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/hello-hvt-rumprun:latest",
@@ -141,7 +137,7 @@ func nerdctlTestCases(kvmGroup ...int64) []containerTestArgs {
 			Seccomp:        true,
 			UID:            65534,
 			GID:            65534,
-			Groups:         []int64{group},
+			Groups:         []int64{},
 			Memory:         "",
 			Cli:            "",
 			Volumes:        []containerVolume{},
@@ -740,11 +736,7 @@ func ctrTestCases() []containerTestArgs {
 	}
 }
 
-func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
-	var group int64
-	if len(kvmGroup) > 0 {
-		group = kvmGroup[0]
-	}
+func crictlTestCases() []containerTestArgs {
 	return []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
@@ -945,7 +937,7 @@ func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
 			Seccomp:        true,
 			UID:            65534,
 			GID:            65534,
-			Groups:         []int64{group},
+			Groups:         []int64{},
 			Memory:         "",
 			Cli:            "",
 			Volumes:        []containerVolume{},
@@ -957,11 +949,7 @@ func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
 	}
 }
 
-func dockerTestCases(kvmGroup ...int64) []containerTestArgs {
-	var group int64
-	if len(kvmGroup) > 0 {
-		group = kvmGroup[0]
-	}
+func dockerTestCases() []containerTestArgs {
 	return []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/net-spt-mirage:latest",
@@ -1114,7 +1102,7 @@ func dockerTestCases(kvmGroup ...int64) []containerTestArgs {
 			Seccomp:        true,
 			UID:            65534,
 			GID:            65534,
-			Groups:         []int64{group},
+			Groups:         []int64{},
 			Memory:         "",
 			Cli:            "",
 			Volumes:        []containerVolume{},

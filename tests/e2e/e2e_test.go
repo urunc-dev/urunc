@@ -19,11 +19,7 @@ import (
 )
 
 func TestNerdctl(t *testing.T) {
-	kvmGroup, err := getKVMGroupID()
-	if err != nil {
-		t.Errorf("Failed to get KVM grou id")
-	}
-	tests := nerdctlTestCases(kvmGroup)
+	tests := nerdctlTestCases()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			nerdctlTool := newNerdctlTool(tc)
@@ -33,11 +29,7 @@ func TestNerdctl(t *testing.T) {
 }
 
 func TestCrictl(t *testing.T) {
-	kvmGroup, err := getKVMGroupID()
-	if err != nil {
-		t.Errorf("Failed to get KVM grou id")
-	}
-	tests := crictlTestCases(kvmGroup)
+	tests := crictlTestCases()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			crictlTool := newCrictlTool(tc)
@@ -47,11 +39,7 @@ func TestCrictl(t *testing.T) {
 }
 
 func TestDocker(t *testing.T) {
-	kvmGroup, err := getKVMGroupID()
-	if err != nil {
-		t.Errorf("Failed to get KVM grou id")
-	}
-	tests := dockerTestCases(kvmGroup)
+	tests := dockerTestCases()
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
 			dockerTool := newDockerTool(tc)
