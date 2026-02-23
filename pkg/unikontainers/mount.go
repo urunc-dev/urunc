@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/moby/sys/userns"
 	"golang.org/x/sys/unix"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -75,9 +76,17 @@ func createTmpfs(monRootfs string, path string, flags uint64, mode string, size 
 // SetupDev set ups one new device in the container's rootfs.
 // This function will get the major and minor number of
 // the device from the host's rootfs and it will replicate the device
-// inside the container's rootfs. It also appends rw for other users
-// in the permissions of the original file.
+// inside the container's rootfs.
+// When running in a user namespace, urunc bind-mounts the host device node to avoid EPERM from mknod.
+// When not running in a user namespace, urunc creates the device node with mknod and adds rw for other
+// users so non-root monitors can access it.
 func setupDev(monRootfs string, devPath string) error {
+	// In a user namespace, always bind-mount the existing host device node.
+	// Only MS_BIND is used here (no extra flags) to mirror runc's device handling.
+	if userns.RunningInUserNS() {
+		return fileFromHost(monRootfs, devPath, "", unix.MS_BIND, false)
+	}
+
 	// Get info of the original file
 	var devStat unix.Stat_t
 	err := unix.Stat(devPath, &devStat)
@@ -188,15 +197,18 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 		}
 	}
 
-	// Set up the permissions and ownership of the original file.
-	err = unix.Chmod(dstPath, fileInfo.Mode)
-	if err != nil {
-		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
-	}
+	// If a copy is created, set up the permissions and ownership to match the original file.
+	// For bind mounts the host inode attributes remain unchanged.
+	if withCopy {
+		err = unix.Chmod(dstPath, fileInfo.Mode)
+		if err != nil {
+			return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
+		}
 
-	err = os.Chown(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
-	if err != nil {
-		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
+		err = os.Chown(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
+		if err != nil {
+			return fmt.Errorf("failed to chown %s: %w", dstPath, err)
+		}
 	}
 
 	// The initial MS_BIND won't change the mount options, we need to do a
