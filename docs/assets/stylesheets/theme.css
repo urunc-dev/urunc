@@ -130,6 +130,20 @@
 }
 
 /* =======================
+   Code Block Copy Fix
+   ======================= */
+.md-code__content a[id^="__codelineno"] {
+  display: contents !important;
+  user-select: none !important;
+  -moz-user-select: none !important;
+  pointer-events: none !important;
+}
+
+.md-code__content > span > span {
+  display: inline !important;
+}
+
+/* =======================
    General Typography (Optional)
    ======================= */
 .md-typeset h1 {
