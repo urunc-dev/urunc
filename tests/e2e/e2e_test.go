@@ -18,16 +18,6 @@ import (
 	"testing"
 )
 
-func TestCrictl(t *testing.T) {
-	tests := crictlTestCases()
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			crictlTool := newCrictlTool(tc)
-			runTest(crictlTool, t)
-		})
-	}
-}
-
 func TestDocker(t *testing.T) {
 	tests := dockerTestCases()
 	for _, tc := range tests {

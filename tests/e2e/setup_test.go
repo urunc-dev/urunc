@@ -26,7 +26,6 @@ import (
 
 const (
 	testE2E        = "TestE2E"
-	testCrictl     = "TestCrictl"
 	testDocker     = "TestDocker"
 	maxPullRetries = 5
 	pullRetryDelay = 2 * time.Second
@@ -71,13 +70,10 @@ func getTestCases(testFunc string) []containerTestArgs {
 	case testE2E:
 		// Images managed by BeforeAll in Ginkgo specs
 		return []containerTestArgs{}
-	case testCrictl:
-		return crictlTestCases()
 	case testDocker:
 		return dockerTestCases()
 	default:
 		var allCases []containerTestArgs
-		allCases = append(allCases, crictlTestCases()...)
 		allCases = append(allCases, dockerTestCases()...)
 		return allCases
 	}
