@@ -279,7 +279,7 @@ test_ctr:
 .PHONY: test_crictl
 test_crictl:
 	@echo "Testing crictl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestCrictl -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Crictl"
 	@echo " "
 
 ## test_docker Run all end-to-end tests with docker
@@ -307,7 +307,7 @@ test_ctr_%:
 .PHONY: test_crictl_%
 test_crictl_%:
 	@echo "Testing crictl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestCrictl/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Crictl.*$*"
 	@echo " "
 
 ## test_docker_[pattern] Run all end-to-end tests with docker that match pattern
