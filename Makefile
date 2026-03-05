@@ -286,7 +286,7 @@ test_crictl:
 .PHONY: test_docker
 test_docker:
 	@echo "Testing docker"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestDocker -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Docker"
 	@echo " "
 
 ## test_nerdctl_[pattern] Run all end-to-end tests with nerdctl that match pattern
@@ -314,7 +314,7 @@ test_crictl_%:
 .PHONY: test_docker_%
 test_docker_%:
 	@echo "Testing docker"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestDocker/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Docker.*$*"
 	@echo " "
 
 ## help Show this help message
