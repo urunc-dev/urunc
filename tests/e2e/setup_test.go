@@ -25,8 +25,6 @@ import (
 )
 
 const (
-	testE2E        = "TestE2E"
-	testDocker     = "TestDocker"
 	maxPullRetries = 5
 	pullRetryDelay = 2 * time.Second
 )
@@ -65,18 +63,10 @@ func parseTestPattern() (string, string) {
 	return parts[0], ""
 }
 
-func getTestCases(testFunc string) []containerTestArgs {
-	switch testFunc {
-	case testE2E:
-		// Images managed by BeforeAll in Ginkgo specs
-		return []containerTestArgs{}
-	case testDocker:
-		return dockerTestCases()
-	default:
-		var allCases []containerTestArgs
-		allCases = append(allCases, dockerTestCases()...)
-		return allCases
-	}
+func getTestCases(_ string) []containerTestArgs {
+	// TODO: Remove along with the rest of the legacy test infrastructure
+	// in the follow-up cleanup PR.
+	return []containerTestArgs{}
 }
 
 func filterTestCases(testFunc, subtestName string) []containerTestArgs {

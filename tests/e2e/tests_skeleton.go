@@ -47,6 +47,10 @@ type containerTestArgs struct {
 	ExpectOut      string
 }
 
+// TODO: Remove runTest along with the rest of the legacy test
+// infrastructure in the follow-up cleanup PR.
+//
+//nolint:unused
 func runTest(tool testTool, t *testing.T) {
 	cwd, err := os.Getwd()
 	if err != nil {
