@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 
 	"github.com/jackpal/gateway"
@@ -262,35 +263,53 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	return newTapDevice, nil
 }
 
-func Cleanup(tapDevice string) error {
+func CleanupAllUruncTaps() error {
 	netlog.Debug("net cleanup called")
-	ifaces, err := net.Interfaces()
+
+	handle, err := netlink.NewHandle()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get netlink handle: %w", err)
 	}
-	for _, iface := range ifaces {
-		netlog.Debugf("Discovered device %s", iface.Name)
-	}
-	tapLink, err := netlink.LinkByName(tapDevice)
+	defer handle.Close()
+
+	links, err := handle.LinkList()
 	if err != nil {
-		netlog.Errorf("Failed to get link %s by name: %v", tapDevice, err)
-		return nil
+		return fmt.Errorf("failed to list links: %w", err)
 	}
-	err = deleteAllTCFilters(tapLink)
-	if err != nil {
-		netlog.Errorf("Failed to delete all TC filters: %v", err)
-		return err
+
+	var retErr error
+	tapRe := regexp.MustCompile(`^tap_\d+_urunc$`)
+	for _, link := range links {
+		attrs := link.Attrs()
+		if attrs == nil {
+			continue
+		}
+		name := attrs.Name
+		if !tapRe.MatchString(name) {
+			continue
+		}
+
+		netlog.Debugf("cleaning up tap device %s", name)
+		var devErr error
+		if err := deleteAllTCFilters(link); err != nil {
+			netlog.Errorf("failed to delete TC filters for %s: %v", name, err)
+			devErr = errors.Join(devErr, err)
+		}
+		if err := deleteAllQDiscs(link); err != nil {
+			netlog.Errorf("failed to delete qdiscs for %s: %v", name, err)
+			devErr = errors.Join(devErr, err)
+		}
+		if err := deleteTapDevice(link); err != nil {
+			netlog.Errorf("failed to delete tap %s: %v", name, err)
+			devErr = errors.Join(devErr, err)
+		}
+		if devErr == nil {
+			netlog.Debugf("deleted tap device %s", name)
+		}
+		retErr = errors.Join(retErr, devErr)
 	}
-	err = deleteAllQDiscs(tapLink)
-	if err != nil {
-		netlog.Errorf("Failed to delete all qdiscs: %v", err)
-		return err
-	}
-	err = deleteTapDevice(tapLink)
-	if err != nil {
-		netlog.Errorf("Failed to delete link %s: %v", tapDevice, err)
-	}
-	return nil
+
+	return retErr
 }
 
 func deleteIngressQdisc(link netlink.Link) error {

@@ -585,10 +585,9 @@ func (u *Unikontainer) Kill() error {
 		return err
 	}
 
-	// TODO: tap0_urunc should not be hardcoded
-	err = network.Cleanup("tap0_urunc")
+	err = network.CleanupAllUruncTaps()
 	if err != nil {
-		uniklog.Errorf("failed to delete tap0_urunc: %v", err)
+		uniklog.Errorf("failed to cleanup tap devices: %v", err)
 	}
 
 	return nil
