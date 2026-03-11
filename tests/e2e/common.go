@@ -45,6 +45,38 @@ type testTool interface {
 	inspectPAndGet(string) (string, error)
 }
 
+type testMethod func(tool testTool) error
+
+type containerVolume struct {
+	Source string
+	Dest   string
+}
+
+type containerTestArgs struct {
+	Name           string
+	Image          string
+	Devmapper      bool
+	Seccomp        bool
+	UID            int
+	GID            int
+	Groups         []int64
+	Memory         string
+	Cli            string
+	Volumes        []containerVolume
+	StaticNet      bool
+	SideContainers []string
+	Skippable      bool
+	TestFunc       testMethod
+	ExpectOut      string
+}
+
+const (
+	testCtr     = "TestCtr"
+	testCrictl  = "TestCrictl"
+	testDocker  = "TestDocker"
+	testNerdctl = "TestNerdctl"
+)
+
 var errToolDoesNotSupport = errors.New("Operation not support")
 
 func commonNewContainerCmd(a containerTestArgs) string {

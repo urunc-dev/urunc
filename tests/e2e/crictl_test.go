@@ -22,8 +22,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const testCrictl = "TestCrictl"
-
 var _ = Describe("Crictl", Ordered, ContinueOnFailure, func() {
 	var tool *crictlInfo
 

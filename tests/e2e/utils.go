@@ -17,6 +17,7 @@ package urunce2etesting
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,93 @@ import (
 
 	probing "github.com/prometheus-community/pro-bing"
 )
+
+const (
+	maxPullRetries = 5
+	pullRetryDelay = 2 * time.Second
+)
+
+func getTestImages(cases []containerTestArgs) []string {
+	unique := make(map[string]struct{})
+	for _, tc := range cases {
+		unique[tc.Image] = struct{}{}
+	}
+
+	images := make([]string, 0, len(unique))
+	for img := range unique {
+		images = append(images, img)
+	}
+	return images
+}
+
+func pullAllImages(testFunc string, images []string) error {
+	for _, image := range images {
+		log.Printf("Pulling image: %s", image)
+		if err := pullImageWithRetry(testFunc, image); err != nil {
+			return fmt.Errorf("failed to pull %s: %w", image, err)
+		}
+	}
+	return nil
+}
+
+func removeAllImages(testFunc string, images []string) {
+	for _, image := range images {
+		log.Printf("Removing image: %s", image)
+		if err := removeImageForTest(testFunc, image); err != nil {
+			log.Printf("Warning: failed to remove %s: %v", image, err)
+		}
+	}
+}
+
+func pullImageWithRetry(testFunc string, image string) error {
+	var err error
+	for i := 0; i < maxPullRetries; i++ {
+		err = pullImageForTest(testFunc, image)
+		if err == nil {
+			return nil
+		}
+
+		fmt.Printf("Attempt %d/%d failed to pull %s: %v. Retrying in %v...\n", i+1, maxPullRetries, image, err, pullRetryDelay)
+		time.Sleep(pullRetryDelay)
+	}
+	return fmt.Errorf("failed to pull %s after %d attempts: %w", image, maxPullRetries, err)
+}
+
+func pullImageForTest(testFunc string, image string) error {
+	switch testFunc {
+	case testCrictl:
+		cmd := crictlName + " pull " + image
+		output, err := commonCmdExec(cmd)
+		if err != nil {
+			return fmt.Errorf("%s -- %v", output, err)
+		}
+		return nil
+	case testNerdctl:
+		return commonPull(nerdctlName, image)
+	case testDocker:
+		return commonPull(dockerName, image)
+	default:
+		return commonPull(ctrName, image)
+	}
+}
+
+func removeImageForTest(testFunc string, image string) error {
+	switch testFunc {
+	case testCrictl:
+		cmd := crictlName + " rmi " + image
+		output, err := commonCmdExec(cmd)
+		if err != nil {
+			return fmt.Errorf("%s -- %v", output, err)
+		}
+		return nil
+	case testNerdctl:
+		return commonRmImage(nerdctlName, image)
+	case testDocker:
+		return commonRmImage(dockerName, image)
+	default:
+		return commonRmImage(ctrName, image)
+	}
+}
 
 func pingUnikernel(ipAddress string) error {
 	pinger, err := probing.NewPinger(ipAddress)

@@ -22,8 +22,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const testCtr = "TestCtr"
-
 var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 	var tool *ctrInfo
 

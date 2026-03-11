@@ -34,6 +34,34 @@ import (
 
 var matchTest testMethod
 
+func testVerifyRm(tool testTool) error {
+	containerID := tool.getContainerID()
+	exists, err := tool.searchContainer(containerID)
+	if exists || err != nil {
+		return fmt.Errorf("Container %s is not removed: %v", containerID, err)
+	}
+	err = verifyNoStaleFiles(containerID)
+	if err != nil {
+		return fmt.Errorf("Failed to remove all stale files: %v", err)
+	}
+
+	return nil
+}
+
+func testCleanup(tool testTool) error {
+	err := tool.stopContainer()
+	if err != nil {
+		return fmt.Errorf("Failed to stop container: %v", err)
+	}
+
+	err = tool.rmContainer()
+	if err != nil {
+		return fmt.Errorf("Failed to remove container: %v", err)
+	}
+
+	return testVerifyRm(tool)
+}
+
 func blockMountTest(tool testTool) error {
 	args := tool.getTestArgs()
 	output, err := tool.logContainer()

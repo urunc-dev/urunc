@@ -22,8 +22,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const testDocker = "TestDocker"
-
 var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 	var tool *dockerInfo
 

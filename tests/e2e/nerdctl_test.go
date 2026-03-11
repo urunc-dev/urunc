@@ -22,8 +22,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const testNerdctl = "TestNerdctl"
-
 var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 	var tool *nerdctlInfo
 
