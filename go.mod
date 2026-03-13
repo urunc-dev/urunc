@@ -22,11 +22,11 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.6.2
+	github.com/urfave/cli/v3 v3.7.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.41.0
-	k8s.io/cri-api v0.35.1
+	golang.org/x/sys v0.42.0
+	k8s.io/cri-api v0.35.2
 )
 
 require (
