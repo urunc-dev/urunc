@@ -278,7 +278,7 @@ func CleanupAllUruncTaps() error {
 	}
 
 	var retErr error
-	tapRe := regexp.MustCompile(`^tap_\d+_urunc$`)
+	tapRe := regexp.MustCompile(`^tap\d+_urunc$`)
 	for _, link := range links {
 		attrs := link.Attrs()
 		if attrs == nil {
