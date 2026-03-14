@@ -43,30 +43,6 @@ const (
 	rootfsDirName     = "rootfs"
 )
 
-// getInitPid extracts "init_process_pid" value from the given JSON file
-func getInitPid(filePath string) (float64, error) {
-	// Open the JSON file for reading
-	file, err := os.Open(filePath)
-	if err != nil {
-		return 0, nil
-	}
-	defer file.Close()
-
-	// Decode the JSON data into a map[string]interface{}
-	var jsonData map[string]interface{}
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&jsonData); err != nil {
-		return 0, nil
-	}
-
-	// Extract the specific value "init_process_pid"
-	initProcessPID, found := jsonData["init_process_pid"].(float64) // Assuming it's a numeric value
-	if !found {
-		return 0, nil
-	}
-	return initProcessPID, nil
-}
-
 // copy sourceFile to targetDir
 // creates targetDir and all necessary parent directories
 func copyFile(sourceFile string, targetPath string) error {
