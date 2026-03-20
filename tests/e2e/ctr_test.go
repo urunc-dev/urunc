@@ -15,9 +15,6 @@
 package urunce2etesting
 
 import (
-	"fmt"
-	"os"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -48,30 +45,9 @@ var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 
 	DescribeTable("unikernel containers",
 		func(tc containerTestArgs) {
-			for _, vol := range tc.Volumes {
-				if _, err := os.Stat(vol.Source); err != nil {
-					Skip(fmt.Sprintf("Could not find %s", vol.Source))
-				}
-			}
-
+			skipMissingVolumes(tc)
 			tool = newCtrTool(tc)
-			tool.setContainerID(tc.Name)
-
-			DeferCleanup(func() {
-				if tool != nil && tool.getContainerID() != "" {
-					By("Cleaning up container")
-					if err := testCleanup(tool); err != nil {
-						GinkgoLogr.Error(err, "Container cleanup failed")
-					}
-				}
-			})
-
-			By("Running container")
-			output, err := tool.runContainer(false)
-			Expect(err).NotTo(HaveOccurred(), "Failed to run unikernel container: %s", output)
-
-			By("Verifying container output")
-			Expect(output).To(ContainSubstring(tc.ExpectOut))
+			runForegroundTest(tool, tc)
 		},
 		toTableEntries(ctrTestCases()),
 	)
