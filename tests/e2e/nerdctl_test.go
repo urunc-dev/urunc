@@ -15,9 +15,6 @@
 package urunce2etesting
 
 import (
-	"fmt"
-	"os"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -49,30 +46,9 @@ var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 	Context("foreground containers", func() {
 		DescribeTable("unikernel containers",
 			func(tc containerTestArgs) {
-				for _, vol := range tc.Volumes {
-					if _, err := os.Stat(vol.Source); err != nil {
-						Skip(fmt.Sprintf("Could not find %s", vol.Source))
-					}
-				}
-
+				skipMissingVolumes(tc)
 				tool = newNerdctlTool(tc)
-				tool.setContainerID(tc.Name)
-
-				DeferCleanup(func() {
-					if tool != nil && tool.getContainerID() != "" {
-						By("Cleaning up container")
-						if err := testCleanup(tool); err != nil {
-							GinkgoLogr.Error(err, "Container cleanup failed")
-						}
-					}
-				})
-
-				By("Running container")
-				output, err := tool.runContainer(false)
-				Expect(err).NotTo(HaveOccurred(), "Failed to run container: %s", output)
-
-				By("Verifying container output")
-				Expect(output).To(ContainSubstring(tc.ExpectOut))
+				runForegroundTest(tool, tc)
 			},
 			toTableEntries(selectTestCases(nerdctlTestCases(), false)),
 		)
@@ -81,44 +57,9 @@ var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 	Context("detached containers", func() {
 		DescribeTable("unikernel containers",
 			func(tc containerTestArgs) {
-				for _, vol := range tc.Volumes {
-					if _, err := os.Stat(vol.Source); err != nil {
-						Skip(fmt.Sprintf("Could not find %s", vol.Source))
-					}
-				}
-
+				skipMissingVolumes(tc)
 				tool = newNerdctlTool(tc)
-
-				By("Creating container")
-				cID, err := tool.createContainer()
-				Expect(err).NotTo(HaveOccurred(), "Failed to create container: %s", cID)
-				tool.setContainerID(cID)
-
-				DeferCleanup(func() {
-					if tool != nil && tool.getContainerID() != "" {
-						By("Stopping container")
-						if err := tool.stopContainer(); err != nil {
-							GinkgoLogr.Error(err, "Failed to stop container")
-						}
-						By("Removing container")
-						if err := tool.rmContainer(); err != nil {
-							GinkgoLogr.Error(err, "Failed to remove container")
-						}
-						By("Verifying container removal")
-						if err := testVerifyRm(tool); err != nil {
-							GinkgoLogr.Error(err, "Failed to verify removal")
-						}
-					}
-				})
-
-				By("Starting container")
-				output, err := tool.startContainer(true)
-				Expect(err).NotTo(HaveOccurred(), "Failed to start container: %s", output)
-
-				By("Running test function")
-				Eventually(func() error {
-					return tc.TestFunc(tool)
-				}, defaultTimeout, defaultInterval).Should(Succeed())
+				runDetachedTest(tool, tc)
 			},
 			toTableEntries(selectTestCases(nerdctlTestCases(), true)),
 		)
