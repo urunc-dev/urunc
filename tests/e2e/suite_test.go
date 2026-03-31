@@ -15,6 +15,7 @@
 package urunce2etesting
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -77,6 +78,22 @@ func skipMissingVolumes(tc containerTestArgs) {
 	}
 }
 
+// captureContainerLogs attaches container logs to the Ginkgo report on failure.
+func captureContainerLogs(tool testTool) {
+	logs, err := tool.logContainer()
+	if errors.Is(err, errToolDoesNotSupport) {
+		GinkgoLogr.Info("Container log capture not supported by " + tool.Name())
+		return
+	}
+	if err != nil {
+		GinkgoLogr.Error(err, "Failed to capture container logs")
+		return
+	}
+	if logs != "" {
+		AddReportEntry("container-logs", logs)
+	}
+}
+
 // runDetachedTest runs a container in detached mode: create, start, and
 // verify via TestFunc.
 func runDetachedTest(tool testTool, tc containerTestArgs) {
@@ -87,6 +104,9 @@ func runDetachedTest(tool testTool, tc containerTestArgs) {
 
 	DeferCleanup(func() {
 		if tool.getContainerID() != "" {
+			if CurrentSpecReport().Failed() {
+				captureContainerLogs(tool)
+			}
 			By("Stopping container")
 			if err := tool.stopContainer(); err != nil {
 				GinkgoLogr.Error(err, "Failed to stop container")
