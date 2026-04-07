@@ -58,9 +58,9 @@ func (q *Qemu) Path() string {
 func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"
-	cmdString += " -L /usr/share/qemu"   // Set the path for qemu bios/data
-	cmdString += " -cpu host"            // Choose CPU
-	cmdString += " -enable-kvm"          // Enable KVM to use CPU virt extensions
+	cmdString += " -L /usr/share/qemu"                                  // Set the path for qemu bios/data
+	cmdString += " -cpu host"                                           // Choose CPU
+	cmdString += " -enable-kvm"                                         // Enable KVM to use CPU virt extensions
 	cmdString += " -display none -vga none -serial stdio -monitor null" // Disable graphic output
 
 	if args.VCPUs > 0 {
