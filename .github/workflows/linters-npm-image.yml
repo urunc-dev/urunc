@@ -1,0 +1,67 @@
+name: Build/publish npm linters image
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - '.github/linters/Dockerfile'
+      - '.github/linters/entrypoint.sh'
+      - '.github/linters/package.json'
+      - '.github/linters/VERSION'
+      - '.github/workflows/linters-npm-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/linters-npm
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout the repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve image tag from VERSION file
+        id: version
+        run: |
+          version="$(sed 's/^v//' .github/linters/VERSION | tr -d '[:space:]')"
+          if [ -z "${version}" ]; then
+            echo "::error::.github/linters/VERSION is empty"
+            exit 1
+          fi
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fail if the tag already exists
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if docker buildx imagetools inspect "${IMAGE}:${tag}" >/dev/null 2>&1; then
+            echo "::error::${IMAGE}:${tag} already exists. Bump .github/linters/VERSION before merging."
+            exit 1
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@9e436ba9f2d7bcd1d038c8e55d039d37896ddc5d # master
+        with:
+          context: .
+          file: .github/linters/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.version.outputs.tag }}
+          provenance: false

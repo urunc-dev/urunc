@@ -420,3 +420,6 @@ onsi
 ESRCH
 Prafful
 praffq
+commitlint
+licenserc
+skywalking

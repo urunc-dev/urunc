@@ -80,10 +80,18 @@ CNTR_TOOL ?= docker
 CNTR_OPTS ?= run --rm -it
 
 # Linking variables
-LINT_CNTR_OPTS ?= $(CNTR_OPTS) -v $(CURDIR):/app -w /app
+# Don't inherit $(CNTR_OPTS): linters don't need a TTY and -it breaks scripts.
+LINT_CNTR_OPTS ?= run --rm -v $(CURDIR):/app -w /app
 #? LINT_CNTR_IMG The linter image to use (default: golangci/golangci-lint:v1.53.3)
 LINT_CNTR_IMG  ?= golangci/golangci-lint:v2.7
 LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
+
+LINT_NPM_VERSION   ?= $(shell sed 's/^v//' $(CURDIR)/.github/linters/VERSION)
+#? LINT_NPM_CNTR_IMG npm linters image (cspell + commitlint)
+LINT_NPM_CNTR_IMG  ?= ghcr.io/urunc-dev/urunc/linters-npm:v$(LINT_NPM_VERSION)
+#? LICENSE_CNTR_IMG license-eye image (Apache-header check)
+# Keep in sync with the action SHA in CI.
+LICENSE_CNTR_IMG   ?= ghcr.io/apache/skywalking-eyes/license-eye:07a607ff5b0759f5ed47306c865aac50fe9b3985
 
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)
 DOCS_CNTR_IMG  ?= harbor.nbfc.io/nubificus/urunc/mkdocs:latest
@@ -210,10 +218,35 @@ clean:
 	rm -fr $(BUILD_DIR)
 
 # Linting targets
-## lint Run the lint test using a golang container
-.PHONY: lint
-lint:
+## lint_golangci Run golangci-lint in a container
+.PHONY: lint_golangci
+lint_golangci:
 	$(CNTR_TOOL) $(LINT_CNTR_OPTS) $(LINT_CNTR_IMG) $(LINT_CNTR_CMD)
+
+## lint_cspell Run cspell in the npm linters container
+.PHONY: lint_cspell
+lint_cspell:
+	$(CNTR_TOOL) $(LINT_CNTR_OPTS) $(LINT_NPM_CNTR_IMG) cspell
+
+## lint_commitlint Run commitlint in the npm linters container
+.PHONY: lint_commitlint
+lint_commitlint:
+	$(CNTR_TOOL) $(LINT_CNTR_OPTS) $(LINT_NPM_CNTR_IMG) commitlint
+
+## lint_license Run license-eye (Apache header check) in a container
+.PHONY: lint_license
+lint_license:
+	$(CNTR_TOOL) $(LINT_CNTR_OPTS) $(LICENSE_CNTR_IMG) \
+		-v info -c .github/linters/licenserc.yml header check
+
+## lint Run all CI linters (golangci, cspell, commitlint, license-eye)
+.PHONY: lint
+lint: lint_golangci lint_cspell lint_commitlint lint_license
+
+## lint_npm_build Build the npm linters image locally from .github/linters/Dockerfile
+.PHONY: lint_npm_build
+lint_npm_build:
+	$(CNTR_TOOL) build -t $(LINT_NPM_CNTR_IMG) -f .github/linters/Dockerfile .
 
 # Dcos targets
 ## docs Build and serve urunc's docs locally
