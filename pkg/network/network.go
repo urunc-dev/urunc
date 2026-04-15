@@ -47,6 +47,7 @@ type Interface struct {
 	Mask           string
 	Interface      string
 	MAC            string
+	MTU            int
 }
 
 func NewNetworkManager(networkType string) (Manager, error) {
@@ -169,6 +170,7 @@ func getInterfaceInfo(iface string) (Interface, error) {
 		Mask:           mask,
 		Interface:      iface,
 		MAC:            IfMAC,
+		MTU:            ief.MTU,
 	}, nil
 }
 

@@ -47,6 +47,7 @@ type NetDevParams struct {
 	Gateway string // The veth device gateway
 	MAC     string // The MAC address of the guest network device
 	TapDev  string // The tap device name
+	MTU     int    // The MTU value of the tap device
 }
 
 type BlockDevParams struct {

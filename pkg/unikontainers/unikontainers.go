@@ -195,6 +195,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 		// The MAC address for the guest network device is the same as the
 		// virtual ethernet interface inside the namespace
 		netArgs.MAC = networkInfo.EthDevice.MAC
+		netArgs.MTU = networkInfo.EthDevice.MTU
 	}
 
 	return netArgs, nil

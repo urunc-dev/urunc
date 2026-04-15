@@ -91,13 +91,12 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 	if args.Net.TapDev != "" {
 		netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 		if netcli == "" {
-			netcli += " -net nic,model=virtio,macaddr="
-			netcli += args.Net.MAC
-			netcli += " -net tap,script=no,downscript=no,ifname="
+			netcli += " -netdev tap,id=net0,script=no,downscript=no,ifname="
 			netcli += args.Net.TapDev
 			if q.vhost {
 				netcli += ",vhost=on"
 			}
+			netcli += fmt.Sprintf(" %s,host_mtu=%d,mac=%s", getVirtioNetArg(), args.Net.MTU, args.Net.MAC)
 		}
 		cmdString += netcli
 	} else {
@@ -146,4 +145,12 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 // PreExec performs pre-execution setup. QEMU has no special pre-exec requirements.
 func (q *Qemu) PreExec(_ types.ExecArgs) error {
 	return nil
+}
+
+func getVirtioNetArg() string {
+	devType := "virtio-net-pci"
+	if runtime.GOARCH == "arm64" {
+		devType = "virtio-net-device"
+	}
+	return "-device " + devType + ",netdev=net0"
 }
