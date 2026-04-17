@@ -18,12 +18,14 @@ import (
 	"context"
 
 	taskAPI "github.com/containerd/containerd/api/runtime/task/v2"
+	"github.com/containerd/log"
 	"github.com/containerd/ttrpc"
+	containerdShim "github.com/urunc-dev/urunc/pkg/containerd-shim/containerd"
 )
 
 // taskService is urunc's shim-side wrapper around containerd's runc task
-// service. It currently forwards calls to the wrapped service while keeping a
-// urunc-owned place for task-level feature wiring.
+// service. It wires urunc task setup before forwarding calls to the wrapped
+// service.
 type taskService struct {
 	taskAPI.TaskService
 
@@ -31,6 +33,20 @@ type taskService struct {
 }
 
 func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) (*taskAPI.CreateTaskResponse, error) {
+	session, err := containerdShim.OpenSession(ctx, s.containerdAddress, r.ID)
+	if err != nil {
+		log.G(ctx).WithError(err).Warn("urunc(shim): failed to open containerd session")
+	} else {
+		defer func() {
+			if err := session.Close(); err != nil {
+				log.G(ctx).WithError(err).Warn("urunc(shim): failed to close containerd session")
+			}
+		}()
+		if err := containerdShim.InjectUruncAnnotations(ctx, session, r.Bundle); err != nil {
+			log.G(ctx).WithError(err).Warn("urunc(shim): failed to inject annotations to spec")
+		}
+	}
+
 	return s.TaskService.Create(ctx, r)
 }
 

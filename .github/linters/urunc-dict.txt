@@ -152,6 +152,7 @@ downscript
 dpkg
 elevateprivileges
 elfloader
+encoded
 endmacro
 epoll
 errdefs
@@ -183,6 +184,7 @@ iface
 ifaces
 ifname
 imagesapi
+imagespec
 initpipe
 initrds
 inlinehilite
@@ -294,6 +296,7 @@ rumprun
 runbindable
 runp
 runtimeclasses
+runtimespec
 sandboxing
 scontroller
 seabios
@@ -328,6 +331,7 @@ traefik
 triger
 ttrpc
 twemoji
+typesapi
 uidmap
 ukernel
 ukvmif
