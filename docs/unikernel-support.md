@@ -342,6 +342,62 @@ An example of a Redis alpine image transformed to a block file on top of
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-firecracker-linux-block:latest
 ```
 
+## FreeBSD
+
+[FreeBSD](https://www.freebsd.org/) is a popular BSD operating system which
+powers modern servers, storage systems, network appliances and embedded
+platforms.  [FreeBSD](https://www.freebsd.org/) is well known for its
+performance, advanced networking, and strong focus on correctness and security.
+As a result, many applications and services, especially those requiring
+stability and fine-grained system control, are built to run on
+[FreeBSD](https://www.freebsd.org/). Of course,
+[FreeBSD](https://www.freebsd.org/) is not a unikernel framework.  However,
+thanks to its its modular architecture, combined with features like custom
+kernel configuration, allows us to build highly specialized and minimal system
+images tailored for specific workloads. Therefore, it fits well in the single
+application model of `urunc`.
+
+Furtermore, the introduction of [FreeBSD](https://www.freebsd.org/) in the [OCI
+spec](https://github.com/opencontainers/runtime-spec) as a target platform
+resulted to the creation and distribution of FreeBSD based OCI images.
+[FreeBSD](https://www.freebsd.org/) has wide support for different
+Therfore, these images can be easily executed on top of `urunc` with a focus on
+single application containers.
+
+### VMMs and other sandbox monitors
+
+While [FreeBSD](https://www.freebsd.org/) has a wide support for various
+hypervisors, it assumes a full VM and not a microVM> However, on 2022 support
+for [Firecracker](https://github.com/firecracker-microvm/firecracker) has been
+added. On the other hand, the Qemu microVM does not seem to work properly with
+[FreeBSD](https://www.freebsd.org/).
+
+### FreeBSD and `urunc`
+
+Focusing on the single-application notion of using the
+[FreeBSD](https://www.freebsd.org/) kernel, `urunc` provides support for
+[Firecracker](https://github.com/firecracker-microvm/firecracker). For network,
+`urunc` will make use of virtio-net through MMIO.  In the case of storage,
+`urunc` can use only virtio-block, since the support for initrd is not there
+for [FreeBSD](https://www.freebsd.org/) and shared filesystems are not
+supported in
+[Firecracker](https://github.com/firecracker-microvm/firecracker).
+
+As a result, the [FreeBSD](https://www.freebsd.org/) based images for `urunc`
+need to either contain a block-based image for rootfs, or use the devmapper
+snapshotter with "ext2" as a filesystem, since
+[FreeBSD](https://www.freebsd.org/) does not support other Linux-based
+filesystems.  For more information on setting up devmapper, please take a look
+on our [installation guide](../installation#setup-thinpool-devmapper).
+
+An example of a Caddy HTTP server on top of [FreeBSD](https://www.freebsd.org/)
+and [Firecracker](https://github.com/firecracker-microvm/firecracker).  with
+'urunc' and devmapper as a snapshotter:
+
+```bash
+sudo nerdctl run --rm -ti --snapshotter devmapper --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/caddy-firecracker-freebsd-raw:latest
+```
+
 ## Future unikernels and frameworks:
 
 In the near future, we plan to add support for the following frameworks:

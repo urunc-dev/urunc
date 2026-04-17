@@ -133,6 +133,7 @@ Supported unikernel frameworks with `urunc`:
 
 - [Unikraft](../unikernel-support#unikraft)
 - [Linux](../unikernel-support#linux)
+- [FreeBSD](../unikernel-support#freebsd)
 
 An example unikernel:
 
