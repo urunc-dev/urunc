@@ -187,53 +187,6 @@ func switchMonRootfs(res types.RootfsParams, bundle string) (types.RootfsParams,
 	return res, nil
 }
 
-// chooseRootfs determines the best rootfs configuration based on available options
-// Priority order:
-//  1. Initrd (if specified)
-//  2. Explicit block device annotation (if mounted at /)
-//  3. Container rootfs as block device (if MountRootfs=true and supported)
-//  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
-//  5. No rootfs
-func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
-	unikernel types.Unikernel, vmm types.VMM, vfsdPath string) (types.RootfsParams, error) {
-
-	selector := &rootfsSelector{
-		bundle:     bundle,
-		cntrRootfs: cntrRootfs,
-		annot:      annot,
-		unikernel:  unikernel,
-		vmm:        vmm,
-		vfsdPath:   vfsdPath,
-	}
-
-	// Priority 1: Initrd
-	result, ok := selector.tryInitrd()
-	if ok {
-		return result, nil
-	}
-
-	// Priority 2: Explicit block annotation
-	result, ok = selector.tryExplicitBlock()
-	if ok {
-		return result, nil
-	}
-
-	// Priority 3 & 4: Container rootfs (block or shared-fs)
-	result, ok = selector.tryContainerRootfs()
-	if ok {
-		return switchMonRootfs(result, bundle)
-	}
-
-	if selector.shouldMountContainerRootfs() {
-		return types.RootfsParams{}, fmt.Errorf("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
-	}
-
-	uniklog.Info("no rootfs configured for guest")
-	result.MonRootfs = cntrRootfs
-	return result, nil
-
-}
-
 // pivotRootfs changes rootfs with pivot
 // It should be called with CWD being the new rootfs
 func pivotRootfs(newRoot string) error {

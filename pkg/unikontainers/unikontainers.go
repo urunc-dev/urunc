@@ -201,6 +201,73 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 	return netArgs, nil
 }
 
+// chooseRootfs determines the best rootfs configuration based on available options
+// Priority order:
+//  1. Initrd (if specified)
+//  2. Explicit block device annotation (if mounted at /)
+//  3. Container rootfs as block device (if MountRootfs=true and supported)
+//  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
+//  5. No rootfs
+func (u *Unikontainer) chooseRootfs() (types.RootfsParams, error) {
+	bundleDir := filepath.Clean(u.State.Bundle)
+	rootfsDir := filepath.Clean(u.Spec.Root.Path)
+	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
+	if err != nil {
+		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
+		return types.RootfsParams{}, err
+	}
+
+	unikernelType := u.State.Annotations[annotType]
+	unikernel, err := unikernels.New(unikernelType)
+	if err != nil {
+		return types.RootfsParams{}, err
+	}
+
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
+	if err != nil {
+		return types.RootfsParams{}, err
+	}
+
+	virtiofsdConfig := u.UruncCfg.ExtraBins["virtiofsd"]
+
+	selector := &rootfsSelector{
+		bundle:     bundleDir,
+		cntrRootfs: rootfsDir,
+		annot:      u.State.Annotations,
+		unikernel:  unikernel,
+		vmm:        vmm,
+		vfsdPath:   virtiofsdConfig.Path,
+	}
+
+	// Priority 1: Initrd
+	result, ok := selector.tryInitrd()
+	if ok {
+		return result, nil
+	}
+
+	// Priority 2: Explicit block annotation
+	result, ok = selector.tryExplicitBlock()
+	if ok {
+		return result, nil
+	}
+
+	// Priority 3 & 4: Container rootfs (block or shared-fs)
+	result, ok = selector.tryContainerRootfs()
+	if ok {
+		return switchMonRootfs(result, bundleDir)
+	}
+
+	if selector.shouldMountContainerRootfs() {
+		return types.RootfsParams{}, fmt.Errorf("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
+	}
+
+	uniklog.Info("no rootfs configured for guest")
+	result.MonRootfs = rootfsDir
+
+	return result, nil
+}
+
 // nolint:gocyclo
 func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(m.TS15)
@@ -329,7 +396,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
 	// both ae supported, then the block option will be used by default.
-	rootfsParams, err := chooseRootfs(bundleDir, rootfsDir, u.State.Annotations, unikernel, vmm, virtiofsdConfig.Path)
+	rootfsParams, err := u.chooseRootfs()
 	if err != nil {
 		uniklog.Errorf("could not choose guest rootfs: %v", err)
 		return err
