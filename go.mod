@@ -19,14 +19,14 @@ require (
 	github.com/opencontainers/runc v1.3.4
 	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/prometheus-community/pro-bing v0.8.0
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.8.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.43.0
-	k8s.io/cri-api v0.35.3
+	k8s.io/cri-api v0.35.4
 )
 
 require (
