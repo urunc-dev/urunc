@@ -402,6 +402,25 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	if rootfsParams.Type == "block" {
+		bRootfs := blockRootfs{
+			mounts:        u.Spec.Mounts,
+			monRootfs:     rootfsParams.MonRootfs,
+			mountedPath:   rootfsParams.MountedPath,
+			path:          rootfsParams.Path,
+			kernelPath:    unikernelPath,
+			initrdPath:    initrdPath,
+			uruncJSONPath: uruncJSONFilename,
+			guestType:     unikernelType,
+			guest:         unikernel,
+		}
+
+		err = bRootfs.preSetup()
+		if err != nil {
+			return fmt.Errorf("failed to perapre block based rootfs: %w", err)
+		}
+	}
+
 	// Prepare Monitor rootfs
 	// Make sure that rootfs is mounted with the correct propagation
 	// flags so we can later pivot if needed.
@@ -426,10 +445,26 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	tmpfsSize := "65536k"
 	switch rootfsParams.Type {
 	case "block":
-		blockArgs, err = handleBlockBasedRootfs(rootfsParams, unikernel, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, u.Spec.Mounts)
+		bRootfs := blockRootfs{
+			mounts:        u.Spec.Mounts,
+			monRootfs:     rootfsParams.MonRootfs,
+			mountedPath:   rootfsParams.MountedPath,
+			path:          rootfsParams.Path,
+			kernelPath:    unikernelPath,
+			initrdPath:    initrdPath,
+			uruncJSONPath: uruncJSONFilename,
+			guestType:     unikernelType,
+			guest:         unikernel,
+		}
+
+		err = bRootfs.postSetup()
 		if err != nil {
-			uniklog.Errorf("could not setup block based rootfs: %v", err)
-			return err
+			return fmt.Errorf("post setup step for block based rootfs failed: %w", err)
+		}
+
+		blockArgs, err = bRootfs.getBlockDevs()
+		if err != nil {
+			return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
 		}
 	case "initrd":
 		initrdHostFullPath := filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path)
