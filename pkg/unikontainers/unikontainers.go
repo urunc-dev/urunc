@@ -31,7 +31,6 @@ import (
 
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 	"github.com/vishvananda/netlink/nl"
@@ -467,10 +466,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 			return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
 		}
 	case "initrd":
-		initrdHostFullPath := filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path)
-		err = initrd.CopyFileMountsToInitrd(initrdHostFullPath, u.Spec.Mounts)
+		iRootfs := initrdRootfs{
+			mounts:             u.Spec.Mounts,
+			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
+		}
+
+		err = iRootfs.postSetup()
 		if err != nil {
-			uniklog.Errorf("could not update guest's initrd: %v", err)
+			uniklog.Errorf("cpost setup step of initrd based rootfs failed: %v", err)
 			return err
 		}
 	case "virtiofs":
