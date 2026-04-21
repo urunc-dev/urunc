@@ -25,6 +25,57 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+type sharedfsRootfs struct {
+	mounts      []specs.Mount
+	vfsPath     string
+	monRootfs   string
+	mountedPath string
+	sfsType     string
+}
+
+func (s sharedfsRootfs) preSetup() error {
+	return nil
+}
+
+func (s sharedfsRootfs) postSetup() error {
+	// Mount the container's rootfs inside the monitor rootfs
+	err := fileFromHost(s.monRootfs, s.mountedPath, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
+	if err != nil {
+		return fmt.Errorf("failed to mount container's rootfs in monitor rootfs; %w", err)
+	}
+
+	newCntrRootfs := filepath.Join(s.monRootfs, containerRootfsMountPath)
+	err = mountVolumes(newCntrRootfs, s.mounts)
+	if err != nil {
+		return fmt.Errorf("failed to mount volumes in container's rootfs; %w", err)
+	}
+
+	if s.sfsType == "virtiofs" {
+		// Get the virtiofsd binary from host in monRootfs
+		err = fileFromHost(s.monRootfs, s.vfsPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
+		if err != nil {
+			return fmt.Errorf("Could not bind mount %s: %w", s.vfsPath, err)
+		}
+	}
+
+	return nil
+}
+
+func (s sharedfsRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
+	return nil, nil
+}
+
+func (s sharedfsRootfs) getSharedDirs() (types.SharedfsParams, error) {
+	return types.SharedfsParams{
+		Path: containerRootfsMountPath,
+		Type: s.sfsType,
+	}, nil
+}
+
+func (s sharedfsRootfs) preStart() error {
+	return nil
+}
+
 func chooseTmpfsSize(mem uint64) string {
 	// For virtiofs, Qemu and virtiofsd are using a host file
 	// to share the VM's RAM and hence the size of this file
@@ -37,30 +88,6 @@ func chooseTmpfsSize(mem uint64) string {
 	tmpMountMemStr := hypervisors.BytesToStringMB(tmpMountMem) + "m"
 
 	return tmpMountMemStr
-}
-
-func setupSharedfsBasedRootfs(rfs types.RootfsParams, vfsdBin string, mounts []specs.Mount) error {
-	// Mount the container's image rootfs inside the monitor rootfs
-	err := fileFromHost(rfs.MonRootfs, rfs.MountedPath, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
-	if err != nil {
-		return err
-	}
-
-	newCntrRootfs := filepath.Join(rfs.MonRootfs, containerRootfsMountPath)
-	err = mountVolumes(newCntrRootfs, mounts)
-	if err != nil {
-		return err
-	}
-
-	if rfs.Type == "virtiofs" {
-		// Get the virtiofsd binary from host in monRootfs
-		err = fileFromHost(rfs.MonRootfs, vfsdBin, "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return fmt.Errorf("Could not bind mount %s: %w", vfsdBin, err)
-		}
-	}
-
-	return nil
 }
 
 // adjustPathsForSharedFS updates paths to be relative to container rootfs mount

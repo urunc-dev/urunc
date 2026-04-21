@@ -480,15 +480,27 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
 		fallthrough
 	case "9pfs":
-		err = setupSharedfsBasedRootfs(rootfsParams, virtiofsdConfig.Path, u.Spec.Mounts)
+		sRootfs := sharedfsRootfs{
+			mounts:      u.Spec.Mounts,
+			monRootfs:   rootfsParams.MonRootfs,
+			mountedPath: rootfsParams.MountedPath,
+			sfsType:     rootfsParams.Type,
+			vfsPath:     virtiofsdConfig.Path,
+		}
+
+		err = sRootfs.postSetup()
 		if err != nil {
+			uniklog.Errorf("cpost setup step of shared-fs based rootfs failed: %v", err)
 			return err
 		}
 		// Update the paths of the files we need to pass in the monitor process.
 		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
 		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-		sharedfsArgs.Path = containerRootfsMountPath
-		sharedfsArgs.Type = rootfsParams.Type
+		sharedfsArgs, err = sRootfs.getSharedDirs()
+		if err != nil {
+			uniklog.Errorf("failed to get directories to share with sandbox: %v", err)
+			return err
+		}
 	default:
 		uniklog.Debug("No rootfs for guest")
 	}
