@@ -354,6 +354,28 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.False(t, qemuConfig.Vhost, "invalid vhost value should default to false")
 	})
 
+	t.Run("ksm disabled by default", func(t *testing.T) {
+		t.Parallel()
+		config := UruncConfigFromMap(map[string]string{})
+		assert.False(t, config.KSM.Enable)
+	})
+
+	t.Run("ksm enabled when round-tripped", func(t *testing.T) {
+		t.Parallel()
+		config := UruncConfigFromMap(map[string]string{
+			"urunc_config.ksm.enable": "true",
+		})
+		assert.True(t, config.KSM.Enable)
+	})
+
+	t.Run("invalid ksm.enable value defaults to false", func(t *testing.T) {
+		t.Parallel()
+		config := UruncConfigFromMap(map[string]string{
+			"urunc_config.ksm.enable": "bogus",
+		})
+		assert.False(t, config.KSM.Enable)
+	})
+
 }
 
 func TestUruncConfigMap(t *testing.T) {

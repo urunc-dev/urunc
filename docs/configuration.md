@@ -17,6 +17,9 @@ syslog = false
 enabled = false
 destination = "/var/log/urunc/timestamps.log"
 
+[ksm]
+enable = false
+
 [monitors.qemu]
 default_memory_mb = 512
 default_vcpus = 2
@@ -88,6 +91,40 @@ destination = "/tmp/urunc-timestamps.log"
 ```
 
 When enabled, `urunc` will log performance timestamps to help with debugging and optimization.
+
+### KSM Configuration
+
+The `[ksm]` section controls whether `urunc` opts each VMM process into Linux
+Kernel Same-page Merging (KSM) before `execve`. When enabled, `urunc` calls
+`prctl(PR_SET_MEMORY_MERGE, 1)` on itself prior to exec, which sets
+`MMF_VM_MERGE_ANY` on the process's `mm_struct`. Because this flag lives in
+`MMF_INIT_MASK`, it survives `execve` into the VMM, and every anonymous mapping
+the VMM creates afterwards (including guest RAM) is auto-marked
+`MADV_MERGEABLE`. The host's `ksmd` then deduplicates identical pages across
+VMM processes that have the bit set.
+
+This matters in particular for Firecracker, whose seccomp filter only permits
+`madvise(MADV_DONTNEED)`, so the VMM cannot opt itself in. Performing the
+`prctl` in `urunc` before exec is the only portable way to make Firecracker
+guest memory KSM-eligible.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enable` | boolean | `false` | Call `prctl(PR_SET_MEMORY_MERGE, 1)` before execing the VMM |
+
+**Example:**
+
+```toml
+[ksm]
+enable = true
+```
+
+**Requirements:**
+
+- Linux 6.4 or newer with `CONFIG_KSM=y` (older kernels lack
+  `PR_SET_MEMORY_MERGE`; `urunc` logs a warning and continues without KSM).
+- The host's `ksmd` must be running (`/sys/kernel/mm/ksm/run=1`) for any actual
+  merging to happen. `urunc` does not manage `ksmd` itself.
 
 ### Monitor Configuration
 
@@ -224,6 +261,9 @@ syslog = false
 [timestamps]
 enabled = false
 destination = "/var/log/urunc/timestamps.log"
+
+[ksm]
+enable = false
 
 [monitors.qemu]
 default_memory_mb = 256

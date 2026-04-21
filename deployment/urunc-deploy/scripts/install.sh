@@ -35,8 +35,67 @@ urunc_config_file="${urunc_config_dir}/config.toml"
 HYPERVISORS="${HYPERVISORS:-"firecracker qemu solo5-hvt solo5-spt"}"
 IFS=' ' read -a hypervisors <<< "$HYPERVISORS"
 
+# ENABLE_KSM opts this node into kernel same-page merging for VMM
+# memory. Off by default — operators must set ENABLE_KSM=true on the
+# daemonset to turn it on. When enabled, install.sh:
+#   1. starts the host's ksmd (/sys/kernel/mm/ksm/run=1) and tunes it
+#   2. writes [ksm] enable = true into /etc/urunc/config.toml so urunc
+#      calls prctl(PR_SET_MEMORY_MERGE) on every VMM launch
+# Both halves are required for actual merging — ksmd without the prctl
+# has nothing eligible to merge; the prctl without ksmd has no scanner.
+ENABLE_KSM="${ENABLE_KSM:-false}"
+
+# KSM_PAGES_TO_SCAN tunes how aggressively ksmd walks the candidate set.
+# Default is 100 pages per sleep interval which is too slow to reach
+# steady state on hosts running many 512 MiB VMs. 1000 scans ~4 MiB per
+# 20 ms sleep (the default sleep_millisecs), so a 512 MiB VM reaches
+# merge steady state in single-digit seconds.
+KSM_PAGES_TO_SCAN="${KSM_PAGES_TO_SCAN:-1000}"
+
 function host_systemctl() {
     nsenter --target 1 --mount systemctl "${@}"
+}
+
+function host_write_sysfs() {
+    # Write a value to a host sysfs path from inside the daemonset pod.
+    # Goes through nsenter into PID 1's mount namespace so /sys is the
+    # host's sysfs, not the container's.
+    local path="$1"
+    local value="$2"
+    nsenter --target 1 --mount sh -c "echo $value > $path"
+}
+
+function configure_ksm() {
+    if [ "${ENABLE_KSM}" != "true" ]; then
+        echo "ENABLE_KSM=${ENABLE_KSM}; leaving host KSM settings unchanged"
+        return 0
+    fi
+    if [ ! -d /host/sys/kernel/mm/ksm ]; then
+        echo "WARNING: host kernel has no /sys/kernel/mm/ksm (CONFIG_KSM not enabled); skipping KSM setup"
+        return 0
+    fi
+
+    echo "Enabling ksmd on host (pages_to_scan=${KSM_PAGES_TO_SCAN})"
+    host_write_sysfs /sys/kernel/mm/ksm/run 1
+    host_write_sysfs /sys/kernel/mm/ksm/pages_to_scan "${KSM_PAGES_TO_SCAN}"
+    # use_zero_pages defaults to 0 on some kernels; ensure zero-filled
+    # guest RAM regions are eligible for merging with the shared zero
+    # page. That's where the biggest win comes from for mostly-idle
+    # unikernels.
+    if [ -w /host/sys/kernel/mm/ksm/use_zero_pages ]; then
+        host_write_sysfs /sys/kernel/mm/ksm/use_zero_pages 1
+    fi
+}
+
+function cleanup_ksm() {
+    if [ ! -d /host/sys/kernel/mm/ksm ]; then
+        return 0
+    fi
+    # Stop the scanner but leave the MERGEABLE marks alone. Setting run=0
+    # halts scanning without unmerging existing pages, which would cause
+    # a CoW burst across every VMM running on the node.
+    echo "Stopping ksmd on host (keeping already-merged pages)"
+    host_write_sysfs /sys/kernel/mm/ksm/run 0 || true
 }
 
 function print_usage() {
@@ -97,6 +156,13 @@ function install_urunc_config() {
     echo "Installing urunc configuration file"
     mkdir -p /host${urunc_config_dir}
     cp /deployment/config.toml /host${urunc_config_file}
+    if [ "${ENABLE_KSM}" == "true" ]; then
+        # tomlq edits the file in place so urunc sees [ksm] enable = true
+        # on next reload. Keeps the wire format honest instead of relying
+        # on env-var side channels between install.sh and urunc.
+        tomlq -i -t '.ksm.enable = true' /host${urunc_config_file}
+        echo "ksm.enable=true written to ${urunc_config_file}"
+    fi
     echo "urunc configuration file installed at ${urunc_config_file}"
 }
 
@@ -370,6 +436,7 @@ function main() {
             fi
             install_artifacts
             install_urunc_config
+            configure_ksm
             configure_cri_runtime "$runtime"
             kubectl label node "$NODE_NAME" --overwrite urunc.io/urunc-runtime=true
             echo "urunc-deploy completed successfully"
@@ -381,6 +448,7 @@ function main() {
             fi
 
             cleanup_cri_runtime "$runtime"
+            cleanup_ksm
             local urunc_deploy_installations=$(kubectl -n kube-system get ds | grep urunc-deploy | wc -l)
             if [ $urunc_deploy_installations -eq 0 ]; then
                 kubectl label node "$NODE_NAME" --overwrite urunc.io/urunc-runtime=cleanup

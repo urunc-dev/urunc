@@ -521,6 +521,21 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// Opt this process into system-wide KSM before execing the VMM so that
+	// the VMM's guest RAM pages (huge anon mmaps it will create after
+	// exec) are auto-marked MADV_MERGEABLE by the kernel. The host must
+	// also have ksmd running (/sys/kernel/mm/ksm/run=1) for merges to
+	// actually happen.
+	//
+	// Off by default; enable via [ksm] enable = true in /etc/urunc/config.toml.
+	//
+	// Must run before vmm.PreExec: HVT installs a seccomp filter on this
+	// process that does not allow prctl(PR_SET_MEMORY_MERGE), so calling
+	// this after PreExec would be killed on HVT.
+	if u.UruncCfg != nil && u.UruncCfg.KSM.Enable {
+		enableProcessKSM()
+	}
+
 	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
 	err = vmm.PreExec(vmmArgs)
 	if err != nil {

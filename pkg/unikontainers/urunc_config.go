@@ -34,9 +34,18 @@ type UruncTimestamps struct {
 	Destination string `toml:"destination"` // Used to specify a file for timestamps
 }
 
+// UruncKSM controls whether urunc opts every VMM process into kernel
+// same-page merging before execve. When Enable is true urunc calls
+// prctl(PR_SET_MEMORY_MERGE, 1); the kernel's ksmd must also be running
+// on the host for any actual merging to happen. Off by default.
+type UruncKSM struct {
+	Enable bool `toml:"enable"`
+}
+
 type UruncConfig struct {
 	Log        UruncLog                        `toml:"log"`
 	Timestamps UruncTimestamps                 `toml:"timestamps"`
+	KSM        UruncKSM                        `toml:"ksm"`
 	Monitors   map[string]types.MonitorConfig  `toml:"monitors"`
 	ExtraBins  map[string]types.ExtraBinConfig `toml:"extra_binaries"`
 }
@@ -94,10 +103,15 @@ func defaultExtraBinConfig() map[string]types.ExtraBinConfig {
 	}
 }
 
+func defaultKSMConfig() UruncKSM {
+	return UruncKSM{Enable: false}
+}
+
 func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
 		Log:        defaultLogConfig(),
 		Timestamps: defaultTimestampsConfig(),
+		KSM:        defaultKSMConfig(),
 		Monitors:   defaultMonitorsConfig(),
 		ExtraBins:  defaultExtraBinConfig(),
 	}
@@ -120,6 +134,8 @@ func (p *UruncConfig) Map() map[string]string {
 	// them to this map. this map will be used to save the rest of the urunc config to state.json
 	cfgMap := make(map[string]string)
 
+	cfgMap["urunc_config.ksm.enable"] = strconv.FormatBool(p.KSM.Enable)
+
 	for hv, hvCfg := range p.Monitors {
 		prefix := "urunc_config.monitors." + hv + "."
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
@@ -140,8 +156,17 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 	// since log and timestamps are loaded at the start of urunc, we will not be reading
 	// them from this map. this map will be used to parse the rest of the urunc config from state.json
 	cfg := &UruncConfig{
+		KSM:       defaultKSMConfig(),
 		Monitors:  defaultMonitorsConfig(),
 		ExtraBins: defaultExtraBinConfig(),
+	}
+
+	if val, ok := cfgMap["urunc_config.ksm.enable"]; ok {
+		if boolVal, err := strconv.ParseBool(val); err == nil {
+			cfg.KSM.Enable = boolVal
+		} else {
+			uniklog.Warnf("Invalid ksm.enable value '%s': %v. Using default (false).", val, err)
+		}
 	}
 
 	for key, val := range cfgMap {
