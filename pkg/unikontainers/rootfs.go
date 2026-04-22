@@ -35,6 +35,31 @@ type rootfsSelector struct {
 	vfsdPath   string
 }
 
+type noRootfs struct {
+	monRootfs string
+}
+
+func (n noRootfs) preSetup() error {
+	return nil
+}
+
+func (n noRootfs) postSetup() error {
+	return nil
+}
+
+func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
+	return nil, nil
+}
+
+// TODO: Return an array instead of a single struct
+func (n noRootfs) getSharedDirs() (types.SharedfsParams, error) {
+	return types.SharedfsParams{}, nil
+}
+
+func (n noRootfs) preStart() error {
+	return nil
+}
+
 // newRootfsResult creates a RootfsParams with common defaults
 func newRootfsResult(rootfsType string, path string, mountedPath string, monRootfs string) types.RootfsParams {
 	return types.RootfsParams{
