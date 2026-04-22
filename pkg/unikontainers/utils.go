@@ -32,7 +32,6 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/internal/constants"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
@@ -204,19 +203,8 @@ func convertUint32ToIntSlice(valSlice []uint32, size int) []int {
 // 	return data.Bytes(), nil
 // }
 
-func spawnVirtiofsd(vfsdConf types.ExtraBinConfig, sharedPath string) error {
-	args := []string{
-		"--socket-path=/tmp/vhostqemu",
-		"--shared-dir",
-		sharedPath,
-	}
-
-	if vfsdConf.Options != "" {
-		args = append(args, strings.Fields(vfsdConf.Options)...)
-	}
-
-	// #nosec G204 -- virtiofsd path and options come from the urunc configuration, which is considered trusted
-	cmd := exec.Command(vfsdConf.Path, args...)
+func spawnProcess(binaryPath string, args []string) error {
+	cmd := exec.Command(binaryPath, args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

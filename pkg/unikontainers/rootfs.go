@@ -25,6 +25,14 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+type rootfsBuilder interface {
+	preSetup() error
+	postSetup() error
+	getBlockDevs() ([]types.BlockDevParams, error)
+	getSharedDirs() (types.SharedfsParams, error)
+	preStart() error
+}
+
 // rootfsSelector encapsulates the context for rootfs selection
 type rootfsSelector struct {
 	bundle     string
@@ -36,7 +44,9 @@ type rootfsSelector struct {
 }
 
 type noRootfs struct {
-	monRootfs string
+	monRootfs            string
+	annotBlockPath       string
+	annotBlockMountPoint string
 }
 
 func (n noRootfs) preSetup() error {
@@ -48,7 +58,21 @@ func (n noRootfs) postSetup() error {
 }
 
 func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
-	return nil, nil
+	blkImgs := []types.BlockDevParams{}
+	blockFromAnnot, err := handleExplicitBlockImage(n.annotBlockPath,
+		n.annotBlockMountPoint)
+	if err != nil {
+		return nil, err
+	}
+
+	if blockFromAnnot.Source != "" && blockFromAnnot.MountPoint != "/" {
+		// TODO: Add proper support for multiple block Images from the container's
+		// image. This requires adding more annotations too.
+		blockFromAnnot.ID = "annot_vol"
+		blkImgs = append(blkImgs, blockFromAnnot)
+	}
+
+	return blkImgs, nil
 }
 
 // TODO: Return an array instead of a single struct

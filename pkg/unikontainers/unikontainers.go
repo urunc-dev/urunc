@@ -401,8 +401,16 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	if rootfsParams.Type == "block" {
-		bRootfs := blockRootfs{
+	// TODO: Add support for using both an existing
+	// block based snapshot of the container's rootfs
+	// and an auxiliary block image placed in the container's image
+	// Currently if a block Image is present in the container's image, then
+	// we will just use this image.
+	var rfsBuilder rootfsBuilder
+	tmpfsSize := "65536k"
+	switch rootfsParams.Type {
+	case "block":
+		rfsBuilder = blockRootfs{
 			mounts:        u.Spec.Mounts,
 			monRootfs:     rootfsParams.MonRootfs,
 			mountedPath:   rootfsParams.MountedPath,
@@ -413,11 +421,38 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 			guestType:     unikernelType,
 			guest:         unikernel,
 		}
-
-		err = bRootfs.preSetup()
-		if err != nil {
-			return fmt.Errorf("failed to perapre block based rootfs: %w", err)
+	case "initrd":
+		rfsBuilder = initrdRootfs{
+			mounts:             u.Spec.Mounts,
+			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
 		}
+	case "virtiofs":
+		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
+		fallthrough
+	case "9pfs":
+		rfsBuilder = sharedfsRootfs{
+			mounts:      u.Spec.Mounts,
+			monRootfs:   rootfsParams.MonRootfs,
+			mountedPath: rootfsParams.MountedPath,
+			sfsType:     rootfsParams.Type,
+			vfsdConfig:  virtiofsdConfig,
+			sharedPath:  containerRootfsMountPath,
+		}
+		// Update the paths of the files we need to pass in the monitor process.
+		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
+		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
+	default:
+		uniklog.Debug("No rootfs for guest")
+		rfsBuilder = noRootfs{
+			monRootfs:            rootfsParams.MonRootfs,
+			annotBlockPath:       u.State.Annotations[annotBlock],
+			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
+		}
+	}
+
+	err = rfsBuilder.preSetup()
+	if err != nil {
+		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
 	// Prepare Monitor rootfs
@@ -434,76 +469,23 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
-	// TODO: Add support for using both an existing
-	// block based snapshot of the container's rootfs
-	// and an auxiliary block image placed in the container's image
-	// Currently if a block Image is present in the container's image, then
-	// we will just use this image.
-	blockArgs := []types.BlockDevParams{}
-	sharedfsArgs := types.SharedfsParams{}
-	tmpfsSize := "65536k"
-	switch rootfsParams.Type {
-	case "block":
-		bRootfs := blockRootfs{
-			mounts:        u.Spec.Mounts,
-			monRootfs:     rootfsParams.MonRootfs,
-			mountedPath:   rootfsParams.MountedPath,
-			path:          rootfsParams.Path,
-			kernelPath:    unikernelPath,
-			initrdPath:    initrdPath,
-			uruncJSONPath: uruncJSONFilename,
-			guestType:     unikernelType,
-			guest:         unikernel,
-		}
 
-		err = bRootfs.postSetup()
-		if err != nil {
-			return fmt.Errorf("post setup step for block based rootfs failed: %w", err)
-		}
-
-		blockArgs, err = bRootfs.getBlockDevs()
-		if err != nil {
-			return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
-		}
-	case "initrd":
-		iRootfs := initrdRootfs{
-			mounts:             u.Spec.Mounts,
-			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
-		}
-
-		err = iRootfs.postSetup()
-		if err != nil {
-			uniklog.Errorf("cpost setup step of initrd based rootfs failed: %v", err)
-			return err
-		}
-	case "virtiofs":
-		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
-		fallthrough
-	case "9pfs":
-		sRootfs := sharedfsRootfs{
-			mounts:      u.Spec.Mounts,
-			monRootfs:   rootfsParams.MonRootfs,
-			mountedPath: rootfsParams.MountedPath,
-			sfsType:     rootfsParams.Type,
-			vfsPath:     virtiofsdConfig.Path,
-		}
-
-		err = sRootfs.postSetup()
-		if err != nil {
-			uniklog.Errorf("cpost setup step of shared-fs based rootfs failed: %v", err)
-			return err
-		}
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
-		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-		sharedfsArgs, err = sRootfs.getSharedDirs()
-		if err != nil {
-			uniklog.Errorf("failed to get directories to share with sandbox: %v", err)
-			return err
-		}
-	default:
-		uniklog.Debug("No rootfs for guest")
+	err = rfsBuilder.postSetup()
+	if err != nil {
+		return fmt.Errorf("post setup step for block based rootfs failed: %w", err)
 	}
+
+	blockArgs, err := rfsBuilder.getBlockDevs()
+	if err != nil {
+		return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
+	}
+
+	sharedfsArgs, err := rfsBuilder.getSharedDirs()
+	if err != nil {
+		uniklog.Errorf("failed to get directories to share with sandbox: %v", err)
+		return err
+	}
+
 	unikernelParams.Rootfs = rootfsParams
 
 	err = createTmpfs(rootfsParams.MonRootfs, "/tmp",
@@ -513,18 +495,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 	metrics.Capture(m.TS17)
-
-	blockFromAnnot, err := handleExplicitBlockImage(u.State.Annotations[annotBlock],
-		u.State.Annotations[annotBlockMntPoint])
-	if err != nil {
-		return err
-	}
-	if blockFromAnnot.Source != "" && blockFromAnnot.MountPoint != "/" {
-		// TODO: Add proper support for multiple block Images from the container's
-		// image. This requires adding more annotations too.
-		blockFromAnnot.ID = "annot_vol"
-		blockArgs = append(blockArgs, blockFromAnnot)
-	}
 
 	// unikernelParams
 	unikernelParams.Block = blockArgs
@@ -607,13 +577,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	// virtiofs
-	if rootfsParams.Type == "virtiofs" {
-		// Start the virtiofsd process
-		err = spawnVirtiofsd(virtiofsdConfig, containerRootfsMountPath)
-		if err != nil {
-			return err
-		}
+	err = rfsBuilder.preStart()
+	if err != nil {
+		return err
 	}
 
 	uniklog.Debug("calling vmm execve")

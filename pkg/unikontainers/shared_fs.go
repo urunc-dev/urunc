@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/unix"
 
@@ -27,7 +28,8 @@ import (
 
 type sharedfsRootfs struct {
 	mounts      []specs.Mount
-	vfsPath     string
+	vfsdConfig  types.ExtraBinConfig
+	sharedPath  string
 	monRootfs   string
 	mountedPath string
 	sfsType     string
@@ -52,9 +54,9 @@ func (s sharedfsRootfs) postSetup() error {
 
 	if s.sfsType == "virtiofs" {
 		// Get the virtiofsd binary from host in monRootfs
-		err = fileFromHost(s.monRootfs, s.vfsPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
+		err = fileFromHost(s.monRootfs, s.vfsdConfig.Path, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
-			return fmt.Errorf("Could not bind mount %s: %w", s.vfsPath, err)
+			return fmt.Errorf("Could not bind mount %s: %w", s.vfsdConfig.Path, err)
 		}
 	}
 
@@ -73,7 +75,25 @@ func (s sharedfsRootfs) getSharedDirs() (types.SharedfsParams, error) {
 }
 
 func (s sharedfsRootfs) preStart() error {
-	return nil
+	if s.sfsType == "9pfs" {
+		return nil
+	}
+	// Start the virtiofsd process
+	args := []string{
+		"--socket-path=/tmp/vhostqemu",
+		"--shared-dir",
+		s.sharedPath,
+	}
+
+	if s.vfsdConfig.Options != "" {
+		args = append(args, strings.Fields(s.vfsdConfig.Options)...)
+	}
+
+	err := spawnProcess(s.vfsdConfig.Path, args)
+	if err != nil {
+		err = fmt.Errorf("failed to start virtiofsd: %w", err)
+	}
+	return err
 }
 
 func chooseTmpfsSize(mem uint64) string {
