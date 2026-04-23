@@ -22,11 +22,16 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/moby/sys/mount"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
+
+// TODO: Find and set the correct size for the tmpfs in the host
+const tmpfsSizeForBlockRootfs = "65536k"
 
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
@@ -253,7 +258,14 @@ func (b blockRootfs) postSetup() error {
 		}
 	}
 
-	return nil
+	err := createTmpfs(b.monRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSizeForBlockRootfs)
+	if err != nil {
+		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
+	}
+
+	return err
 }
 
 func (b blockRootfs) getBlockDevs() ([]types.BlockDevParams, error) {

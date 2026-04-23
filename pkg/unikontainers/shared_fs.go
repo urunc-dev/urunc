@@ -26,6 +26,9 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// TODO: Find and set the correct size for the tmpfs in the host
+const tmpfsSizeFor9pfsRootfs = "65536k"
+
 type sharedfsRootfs struct {
 	mounts      []specs.Mount
 	vfsdConfig  types.ExtraBinConfig
@@ -33,6 +36,7 @@ type sharedfsRootfs struct {
 	monRootfs   string
 	mountedPath string
 	sfsType     string
+	memory      uint64
 }
 
 func (s sharedfsRootfs) preSetup() error {
@@ -60,7 +64,15 @@ func (s sharedfsRootfs) postSetup() error {
 		}
 	}
 
-	return nil
+	tmpfsSize := chooseTmpfsSize(s.sfsType, s.memory)
+	err = createTmpfs(s.monRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSize)
+	if err != nil {
+		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
+	}
+
+	return err
 }
 
 func (s sharedfsRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
@@ -96,7 +108,11 @@ func (s sharedfsRootfs) preStart() error {
 	return err
 }
 
-func chooseTmpfsSize(mem uint64) string {
+func chooseTmpfsSize(sfsType string, mem uint64) string {
+	if sfsType == "9pfs" {
+		return tmpfsSizeFor9pfsRootfs
+	}
+
 	// For virtiofs, Qemu and virtiofsd are using a host file
 	// to share the VM's RAM and hence the size of this file
 	// should be the same as guest's memory. This file will

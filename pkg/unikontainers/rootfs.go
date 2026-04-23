@@ -25,6 +25,9 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// TODO: Find and set the correct size for the tmpfs in the host
+const tmpfsSizeForNoRootfs = "65536k"
+
 type rootfsBuilder interface {
 	preSetup() error
 	postSetup() error
@@ -54,7 +57,14 @@ func (n noRootfs) preSetup() error {
 }
 
 func (n noRootfs) postSetup() error {
-	return nil
+	err := createTmpfs(n.monRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSizeForNoRootfs)
+	if err != nil {
+		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
+	}
+
+	return err
 }
 
 func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {

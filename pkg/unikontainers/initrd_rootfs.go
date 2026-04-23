@@ -17,13 +17,19 @@ package unikontainers
 import (
 	"fmt"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// TODO: Find and set the correct size for the tmpfs in the host
+const tmpfsSizeForInitrdRootfs = "65536k"
+
 type initrdRootfs struct {
 	mounts             []specs.Mount
+	monRootfs          string
 	initrdHostFullPath string
 }
 
@@ -34,7 +40,14 @@ func (i initrdRootfs) preSetup() error {
 func (i initrdRootfs) postSetup() error {
 	err := initrd.CopyFileMountsToInitrd(i.initrdHostFullPath, i.mounts)
 	if err != nil {
-		err = fmt.Errorf("failed to update guest's initrd: %w", err)
+		return fmt.Errorf("failed to update guest's initrd: %w", err)
+	}
+
+	err = createTmpfs(i.monRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSizeForInitrdRootfs)
+	if err != nil {
+		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
 	}
 
 	return err
