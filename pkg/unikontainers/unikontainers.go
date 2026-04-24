@@ -136,9 +136,33 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 // creates the Unikernel base directory and
 // saves the state.json file with the current Unikernel state
 func (u *Unikontainer) InitialSetup() error {
+	bundleDir := filepath.Clean(u.State.Bundle)
+	rootfsDir := filepath.Clean(u.Spec.Root.Path)
+	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
+	if err != nil {
+		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
+		return err
+	}
+
+	// Ensure the container's rootfs has the correct propagation flag
+	// so if we unmount it later, it gets unmounted from other mount peer
+	// groups too. We do that regardless of the type of the container's
+	// rootfs (e.g. block-based, overlay) abd this is ok, because we later
+	// cut off all propagation from reexec.
+	// TODO: Move this to the shim, when we finally make it.
+	err = unix.Mount("", rootfsDir, "", unix.MS_SHARED|unix.MS_REC, "")
+	if err != nil && !errors.Is(err, unix.EINVAL) {
+		// An EINVAL error is fine, because it means that the
+		// rootfs is not really a mountpoint. This could be the case when
+		// using urunc directly from its cli and the rootfs is a normal
+		// directory
+		uniklog.Errorf("could not set propagation flag as shared for container's rootfs: %v", err)
+		return err
+	}
+
 	u.State.Status = specs.StateCreating
 	// FIXME: should we really create this base dir
-	err := os.MkdirAll(u.BaseDir, 0o755)
+	err = os.MkdirAll(u.BaseDir, 0o755)
 	if err != nil {
 		return err
 	}
