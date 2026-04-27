@@ -216,7 +216,7 @@ sudo systemctl restart containerd
 
 Verify that the devmapper snapshotter is properly configured with:
 
-```bash
+```console
 $ sudo ctr plugin ls | grep devmapper
 io.containerd.snapshotter.v1              devmapper                linux/amd64    ok
 ```
@@ -275,7 +275,7 @@ sudo systemctl restart containerd
 
 Verify that the blockfile snapshotter is properly configured with:
 
-```bash
+```console
 $ sudo ctr plugin ls | grep blockfile
    io.containerd.snapshotter.v1           blockfile               linux/amd64    ok
 ```

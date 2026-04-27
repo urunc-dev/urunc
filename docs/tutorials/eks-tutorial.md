@@ -195,7 +195,7 @@ bash get_pub_subnets.sh
 ```
 
 Example output:
-```
+```console
 subnet-02bcaca5ac39eca7a,subnet-0d0667e2156169998
 ```
 #### Create the EKS Cluster with Calico CNI
@@ -219,7 +219,7 @@ eksctl create cluster \
 ```
 
 Example output:
-```
+```console
 2 sequential tasks: { create cluster control plane "urunc-tutorial", wait for control plane to become ready
 }
 2025-04-02 12:29:16 [ℹ]  building cluster stack "eksctl-urunc-tutorial-cluster"
@@ -245,7 +245,7 @@ kubectl delete daemonset -n kube-system aws-node
 ```
 
 Expected output:
-```
+```console
 daemonset.apps "aws-node" deleted
 ```
 
@@ -259,7 +259,7 @@ kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v[[ ver
 > the above command. If it does, try to re-issue the command.
 
 Expected output:
-```
+```console
 namespace/tigera-operator created
 customresourcedefinition.apiextensions.k8s.io/bgpconfigurations.crd.projectcalico.org created
 customresourcedefinition.apiextensions.k8s.io/bgpfilters.crd.projectcalico.org created
@@ -307,7 +307,7 @@ EOF
 
 Expected output:
 
-```
+```console
 installation.operator.tigera.io/default created
 ```
 
@@ -365,7 +365,7 @@ EOF
 ```
 
 Example output:
-```
+```console
 2025-04-02 12:39:44 [ℹ]  will use version 1.30 for new nodegroup(s) based on control plane version
 2025-04-02 12:39:46 [!]  "aws-node" was not found
 2025-04-02 12:39:48 [ℹ]  nodegroup "a1-metal-cni" will use "ami-0eb5f4a5031f47d7b" [Ubuntu2204/1.30]
@@ -454,7 +454,7 @@ done
 
 We have successfully setup the cluster. Let's see what we have using a simple `kubectl get pods -o wide -A`:
 
-```
+```console
 NAMESPACE         NAME                                       READY   STATUS    RESTARTS   AGE     IP                NODE                                               NOMINATED NODE   READINESS GATES
 calico-system     calico-kube-controllers-64cf794c44-jnggx   1/1     Running   0          3m52s   172.16.50.196     ip-192-168-32-137.eu-central-1.compute.internal    <none>           <none>
 calico-system     calico-node-xcqrj                          1/1     Running   0          3m47s   192.168.32.137    ip-192-168-32-137.eu-central-1.compute.internal    <none>           <none>
@@ -519,7 +519,7 @@ kubectl get pods -o wide
 ```
 
 Example output:
-```
+```console
 NAME                           READY   STATUS    RESTARTS   AGE     IP                NODE                                               NOMINATED NODE   READINESS GATES
 nginx-stock-7d54d66484-k9rj5   1/1     Running   0          42s     172.16.50.197     ip-192-168-32-137.eu-central-1.compute.internal    <none>           <none>
 nginx-stock-7d54d66484-nn696   1/1     Running   0          42s     172.16.139.2      ip-192-168-103-211.eu-central-1.compute.internal   <none>           <none>
@@ -532,13 +532,13 @@ kubectl run tmp-shell --rm -i --tty --image nicolaka/netshoot -- /bin/bash
 ```
 
 Expected output:
-```
+```console
 If you don't see a command prompt, try pressing enter.
 tmp-shell:~# 
 ```
 
 If we issue a simple `curl` command to one of the pods IPs, we should get a response from the NGINX server:
-```
+```console
 tmp-shell:~# curl 172.16.139.2
 <!DOCTYPE html>
 <html>
@@ -609,7 +609,7 @@ kubectl logs -f -n kube-system -l name=urunc-deploy
 ```
 
 Example output:
-```
+```console
 Installing qemu
 Installing solo5-hvt
 Installing solo5-spt
@@ -688,14 +688,14 @@ Issuing the command below:
 kubectl apply -f nginx-urunc.yaml
 ```
 will produce the following output:
-```
+```console
 deployment.apps/nginx-urunc created
 service/nginx-urunc created
 ```
 and will create a deployment of an NGINX unikernel, from the container image pushed at `harbor.nbfc.io/nubificus/urunc/nginx-hvt-rumprun-block:latest`
 
 Inspecting the pods with `kubectl get pods -o wide` reveals the status:
-```
+```console
 default           nginx-urunc-998b889c4-x798f                1/1     Running             0          2s      172.16.50.225     ip-192-168-32-137.eu-central-1.compute.internal    <none>           <none>
 ```
 
@@ -705,14 +705,14 @@ and following up on the previous test, we do:
 kubectl run tmp-shell --rm -i --tty --image nicolaka/netshoot -- /bin/bash
 ```
 To get a shell in a pod in the cluster:
-```
+```console
 If you don't see a command prompt, try pressing enter.
 tmp-shell:~# 
 ```
 
 and we `curl` the pod's IP:
 
-```
+```console
 tmp-shell:~# curl 172.16.50.225
 <html>
 <body style="font-size: 14pt;">
