@@ -74,8 +74,6 @@ theme:
 
   features:
     - navigation.instant
-    - navigation.sections
-    - navigation.expand
     - content.code.copy
 
 markdown_extensions:
