@@ -288,7 +288,6 @@ jobs:
 
     - name: Prepare urunc folder
       id: prepare
-      if: ${{ !cancelled() }}
       run: |
         export GOROOT=$(go env GOROOT)
         export PATH="$GOROOT/bin:$PATH"
@@ -298,7 +297,6 @@ jobs:
 
     - name: Run ${{ matrix.test }}
       id: test
-      if: ${{ !cancelled() }}
       run: |
         # Set up Go environment properly
         export GOROOT=$(go env GOROOT)
