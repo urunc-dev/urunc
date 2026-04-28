@@ -62,14 +62,16 @@ func copyFile(sourceFile string, targetPath string) error {
 	if err != nil {
 		return err
 	}
-	defer target.Close()
 
 	_, err = io.Copy(target, source)
+	
+	closeErr := target.Close()
+	
 	if err != nil {
 		return err
 	}
-
-	return nil
+	
+	return closeErr
 }
 
 // move sourceFile to targetDir
