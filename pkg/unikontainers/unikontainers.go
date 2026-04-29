@@ -178,7 +178,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
 	}
 
-	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	networkInfo, err := netManager.NetworkSetup(u.State.ID, u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		// TODO: Handle this case better. We do not need to show an error
 		// since there was no network in the container. Therefore, we
@@ -586,7 +586,11 @@ func (u *Unikontainer) Kill() error {
 		return err
 	}
 
-	err = network.CleanupAllUruncTaps()
+	tapName := network.TapNameForID(u.State.ID)
+	if u.getNetworkType() == "static" {
+		tapName = network.TapNameForID("")
+	}
+	err = network.CleanupUruncTap(tapName)
 	if err != nil {
 		uniklog.Errorf("failed to cleanup tap devices: %v", err)
 	}

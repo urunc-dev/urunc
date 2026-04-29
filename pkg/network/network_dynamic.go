@@ -16,30 +16,19 @@ package network
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 )
 
 type DynamicNetwork struct {
 }
 
-// NetworkSetup checks if any tap device is available in the current netns. If it is, it assumes a running unikernel
-// is present in the current netns and returns an error, because network functionality for more than one unikernels
-// is not yet implemented.
-// If no TAP devices are available in the current netns, it creates a new tap device and
-// sets TC rules between the veth interface and the tap device inside the namespace.
-//
-// FIXME: CUrrently only one tap device per netns can provide functional networking. We need to find a proper way to handle networking
-// for multiple unikernels in the same pod/network namespace.
-// See: https://github.com/urunc-dev/urunc/issues/13
-func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
+// NetworkSetup creates a TAP device owned by this container and wires it to
+// the container namespace interface.
+func (n DynamicNetwork) NetworkSetup(containerID string, uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
 	tapIndex, err := getTapIndex()
 	if err != nil {
 		return nil, fmt.Errorf("getTapIndex failed: %w", err)
 	}
-	if tapIndex > 0 {
-		return nil, fmt.Errorf("unsupported operation: can't spawn multiple unikernels in the same network namespace")
-	}
+	netlog.Debugf("found %d existing urunc tap device(s)", tapIndex)
 
 	redirectLink, err := discoverContainerIface()
 	if err != nil {
@@ -47,7 +36,7 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 	}
 	netlog.Debugf("found interface %s (index=%d)", redirectLink.Attrs().Name, redirectLink.Attrs().Index)
 
-	newTapName := strings.ReplaceAll(DefaultTap, "X", strconv.Itoa(tapIndex))
+	newTapName := TapNameForID(containerID)
 	netlog.Debugf("creating tap device %s", newTapName)
 
 	newTapDevice, err := networkSetup(newTapName, "", redirectLink, true, uid, gid)

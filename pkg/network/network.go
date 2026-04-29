@@ -17,6 +17,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"regexp"
 	"strings"
@@ -28,17 +29,23 @@ import (
 )
 
 const (
-	DefaultTap = "tapX_urunc"
+	DefaultTap        = "tapX_urunc"
+	defaultTapPattern = `^tap\d+_urunc$`
 )
 
 var netlog = logrus.WithField("subsystem", "network")
+
+var (
+	defaultTapRe = regexp.MustCompile(defaultTapPattern)
+	hashedTapRe  = regexp.MustCompile(`^tap[0-9a-f]{8}_ur$`)
+)
 
 type UnikernelNetworkInfo struct {
 	TapDevice string
 	EthDevice Interface
 }
 type Manager interface {
-	NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error)
+	NetworkSetup(containerID string, uid uint32, gid uint32) (*UnikernelNetworkInfo, error)
 }
 
 type Interface struct {
@@ -62,6 +69,19 @@ func NewNetworkManager(networkType string) (Manager, error) {
 	}
 }
 
+func TapNameForID(containerID string) string {
+	if containerID == "" {
+		return strings.ReplaceAll(DefaultTap, "X", "0")
+	}
+
+	sum := crc32.ChecksumIEEE([]byte(containerID))
+	return fmt.Sprintf("tap%08x_ur", sum)
+}
+
+func isUruncTapName(name string) bool {
+	return defaultTapRe.MatchString(name) || hashedTapRe.MatchString(name)
+}
+
 func getTapIndex() (int, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -69,7 +89,7 @@ func getTapIndex() (int, error) {
 	}
 	tapCount := 0
 	for _, iface := range ifaces {
-		if strings.Contains(iface.Name, "tap") {
+		if isUruncTapName(iface.Name) {
 			tapCount++
 		}
 	}
@@ -184,6 +204,20 @@ func addIngressQdisc(link netlink.Link) error {
 	return netlink.QdiscAdd((ingress))
 }
 
+func ensureIngressQdisc(link netlink.Link) error {
+	qdiscs, err := netlink.QdiscList(link)
+	if err != nil {
+		return err
+	}
+	for _, qdisc := range qdiscs {
+		attrs := qdisc.Attrs()
+		if attrs.Parent == netlink.HANDLE_INGRESS && attrs.LinkIndex == link.Attrs().Index {
+			return nil
+		}
+	}
+	return addIngressQdisc(link)
+}
+
 func addRedirectFilter(source netlink.Link, target netlink.Link) error {
 	return netlink.FilterAdd(&netlink.U32{
 		FilterAttrs: netlink.FilterAttrs{
@@ -230,11 +264,11 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	if addTCRules {
 		netlog.Debug("adding tc ingress qdisc + redirect filters")
 
-		if err = addIngressQdisc(newTapDevice); err != nil {
+		if err = ensureIngressQdisc(newTapDevice); err != nil {
 			return nil, fmt.Errorf("addIngressQdisc(tap=%s) failed: %w",
 				newTapDevice.Attrs().Name, err)
 		}
-		if err = addIngressQdisc(redirectLink); err != nil {
+		if err = ensureIngressQdisc(redirectLink); err != nil {
 			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
 				redirectLink.Attrs().Name, err)
 		}
@@ -280,37 +314,90 @@ func CleanupAllUruncTaps() error {
 	}
 
 	var retErr error
-	tapRe := regexp.MustCompile(`^tap\d+_urunc$`)
+	redirectLink, err := discoverContainerIface()
+	if err != nil {
+		netlog.Debugf("could not find redirect interface during cleanup: %v", err)
+	}
 	for _, link := range links {
 		attrs := link.Attrs()
 		if attrs == nil {
 			continue
 		}
 		name := attrs.Name
-		if !tapRe.MatchString(name) {
+		if !isUruncTapName(name) {
 			continue
 		}
 
-		netlog.Debugf("cleaning up tap device %s", name)
-		var devErr error
-		if err := deleteAllTCFilters(link); err != nil {
-			netlog.Errorf("failed to delete TC filters for %s: %v", name, err)
-			devErr = errors.Join(devErr, err)
-		}
-		if err := deleteAllQDiscs(link); err != nil {
-			netlog.Errorf("failed to delete qdiscs for %s: %v", name, err)
-			devErr = errors.Join(devErr, err)
-		}
-		if err := deleteTapDevice(link); err != nil {
-			netlog.Errorf("failed to delete tap %s: %v", name, err)
-			devErr = errors.Join(devErr, err)
-		}
-		if devErr == nil {
-			netlog.Debugf("deleted tap device %s", name)
-		}
-		retErr = errors.Join(retErr, devErr)
+		retErr = errors.Join(retErr, cleanupUruncTap(link, redirectLink))
 	}
 
+	if retErr == nil {
+		retErr = errors.Join(retErr, cleanupRedirectQdiscIfUnused(redirectLink))
+	}
+	return retErr
+}
+
+func CleanupUruncTap(tapName string) error {
+	if tapName == "" {
+		return nil
+	}
+	if !isUruncTapName(tapName) {
+		return fmt.Errorf("refusing to clean non-urunc tap device %s", tapName)
+	}
+
+	handle, err := netlink.NewHandle()
+	if err != nil {
+		return fmt.Errorf("failed to get netlink handle: %w", err)
+	}
+	defer handle.Close()
+
+	link, err := handle.LinkByName(tapName)
+	if err != nil {
+		var notFound netlink.LinkNotFoundError
+		if errors.As(err, &notFound) {
+			return nil
+		}
+		return fmt.Errorf("failed to find tap %s: %w", tapName, err)
+	}
+
+	redirectLink, err := discoverContainerIface()
+	if err != nil {
+		netlog.Debugf("could not find redirect interface during cleanup: %v", err)
+	}
+
+	err = cleanupUruncTap(link, redirectLink)
+	if err != nil {
+		return err
+	}
+	return cleanupRedirectQdiscIfUnused(redirectLink)
+}
+
+func cleanupUruncTap(tapLink netlink.Link, redirectLink netlink.Link) error {
+	name := tapLink.Attrs().Name
+	netlog.Debugf("cleaning up tap device %s", name)
+
+	var retErr error
+	if err := deleteTapFilters(tapLink); err != nil {
+		netlog.Errorf("failed to delete TC filters for %s: %v", name, err)
+		retErr = errors.Join(retErr, err)
+	}
+	if redirectLink != nil {
+		if err := deleteRedirectFiltersForTap(redirectLink, tapLink.Attrs().Index); err != nil {
+			netlog.Errorf("failed to delete redirect filters for %s: %v", name, err)
+			retErr = errors.Join(retErr, err)
+		}
+	}
+	if err := deleteIngressQdisc(tapLink); err != nil {
+		netlog.Errorf("failed to delete qdisc for %s: %v", name, err)
+		retErr = errors.Join(retErr, err)
+	}
+	if err := deleteTapDevice(tapLink); err != nil {
+		netlog.Errorf("failed to delete tap %s: %v", name, err)
+		retErr = errors.Join(retErr, err)
+	}
+	if retErr == nil {
+		netlog.Debugf("deleted tap device %s", name)
+	}
 	return retErr
 }
 
@@ -387,46 +474,70 @@ func discoverContainerIface() (netlink.Link, error) {
 	return nil, errors.New("no suitable network interface found in namespace")
 }
 
-func deleteAllQDiscs(device netlink.Link) error {
-	err := deleteIngressQdisc(device)
-	if err != nil {
-		return err
+func cleanupRedirectQdiscIfUnused(redirectLink netlink.Link) error {
+	if redirectLink == nil {
+		return nil
 	}
-	device, err = discoverContainerIface()
-	if err != nil {
-		return err
+
+	if hasUruncTap() {
+		return nil
 	}
-	err = deleteIngressQdisc(device)
-	if err != nil {
-		return err
-	}
-	return nil
+	return deleteIngressQdisc(redirectLink)
 }
 
-func deleteAllTCFilters(device netlink.Link) error {
-	var allFilters []netlink.Filter
-	parent := uint32(netlink.HANDLE_ROOT)
-	tapFilters, err := netlink.FilterList(device, parent)
+func hasUruncTap() bool {
+	ifaces, err := net.Interfaces()
 	if err != nil {
-		return err
+		netlog.Debugf("failed to list interfaces while checking urunc taps: %v", err)
+		return true
 	}
-	allFilters = append(allFilters, tapFilters...)
-	device, err = discoverContainerIface()
-	if err != nil {
-		return err
-	}
-	ethFilters, err := netlink.FilterList(device, parent)
-	if err != nil {
-		return err
-	}
-	allFilters = append(allFilters, ethFilters...)
-	for _, filter := range allFilters {
-		err = netlink.FilterDel(filter)
-		if err != nil {
-			return err
+	for _, iface := range ifaces {
+		if isUruncTapName(iface.Name) {
+			return true
 		}
 	}
-	return nil
+	return false
+}
+
+func deleteTapFilters(device netlink.Link) error {
+	filters, err := netlink.FilterList(device, uint32(netlink.HANDLE_ROOT))
+	if err != nil {
+		return err
+	}
+	var retErr error
+	for _, filter := range filters {
+		retErr = errors.Join(retErr, netlink.FilterDel(filter))
+	}
+	return retErr
+}
+
+func filterRedirectsTo(filter netlink.Filter, ifindex int) bool {
+	u32, ok := filter.(*netlink.U32)
+	if !ok {
+		return false
+	}
+	for _, action := range u32.Actions {
+		mirred, ok := action.(*netlink.MirredAction)
+		if ok && mirred.Ifindex == ifindex {
+			return true
+		}
+	}
+	return false
+}
+
+func deleteRedirectFiltersForTap(device netlink.Link, tapIndex int) error {
+	filters, err := netlink.FilterList(device, uint32(netlink.HANDLE_ROOT))
+	if err != nil {
+		return err
+	}
+	var retErr error
+	for _, filter := range filters {
+		if !filterRedirectsTo(filter, tapIndex) {
+			continue
+		}
+		retErr = errors.Join(retErr, netlink.FilterDel(filter))
+	}
+	return retErr
 }
 
 func deleteTapDevice(device netlink.Link) error {

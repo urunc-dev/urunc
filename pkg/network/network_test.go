@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/vishvananda/netlink"
 )
 
 func TestNewNetworkManager(t *testing.T) {
@@ -55,4 +56,55 @@ func TestNewNetworkManager(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTapNameForID(t *testing.T) {
+	t.Parallel()
+
+	first := TapNameForID("container-a")
+	second := TapNameForID("container-b")
+
+	assert.NotEqual(t, first, second)
+	assert.True(t, isUruncTapName(first))
+	assert.True(t, isUruncTapName(second))
+	assert.LessOrEqual(t, len(first), 15)
+	assert.Equal(t, first, TapNameForID("container-a"))
+	assert.Equal(t, "tap0_urunc", TapNameForID(""))
+}
+
+func TestIsUruncTapName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "tap0_urunc", want: true},
+		{name: "tap15_urunc", want: true},
+		{name: "tapabcd1234_ur", want: true},
+		{name: "tap0", want: false},
+		{name: "tap0_other", want: false},
+		{name: "eth0", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, isUruncTapName(tt.name))
+		})
+	}
+}
+
+func TestFilterRedirectsTo(t *testing.T) {
+	t.Parallel()
+
+	filter := &netlink.U32{
+		Actions: []netlink.Action{
+			&netlink.MirredAction{Ifindex: 7},
+		},
+	}
+
+	assert.True(t, filterRedirectsTo(filter, 7))
+	assert.False(t, filterRedirectsTo(filter, 8))
+	assert.False(t, filterRedirectsTo(&netlink.BpfFilter{}, 7))
 }
