@@ -560,10 +560,35 @@ func setupUser(user specs.User) error {
 // Kill stops the VMM process, first by asking the VMM struct to stop
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {
+	// joinSandboxNetNs uses setns(CLONE_NEWNET), which mutates the netns of
+	// the calling OS thread only. Without locking the goroutine to its OS
+	// thread, the Go scheduler can migrate us to another M between the join
+	// and the netlink-backed CleanupAllUruncTaps call, causing the cleanup
+	// to run in the wrong network namespace and silently leak the sandbox's
+	// tapN_urunc devices, ingress qdiscs, and tc redirect filters.
+	// We also snapshot the original netns and restore it before unlocking,
+	// so the locked thread is not handed back to the runtime pool while
+	// still pointing at the sandbox netns.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	hostNsFd, err := unix.Open("/proc/self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("failed to snapshot current netns: %w", err)
+	}
+	defer func() {
+		if setnsErr := unix.Setns(hostNsFd, unix.CLONE_NEWNET); setnsErr != nil {
+			uniklog.Errorf("failed to restore original netns: %v", setnsErr)
+		}
+		if closeErr := unix.Close(hostNsFd); closeErr != nil {
+			uniklog.Errorf("failed to close netns fd: %v", closeErr)
+		}
+	}()
+
 	// Try to join the Network namespace of the monitor before killing it.
 	// If we kill it there might be no process inside the namespace and hence
 	// the namespace gets destroyed.
-	err := u.joinSandboxNetNs()
+	err = u.joinSandboxNetNs()
 	if err != nil {
 		if errors.Is(err, ErrNotExistingNS) {
 			// There is no network namespace to join.
