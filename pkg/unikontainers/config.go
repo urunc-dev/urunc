@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
@@ -62,16 +63,25 @@ type UnikernelConfig struct {
 
 // validate checks if the mandatory configuration fields are present.
 func (c *UnikernelConfig) validate() error {
-	if c.UnikernelType == "" {
-		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotType)
-	}
-	if c.Hypervisor == "" {
-		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotHypervisor)
-	}
-	if c.UnikernelBinary == "" {
-		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotBinary)
+	missingFields := c.missingMandatoryFields()
+	if len(missingFields) > 0 {
+		return fmt.Errorf("unikernel configuration is missing mandatory field(s): %s", strings.Join(missingFields, ", "))
 	}
 	return nil
+}
+
+func (c *UnikernelConfig) missingMandatoryFields() []string {
+	var missingFields []string
+	if c.UnikernelType == "" {
+		missingFields = append(missingFields, annotType)
+	}
+	if c.Hypervisor == "" {
+		missingFields = append(missingFields, annotHypervisor)
+	}
+	if c.UnikernelBinary == "" {
+		missingFields = append(missingFields, annotBinary)
+	}
+	return missingFields
 }
 
 // GetUnikernelConfig tries to get the Unikernel config from the bundle annotations.
@@ -90,8 +100,14 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 		if err := conf.decode(); err != nil {
 			return nil, err
 		}
+		uniklog.WithField("source", "spec").Debug("using urunc config from OCI annotations")
 		return conf, nil
 	}
+	uniklog.WithError(err).WithFields(logrus.Fields{
+		"source":         "spec",
+		"fallback":       uruncJSONFilename,
+		"missing_fields": conf.missingMandatoryFields(),
+	}).Debug("urunc annotations are incomplete, trying fallback config")
 
 	rootFSDir := spec.Root.Path
 	var jsonFilePath string
@@ -113,6 +129,7 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 	if err := jsonConf.decode(); err != nil {
 		return nil, err
 	}
+	uniklog.WithField("source", uruncJSONFilename).Debug("using urunc config from fallback file")
 	return jsonConf, nil
 }
 

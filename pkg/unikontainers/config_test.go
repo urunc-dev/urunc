@@ -68,6 +68,8 @@ func TestGetConfigFromSpec(t *testing.T) {
 		err := config.validate()
 		assert.Error(t, err, "Expected validation to fail for an empty config")
 		assert.ErrorContains(t, err, annotType, "Expected error to mention missing type field")
+		assert.ErrorContains(t, err, annotHypervisor, "Expected error to mention missing hypervisor field")
+		assert.ErrorContains(t, err, annotBinary, "Expected error to mention missing binary field")
 	})
 
 	t.Run("get config from spec with partial (invalid) annotations", func(t *testing.T) {
@@ -87,6 +89,28 @@ func TestGetConfigFromSpec(t *testing.T) {
 		err := config.validate()
 		assert.Error(t, err, "Expected validation to fail for a partial config")
 		assert.ErrorContains(t, err, annotHypervisor, "Expected error to mention missing hypervisor field")
+	})
+}
+
+func TestMissingMandatoryFields(t *testing.T) {
+	t.Run("all required fields present", func(t *testing.T) {
+		t.Parallel()
+		config := &UnikernelConfig{
+			UnikernelType:   "type1",
+			Hypervisor:      "hypervisor1",
+			UnikernelBinary: "binary1",
+		}
+
+		assert.Empty(t, config.missingMandatoryFields())
+	})
+
+	t.Run("partial required fields", func(t *testing.T) {
+		t.Parallel()
+		config := &UnikernelConfig{
+			UnikernelType: "type1",
+		}
+
+		assert.Equal(t, []string{annotHypervisor, annotBinary}, config.missingMandatoryFields())
 	})
 }
 

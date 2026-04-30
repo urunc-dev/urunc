@@ -80,6 +80,11 @@ container's rootfs. The file should be named `urunc.json`, it should be
 placed in the root directory of the container's rootfs and it should have a JSON
 format with the above information, where the values are base64 encoded.
 
+When the required annotations are missing or incomplete, `urunc` logs the
+missing fields and then tries to load the configuration from `urunc.json`.
+This can help identify runtime setups where image annotations are not reaching
+the OCI runtime.
+
 ## Tools to construct OCI images with `urunc`'s annotations
 
 As previously mentioned we currently provide 2 different tools to build and
