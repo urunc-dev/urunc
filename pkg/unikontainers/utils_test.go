@@ -25,6 +25,60 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestAtomicWriteFile(t *testing.T) {
+	t.Run("writes file atomically", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		target := filepath.Join(tmpDir, "state.json")
+		data := []byte(`{"status":"running"}`)
+
+		err := atomicWriteFile(target, data, 0o644)
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(target)
+		assert.NoError(t, err)
+		assert.Equal(t, data, content)
+	})
+
+	t.Run("overwrites existing file", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		target := filepath.Join(tmpDir, "state.json")
+
+		err := os.WriteFile(target, []byte("old"), 0o600)
+		assert.NoError(t, err)
+
+		newData := []byte("new content")
+		err = atomicWriteFile(target, newData, 0o644)
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(target)
+		assert.NoError(t, err)
+		assert.Equal(t, newData, content)
+	})
+
+	t.Run("no temp file left on success", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		target := filepath.Join(tmpDir, "state.json")
+
+		err := atomicWriteFile(target, []byte("data"), 0o644)
+		assert.NoError(t, err)
+
+		tmpFile := filepath.Join(tmpDir, ".state.json.tmp")
+		_, err = os.Stat(tmpFile)
+		assert.True(t, os.IsNotExist(err), "Temp file should not exist after successful write")
+	})
+
+	t.Run("fails on invalid directory", func(t *testing.T) {
+		t.Parallel()
+		target := filepath.Join("/nonexistent/dir", "state.json")
+
+		err := atomicWriteFile(target, []byte("data"), 0o644)
+		assert.Error(t, err)
+	})
+}
+
 func TestWritePidFile(t *testing.T) {
 	tmpDir := t.TempDir() // Create a temporary directory for the test
 	pidFilePath := filepath.Join(tmpDir, "test.pid")
