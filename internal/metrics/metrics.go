@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -51,21 +52,23 @@ func (z *zerologMetrics) SetLoggerContainerID(containerID string) {
 	z.containerID = containerID
 }
 
-// NewZerologMetrics creates a Writer that logs timestamps for a single container
-func NewZerologMetrics(enabled bool, target string, containerID string) Writer {
+// NewZerologMetrics creates a Writer that logs timestamps for a single container.
+// On file open failure it returns a no-op mockWriter and an error, allowing the
+// caller to log or handle the error as appropriate.
+func NewZerologMetrics(enabled bool, target string, containerID string) (Writer, error) {
 	if enabled {
 		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixNano
 		file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
-			return nil
+			return &mockWriter{}, fmt.Errorf("failed to open metrics file %s: %w", target, err)
 		}
 		logger := zerolog.New(file).Level(zerolog.InfoLevel).With().Timestamp().Logger()
 		return &zerologMetrics{
 			logger:      &logger,
 			containerID: containerID,
-		}
+		}, nil
 	}
-	return &mockWriter{}
+	return &mockWriter{}, nil
 }
 
 type mockWriter struct{}
