@@ -113,6 +113,7 @@ func main() {
 			deleteCommand,
 			killCommand,
 			runCommand,
+			psCommand,
 			// specCommand,
 			startCommand,
 			// stateCommand,
