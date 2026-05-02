@@ -18,6 +18,7 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
+	"github.com/sirupsen/logrus"
 )
 
 type Writer interface {
@@ -57,7 +58,12 @@ func NewZerologMetrics(enabled bool, target string, containerID string) Writer {
 		zerolog.TimeFieldFormat = zerolog.TimeFormatUnixNano
 		file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
-			return nil
+			// Fall back to a no-op writer instead of returning nil; the
+			// caller assigns this directly to a global used via
+			// metrics.Capture() in 19+ sites and a nil receiver would crash
+			// urunc on the next event. The user gets a warning instead.
+			logrus.Warnf("metrics: failed to open %s: %v; metrics disabled", target, err)
+			return &mockWriter{}
 		}
 		logger := zerolog.New(file).Level(zerolog.InfoLevel).With().Timestamp().Logger()
 		return &zerologMetrics{
