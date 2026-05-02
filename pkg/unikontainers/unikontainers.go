@@ -682,6 +682,7 @@ func (u Unikontainer) joinSandboxNetNs() error {
 	if err != nil {
 		return fmt.Errorf("error opening namespace path: %w", err)
 	}
+	defer unix.Close(fd)
 	err = unix.Setns(int(fd), unix.CLONE_NEWNET)
 	if err != nil {
 		return fmt.Errorf("error joining namespace: %w", err)
