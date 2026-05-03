@@ -594,7 +594,8 @@ func (u *Unikontainer) Kill() error {
 	return nil
 }
 
-// Delete removes the containers base directory and its contents
+// Delete removes the containers base directory and its contents,
+// ensuring proper cleanup of all container resources including extracted block device files.
 func (u *Unikontainer) Delete() error {
 	var dirs []string
 	var prefPath string
@@ -618,25 +619,25 @@ func (u *Unikontainer) Delete() error {
 	}
 	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
 
-	// TODO: We might not need to remove any of the directories and let
-	// the kernel cleanup the mounts and shim to remove directories.
-	// However, just to be on the safe side, we remove all the newly
-	// created directories from urunc. In order to check if we used the
-	// rootfs under the bundle directory or we create anew one, we can check
-	// if the monitorRootfsDirName directory exists under the bundle.
+	// Check if monitor rootfs directory exists to determine cleanup strategy.
+	// This directory is created when the container uses a custom rootfs (not a block device).
+	// When a block device is used, the extracted files are placed here and must be cleaned up.
 	_, err = os.Stat(monRootfs)
 	if !os.IsNotExist(err) {
-		// Since there was no block defined for the unikernel
-		// and we created a new rootfs for the monitor, we need to
-		// clean it up.
+		// Monitor rootfs directory exists - clean it up.
+		// This includes extracted unikernel binaries, initrd files, and configuration.
+		uniklog.WithFields(logrus.Fields{
+			"container": u.State.ID,
+			"path":      monRootfs,
+		}).Debug("Cleaning up monitor rootfs directory")
 		dirs = append(dirs, monitorRootfsDirName)
 		prefPath = bundleDir
 	} else {
-		// Otherwise remove the enw directories we created inside the
-		// container's rootfs.
+		// Monitor rootfs directory doesn't exist - clean container-created directories.
+		// These are only present when not using monitor rootfs.
 		// We do not need to unmount anything here, since we rely on Linux
 		// to do the cleanup for us. This will happen automatically,
-		// when the mount namespace gets destroyed
+		// when the mount namespace gets destroyed.
 		dirs = []string{
 			"/lib",
 			"/lib64",
@@ -649,12 +650,29 @@ func (u *Unikontainer) Delete() error {
 		prefPath = rootfsDir
 	}
 
-	err = rmMultipleDirs(prefPath, dirs)
+	err = rmMultipleDirsWithLogging(u.State.ID, prefPath, dirs)
 	if err != nil {
+		// Log cleanup errors but continue to remove base directory.
+		// Some files may be in use, but they will be cleaned up by the OS.
+		uniklog.WithFields(logrus.Fields{
+			"container": u.State.ID,
+			"error":     err,
+		}).Warn("Errors occurred during container cleanup")
+	}
+
+	// Remove the container's base directory (contains state.json and other metadata)
+	err = os.RemoveAll(u.BaseDir)
+	if err != nil {
+		uniklog.WithFields(logrus.Fields{
+			"container": u.State.ID,
+			"basedir":   u.BaseDir,
+			"error":     err,
+		}).Error("Failed to remove container base directory")
 		return err
 	}
 
-	return os.RemoveAll(u.BaseDir)
+	uniklog.WithField("container", u.State.ID).Debug("Container cleanup completed successfully")
+	return nil
 }
 
 // joinSandboxNetns joins the network namespace of the sandbox

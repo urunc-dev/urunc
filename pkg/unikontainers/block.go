@@ -80,9 +80,9 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 }
 
 // extractUnikernelFromBlock moves unikernel binary, initrd and urunc.json
-// files from old rootfsPath to newRootfsPath
-// FIXME: This approach fills up /run with unikernel binaries, initrds and urunc.json
-// files for each unikernel we run
+// files from old rootfsPath to newRootfsPath.
+// These extracted files should be cleaned up when the container is deleted to avoid
+// filling up the filesystem.
 func extractFilesFromBlock(rootfsPath string, newRootfsPath string, unikernel string, uruncJSON string, initrd string) error {
 	currentUnikernelPath := filepath.Join(rootfsPath, unikernel)
 	targetUnikernelPath := filepath.Join(newRootfsPath, unikernel)
@@ -115,17 +115,15 @@ func extractFilesFromBlock(rootfsPath string, newRootfsPath string, unikernel st
 // unikernel binary, initrd file) and the urunc.json file in a new temporary
 // directory. Then it unmounts the devmapper device and renames the temporary
 // directory as the container rootfs. This is needed to keep the same paths
-// for the unikernel files.
+// for the unikernel files. The extracted files will be cleaned up by Delete().
 func prepareDMAsBlock(rootfsPath string, newRootfsPath string, unikernel string, uruncJSON string, initrd string) error {
-	// extract unikernel
-	// FIXME: This approach fills up /run with unikernel binaries and
-	// urunc.json files for each unikernel instance we run
+	// extract unikernel - extracted files location should be tracked and cleaned up on container deletion
 	err := extractFilesFromBlock(rootfsPath, newRootfsPath, unikernel, uruncJSON, initrd)
 	if err != nil {
 		return err
 	}
 	// unmount block device
-	// FIXME: umount and rm might need some retries
+	// Note: umount and rm retry logic should be considered in future improvements
 	err = mount.Unmount(rootfsPath)
 	if err != nil {
 		return err

@@ -31,6 +31,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/sirupsen/logrus"
 	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -311,6 +312,36 @@ func rmMultipleDirs(prefixPath string, dirs []string) error {
 		if err := os.RemoveAll(path); err != nil {
 			return fmt.Errorf("cannot remove %s: %w", d, err)
 		}
+	}
+
+	return nil
+}
+
+// rmMultipleDirsWithLogging removes multiple directories and collects errors,
+// logging them without failing fast. This ensures best-effort cleanup of all directories.
+func rmMultipleDirsWithLogging(containerID string, prefixPath string, dirs []string) error {
+	var cleanupErrors []string
+
+	for _, d := range dirs {
+		path := filepath.Join(prefixPath, d)
+		uniklog.WithFields(logrus.Fields{
+			"container": containerID,
+			"path":      path,
+		}).Debug("Removing directory")
+
+		if err := os.RemoveAll(path); err != nil {
+			errMsg := fmt.Sprintf("failed to remove %s: %v", d, err)
+			cleanupErrors = append(cleanupErrors, errMsg)
+			uniklog.WithFields(logrus.Fields{
+				"container": containerID,
+				"path":      path,
+				"error":     err,
+			}).Warn("Directory removal failed")
+		}
+	}
+
+	if len(cleanupErrors) > 0 {
+		return fmt.Errorf("cleanup errors: %v", cleanupErrors)
 	}
 
 	return nil
