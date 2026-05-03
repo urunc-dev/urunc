@@ -656,6 +656,17 @@ func setupUser(user specs.User) error {
 	return nil
 }
 
+// Signal sends a specified signal to container's init.
+func (u *Unikontainer) Signal(signal unix.Signal) error {
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
+	if err != nil {
+		return err
+	}
+
+	return vmm.Signal(u.State.Pid, signal)
+}
+
 // Kill stops the VMM process, first by asking the VMM struct to stop
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {

@@ -15,6 +15,8 @@
 //revive:disable:var-naming
 package types
 
+import "golang.org/x/sys/unix"
+
 type Unikernel interface {
 	Init(UnikernelParams) error
 	CommandString() (string, error)
@@ -35,6 +37,7 @@ type VMM interface {
 	// filters here. Most monitors can return nil (no-op).
 	PreExec(args ExecArgs) error
 	Stop(int) error
+	Signal(int, unix.Signal) error
 	Path() string
 	UsesKVM() bool
 	SupportsSharedfs(string) bool
