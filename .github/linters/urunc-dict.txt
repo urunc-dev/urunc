@@ -298,6 +298,7 @@ sgid
 sharedfs
 sigaction
 sigreturn
+sigstr
 sirupsen
 socker
 stretchr
