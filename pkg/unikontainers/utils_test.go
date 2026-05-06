@@ -77,6 +77,25 @@ func TestAtomicWriteFile(t *testing.T) {
 		err := atomicWriteFile(target, []byte("data"), 0o644)
 		assert.Error(t, err)
 	})
+
+	t.Run("rename failure cleans up temp file", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+
+		// Create a directory at the target path so rename fails.
+		target := filepath.Join(tmpDir, "state.json")
+		err := os.Mkdir(target, 0o755)
+		assert.NoError(t, err)
+
+		err = atomicWriteFile(target, []byte("data"), 0o644)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to rename temp file")
+
+		// Verify the temp file was cleaned up.
+		tmpFile := filepath.Join(tmpDir, ".state.json.tmp")
+		_, err = os.Stat(tmpFile)
+		assert.True(t, os.IsNotExist(err), "Temp file should be cleaned up after rename failure")
+	})
 }
 
 func TestWritePidFile(t *testing.T) {
