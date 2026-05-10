@@ -70,6 +70,10 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 		return nil, err
 	}
 
+	if spec == nil || spec.Linux == nil {
+		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
+	}
+
 	containerName := spec.Annotations["io.kubernetes.cri.container-name"]
 	if containerName == "queue-proxy" {
 		uniklog.Warn("This is a queue-proxy container. Adding IP env.")
@@ -124,6 +128,9 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	spec, err := loadSpec(state.Bundle)
 	if err != nil {
 		return nil, err
+	}
+	if spec == nil || spec.Linux == nil {
+		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
 	}
 	u.BaseDir = containerDir
 	u.RootDir = rootDir
@@ -357,7 +364,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// ExecArgs
 	// If memory limit is set in spec, use it instead of the config default value
-	if u.Spec.Linux.Resources.Memory != nil {
+	if u.Spec.Linux.Resources != nil && u.Spec.Linux.Resources.Memory != nil {
 		if u.Spec.Linux.Resources.Memory.Limit != nil {
 			if *u.Spec.Linux.Resources.Memory.Limit > 0 {
 				vmmArgs.MemSizeB = uint64(*u.Spec.Linux.Resources.Memory.Limit) // nolint:gosec
