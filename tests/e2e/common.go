@@ -123,7 +123,11 @@ func commonCmdExec(command string) (output string, err error) {
 }
 
 func commonPull(tool string, image string) error {
-	pullCmd := tool + " image pull " + image
+	pullCmd := tool + " image pull "
+	if !verbosePull() {
+		pullCmd += "-q "
+	}
+	pullCmd += image
 
 	output, err := commonCmdExec(pullCmd)
 	if err != nil {

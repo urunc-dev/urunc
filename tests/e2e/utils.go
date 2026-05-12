@@ -81,8 +81,11 @@ func pullImageWithRetry(testFunc string, image string) error {
 func pullImageForTest(testFunc string, image string) error {
 	switch testFunc {
 	case testCrictl:
-		cmd := crictlName + " pull " + image
-		output, err := commonCmdExec(cmd)
+		cmd := crictlName + " pull "
+		if !verbosePull() {
+			cmd += "-q "
+		}
+		cmd += image
 		if err != nil {
 			return fmt.Errorf("%s -- %v", output, err)
 		}
@@ -256,4 +259,10 @@ func findLineInFile(filePath string, pattern string) (string, error) {
 	}
 
 	return "", fmt.Errorf("Pattern %s was not found in any line of %s", pattern, filePath)
+}
+
+// Set URUNC_VERBOSE_PULL=true locally to see pull progress output
+func verbosePull() bool {
+	v := os.Getenv("URUNC_VERBOSE_PULL")
+	return v == "1" || v == "true"
 }
