@@ -73,6 +73,7 @@ URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/initrd/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/network/*.go)
 SHIM_SRC       := $(wildcard $(CURDIR)/cmd/containerd-shim-urunc-v2/*.go)
 SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/*.go)
+SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/containerd/*.go)
 
 #? CNTR_TOOL Tool to run the linter container (default: docker)
 CNTR_TOOL ?= docker

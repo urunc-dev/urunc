@@ -131,6 +131,8 @@ cntr
 containerdshim
 containerd
 containerd's
+containersapi
+contentapi
 cpio
 creack
 crictl
@@ -152,6 +154,7 @@ elevateprivileges
 elfloader
 endmacro
 epoll
+errdefs
 etest
 etesting
 etfs
@@ -179,6 +182,7 @@ httpreply
 iface
 ifaces
 ifname
+imagesapi
 initpipe
 initrds
 inlinehilite
@@ -200,6 +204,7 @@ kwds
 lazytime
 lenag
 lenpg
+leasesapi
 levarage
 libc
 libcontainer
@@ -298,6 +303,7 @@ setgroup
 settime
 sgid
 sharedfs
+snapshotsapi
 sigaction
 sigreturn
 sigstr
