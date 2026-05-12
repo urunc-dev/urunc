@@ -16,9 +16,11 @@ package unikontainers
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -291,4 +293,26 @@ func TestLoadSpec(t *testing.T) {
 		assert.Error(t, err, "Expected an error for invalid "+configFilename+" file")
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
 	})
+}
+
+func TestRmMultipleDirsWithLoggingContinuesAfterFailure(t *testing.T) {
+	originalRemoveAll := removeAll
+	t.Cleanup(func() {
+		removeAll = originalRemoveAll
+	})
+
+	var attemptedPaths []string
+	removeAll = func(path string) error {
+		attemptedPaths = append(attemptedPaths, path)
+		if strings.Contains(path, "first-target") {
+			return errors.New("forced cleanup failure")
+		}
+
+		return nil
+	}
+
+	err := rmMultipleDirsWithLogging("container-1", "/tmp/bundle", []string{"first-target", "second-target"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "first-target")
+	assert.Equal(t, []string{"/tmp/bundle/first-target", "/tmp/bundle/second-target"}, attemptedPaths)
 }

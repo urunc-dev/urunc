@@ -309,13 +309,17 @@ func findQemuDataDir(basename string) (string, error) {
 func rmMultipleDirs(prefixPath string, dirs []string) error {
 	for _, d := range dirs {
 		path := filepath.Join(prefixPath, d)
-		if err := os.RemoveAll(path); err != nil {
+		if err := removeAll(path); err != nil {
 			return fmt.Errorf("cannot remove %s: %w", d, err)
 		}
 	}
 
 	return nil
 }
+
+// removeAll is a package-level seam so tests can force cleanup failures and
+// verify that best-effort cleanup still attempts every target.
+var removeAll = os.RemoveAll
 
 // rmMultipleDirsWithLogging removes multiple directories and collects errors,
 // logging them without failing fast. This ensures best-effort cleanup of all directories.
@@ -329,7 +333,7 @@ func rmMultipleDirsWithLogging(containerID string, prefixPath string, dirs []str
 			"path":      path,
 		}).Debug("Removing directory")
 
-		if err := os.RemoveAll(path); err != nil {
+		if err := removeAll(path); err != nil {
 			errMsg := fmt.Sprintf("failed to remove %s: %v", d, err)
 			cleanupErrors = append(cleanupErrors, errMsg)
 			uniklog.WithFields(logrus.Fields{
