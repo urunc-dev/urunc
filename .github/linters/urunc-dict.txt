@@ -88,6 +88,7 @@ TUNTAP
 Timestamping
 Tmpfs
 Tuntap
+TTRPC
 UNBINDABLE
 URUNC
 Unikernel
@@ -127,6 +128,7 @@ clis
 cmainas
 cmdline
 cntr
+containerdshim
 containerd
 containerd's
 cpio
@@ -318,6 +320,7 @@ tmpl
 tomlq
 traefik
 triger
+ttrpc
 twemoji
 uidmap
 ukernel
