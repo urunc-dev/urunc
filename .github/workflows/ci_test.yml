@@ -1,0 +1,20 @@
+name: urunc CI Test
+
+on:
+  push:
+    branches: ["chore/issue-208-e2e-multi-distro"]
+
+jobs:
+  ci-test:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      pull-requests: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ github.sha }}
+      skip-build: "no"
+      skip-lint: "no"
+    secrets: inherit

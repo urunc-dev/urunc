@@ -1,6 +1,8 @@
 name: urunc CI
 
 on:
+  push:
+    branches: ["chore/issue-208-e2e-multi-distro"]
   pull_request:
     branches: ["main"]
     types: [opened,synchronize,reopened,labeled]

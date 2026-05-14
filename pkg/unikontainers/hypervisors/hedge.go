@@ -19,7 +19,6 @@ import (
 
 	hedge "github.com/nubificus/hedge_cli/hedge_api"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -31,10 +30,6 @@ const (
 type Hedge struct{}
 
 func (h *Hedge) Ok() error {
-	return fmt.Errorf("hedge not implemented yet")
-}
-
-func (h *Hedge) Signal(_ int, _ unix.Signal) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 

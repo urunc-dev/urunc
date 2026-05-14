@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -30,10 +29,6 @@ const (
 type SPT struct {
 	binaryPath string
 	binary     string
-}
-
-func (s *SPT) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
 }
 
 // Stop kills the spt process

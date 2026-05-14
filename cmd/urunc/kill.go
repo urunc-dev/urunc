@@ -16,16 +16,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"runtime"
-	"strconv"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
-
-	"golang.org/x/sys/unix"
 )
 
 var killCommand = &cli.Command{
@@ -41,6 +36,13 @@ For example, if the container id is "ubuntu01" the following will send a "KILL"
 signal to the init process of the "ubuntu01" container:
 
 	# urunc kill ubuntu01 KILL`,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:    "all",
+			Aliases: []string{"a"},
+			Usage:   "send the specified signal to all processes inside the container",
+		},
+	},
 	Action: func(_ context.Context, cmd *cli.Command) error {
 		runtime.GOMAXPROCS(1)
 		runtime.LockOSThread()
@@ -57,34 +59,6 @@ signal to the init process of the "ubuntu01" container:
 		if err != nil {
 			return err
 		}
-
-		sigstr := cmd.Args().Get(1)
-		if sigstr == "" {
-			sigstr = "SIGTERM"
-		}
-
-		signal, err := parseSignal(sigstr)
-		if err != nil {
-			return err
-		}
-
-		return unikontainer.Signal(signal)
+		return unikontainer.Kill()
 	},
-}
-
-// Taken from https://github.com/opencontainers/runc/blob/af6b9e7fa96026c4fdac93e6e4fddf69ae348532/kill.go
-func parseSignal(rawSignal string) (unix.Signal, error) {
-	s, err := strconv.Atoi(rawSignal)
-	if err == nil {
-		return unix.Signal(s), nil
-	}
-	sig := strings.ToUpper(rawSignal)
-	if !strings.HasPrefix(sig, "SIG") {
-		sig = "SIG" + sig
-	}
-	signal := unix.SignalNum(sig)
-	if signal == 0 {
-		return -1, fmt.Errorf("unknown signal %q", rawSignal)
-	}
-	return signal, nil
 }

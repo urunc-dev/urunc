@@ -21,7 +21,6 @@ import (
 
 	seccomp "github.com/elastic/go-seccomp-bpf"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -118,10 +117,6 @@ func applySeccompFilter() error {
 	vmmLog.WithField("allowed syscalls", syscalls).Debug("Whitelisted system calls")
 
 	return nil
-}
-
-func (h *HVT) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
 }
 
 // Stop kills the hvt process

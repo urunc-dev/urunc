@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -32,10 +31,6 @@ type Qemu struct {
 	binaryPath string
 	binary     string
 	vhost      bool
-}
-
-func (q *Qemu) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
 }
 
 func (q *Qemu) Stop(pid int) error {

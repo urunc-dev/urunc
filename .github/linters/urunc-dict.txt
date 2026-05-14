@@ -88,7 +88,6 @@ TUNTAP
 Timestamping
 Tmpfs
 Tuntap
-TTRPC
 UNBINDABLE
 URUNC
 Unikernel
@@ -128,11 +127,8 @@ clis
 cmainas
 cmdline
 cntr
-containerdshim
 containerd
 containerd's
-containersapi
-contentapi
 cpio
 creack
 crictl
@@ -154,7 +150,6 @@ elevateprivileges
 elfloader
 endmacro
 epoll
-errdefs
 etest
 etesting
 etfs
@@ -182,7 +177,6 @@ httpreply
 iface
 ifaces
 ifname
-imagesapi
 initpipe
 initrds
 inlinehilite
@@ -204,7 +198,6 @@ kwds
 lazytime
 lenag
 lenpg
-leasesapi
 levarage
 libc
 libcontainer
@@ -303,10 +296,8 @@ setgroup
 settime
 sgid
 sharedfs
-snapshotsapi
 sigaction
 sigreturn
-sigstr
 sirupsen
 socker
 stretchr
@@ -326,7 +317,6 @@ tmpl
 tomlq
 traefik
 triger
-ttrpc
 twemoji
 uidmap
 ukernel

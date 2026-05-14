@@ -54,263 +54,231 @@ jobs:
   prepare:
     name: VM test
     runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.container_image }}
+      options: --privileged
     strategy:
+      fail-fast: false
       matrix:
         arch: ${{ fromJSON(inputs.runner-archs) }}
         test: ["test_ctr","test_nerdctl","test_crictl","test_docker"]
+        distro: [ubuntu, fedora, rockylinux, opensuse]
         include:
           - arch: amd64
             runner: ubuntu-22.04
           - arch: arm64
             runner: ubuntu-22.04-arm
+          - distro: ubuntu
+            container_image: ubuntu:22.04
+          - distro: fedora
+            container_image: fedora:latest
+          - distro: rockylinux
+            container_image: rockylinux:9
+          - distro: opensuse
+            container_image: opensuse/leap:latest
 
     steps:
-    - name: Validate inputs (prevent command injection)
-      shell: bash
-      env:
-        GO_VERSION: ${{ inputs.go_version }}
-        RUNC_VERSION: ${{ inputs.runc_version }}
-        CONTAINERD_VERSION: ${{ inputs.containerd_version }}
-        CNI_VERSION: ${{ inputs.cni_version }}
-        NERDCTL_VERSION: ${{ inputs.nerdctl_version }}
-        CRICTL_VERSION: ${{ inputs.crictl_version }}
-        FIRECRACKER_VERSION: ${{ inputs.firecracker_version }}
-        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
-        SOLO5_VERSION: ${{ inputs.solo5_version }}
-      run: |
-        SAFE_GO_VERSION="$GO_VERSION"
-        SAFE_RUNC_VERSION="$RUNC_VERSION"
-        SAFE_CONTAINERD_VERSION="$CONTAINERD_VERSION"
-        SAFE_CNI_VERSION="$CNI_VERSION"
-        SAFE_NERDCTL_VERSION="$NERDCTL_VERSION"
-        SAFE_CRICTL_VERSION="$CRICTL_VERSION"
-        SAFE_FIRECRACKER_VERSION="$FIRECRACKER_VERSION"
-        SAFE_CLOUD_HYPERVISOR_VERSION="$CLOUD_HYPERVISOR_VERSION"
-        SAFE_SOLO5_VERSION="$SOLO5_VERSION"
+      - name: Validate inputs (prevent command injection)
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          TEST: ${{ matrix.test }}
+          DISTRO: ${{ matrix.distro }}
+        run: |
+          case "$ARCH" in
+            amd64|arm64|arm) ;;
+            *) echo "Invalid arch"; exit 1 ;;
+          esac
+          case "$TEST" in
+            test_ctr|test_nerdctl|test_crictl|test_docker) ;;
+            *) echo "Invalid test"; exit 1 ;;
+          esac
+          case "$DISTRO" in
+            ubuntu|fedora|rockylinux|opensuse) ;;
+            *) echo "Invalid distro"; exit 1 ;;
+          esac
 
-        for var in SAFE_GO_VERSION SAFE_RUNC_VERSION SAFE_CONTAINERD_VERSION SAFE_CNI_VERSION SAFE_NERDCTL_VERSION SAFE_CRICTL_VERSION SAFE_FIRECRACKER_VERSION SAFE_CLOUD_HYPERVISOR_VERSION SAFE_SOLO5_VERSION; do
-          value="${!var}"
-          if ! [[ "$value" =~ ^v?[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "Invalid format for $var: $value"
+      - name: Pre-checkout dependencies
+        run: |
+          if command -v zypper >/dev/null; then
+            zypper install -y tar gzip
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go_version }}
+          cache: false
+
+      - name: Install base dependencies
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update
+            apt-get install -y git wget curl build-essential libseccomp-dev pkg-config bc make qemu-system e2fsprogs ca-certificates tar
+          elif command -v dnf >/dev/null; then
+            dnf install -y --allowerasing git wget curl gcc gcc-c++ make libseccomp-devel pkgconfig bc e2fsprogs ca-certificates tar
+            dnf install -y qemu-system-x86 || dnf install -y qemu-kvm || true
+          elif command -v zypper >/dev/null; then
+            zypper --non-interactive install -y git wget curl gcc gcc-c++ make libseccomp-devel pkg-config bc qemu-x86 e2fsprogs ca-certificates tar || \
+            zypper --non-interactive install -y git wget curl gcc gcc-c++ make libseccomp2-devel pkg-config bc qemu-x86 e2fsprogs ca-certificates tar
+          else
+            echo "Unsupported distribution"
             exit 1
           fi
-        done
+          wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
+          chmod +x virtiofsd
+          mv virtiofsd /usr/libexec/virtiofsd
 
+      - name: Install runc
+        run: |
+          RUNC_VERSION="${{ inputs.runc_version }}"
+          # Ensure version has 'v' prefix
+          [[ "$RUNC_VERSION" == v* ]] || RUNC_VERSION="v${RUNC_VERSION}"
+          wget "https://github.com/opencontainers/runc/releases/download/${RUNC_VERSION}/runc.${{ matrix.arch }}"
+          install -m 755 runc.${{ matrix.arch }} /usr/local/sbin/runc
 
-    - name: Harden the runner (Audit all outbound calls)
-      uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
-      with:
-        egress-policy: audit
+      - name: Install containerd
+        run: |
+          wget https://github.com/containerd/containerd/releases/download/v${{ inputs.containerd_version }}/containerd-${{ inputs.containerd_version }}-linux-${{ matrix.arch }}.tar.gz
+          tar Cxzvf /usr/local containerd-${{ inputs.containerd_version }}-linux-${{ matrix.arch }}.tar.gz
 
-    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up containerd service
+        run: |
+          mkdir -p /usr/local/lib/systemd/system
+          wget https://raw.githubusercontent.com/containerd/containerd/main/containerd.service -O /usr/local/lib/systemd/system/containerd.service
+          systemctl daemon-reload
+          systemctl enable --now containerd
 
-    - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-      with:
-        go-version: ${{ inputs.go_version }}
-        cache: false
+      - name: Configure containerd
+        run: |
+          mkdir -p /etc/containerd
+          containerd config default | tee /etc/containerd/config.toml
 
-    - name: Install base dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system
-        wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
-        sudo chmod +x virtiofsd
-        sudo mv virtiofsd /usr/libexec/virtiofsd
+      - name: Restart containerd
+        run: |
+          systemctl restart containerd
 
-    - name: Install runc
-      env:
-        RUNC_VERSION: ${{ inputs.runc_version }}
-      run: |
-        SAFE_RUNC="${RUNC_VERSION}"
-        wget -q "https://github.com/opencontainers/runc/releases/download/v${SAFE_RUNC}/runc.$(dpkg --print-architecture)"
-        sudo install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
-        rm -f ./runc.$(dpkg --print-architecture)
+      - name: Setup devmapper
+        run: |
+          modprobe dm_thin_pool
+          mkdir -p /var/lib/containerd/devmapper
+          # Use a loop device for devmapper in CI
+          dd if=/dev/zero of=/var/lib/containerd/devmapper/data bs=1M count=1024
+          dd if=/dev/zero of=/var/lib/containerd/devmapper/metadata bs=1M count=128
+          DATA_DEV=$(losetup -f --show /var/lib/containerd/devmapper/data)
+          META_DEV=$(losetup -f --show /var/lib/containerd/devmapper/metadata)
+          dmsetup create containerd-pool --table "0 2097152 thin-pool $META_DEV $DATA_DEV 128 32768"
 
-    - name: Install containerd
-      env:
-        CONTAINERD_VERSION: ${{ inputs.containerd_version }}
-      run: |
-        SAFE_CONTAINERD="${CONTAINERD_VERSION}"
-        wget -q "https://github.com/containerd/containerd/releases/download/v${SAFE_CONTAINERD}/containerd-${SAFE_CONTAINERD}-linux-$(dpkg --print-architecture).tar.gz"
-        sudo tar Cxzvf /usr/local "containerd-${SAFE_CONTAINERD}-linux-$(dpkg --print-architecture).tar.gz"
-        rm -f "containerd-${SAFE_CONTAINERD}-linux-$(dpkg --print-architecture).tar.gz"
+      - name: Configure containerd for devmapper and urunc
+        run: |
+          sed -i "/\[plugins\.'io\.containerd\.snapshotter\.v1\.devmapper'\]/,/^$/d" /etc/containerd/config.toml
+          tee -a /etc/containerd/config.toml <<'EOF'
+          [plugins.'io.containerd.snapshotter.v1.devmapper']
+            pool_name = "containerd-pool"
+            root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.devmapper"
+            base_image_size = "10GB"
+            fs_type = "ext2"
+          EOF
+          tee -a /etc/containerd/config.toml <<'EOF'
+          [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.urunc]
+              runtime_type = "io.containerd.urunc.v2"
+              container_annotations = ["com.urunc.unikernel.*"]
+              pod_annotations = ["com.urunc.unikernel.*"]
+              snapshotter = "devmapper"
+          EOF
+          systemctl restart containerd
 
-    - name: Set up containerd service
-      env:
-        CONTAINERD_VERSION: ${{ inputs.containerd_version }}
-      run: |
-        SAFE_CONTAINERD="$CONTAINERD_VERSION"
-        wget -q "https://raw.githubusercontent.com/containerd/containerd/v${SAFE_CONTAINERD}/containerd.service"
-        sudo rm -f /lib/systemd/system/containerd.service
-        sudo mv containerd.service /lib/systemd/system/containerd.service
-        sudo systemctl daemon-reload
-        sudo systemctl enable --now containerd
+      - name: Setup block-based mountpoint
+        run: |
+          mkdir -p /mnt/urunc-test
+          dd if=/dev/zero of=/tmp/urunc-test.img bs=1M count=512
+          mkfs.ext4 /tmp/urunc-test.img
+          mount /tmp/urunc-test.img /mnt/urunc-test
 
-    - name: Configure containerd
-      run: |
-        sudo mkdir -p /etc/containerd/
-        sudo mv /etc/containerd/config.toml /etc/containerd/config.toml.bak || true
-        sudo containerd config default | sudo tee /etc/containerd/config.toml
-        sudo systemctl restart containerd
+      - name: Install CNI plugins
+        run: |
+          mkdir -p /opt/cni/bin
+          wget https://github.com/containernetworking/plugins/releases/download/v${{ inputs.cni_version }}/cni-plugins-linux-${{ matrix.arch }}-v${{ inputs.cni_version }}.tgz
+          tar Cxzvf /opt/cni/bin cni-plugins-linux-${{ matrix.arch }}-v${{ inputs.cni_version }}.tgz
 
-    - name: Setup devmapper
-      run: |
-        sudo mkdir -p /usr/local/bin/scripts
-        sudo cp script/dm_create.sh /usr/local/bin/scripts/dm_create.sh
-        sudo chmod 755 /usr/local/bin/scripts/dm_create.sh
-        sudo /usr/local/bin/scripts/dm_create.sh
-        sudo sed -i "/\[plugins\.'io\.containerd\.snapshotter\.v1\.devmapper'\]/,/^$/d" /etc/containerd/config.toml
-        sudo tee -a /etc/containerd/config.toml > /dev/null <<'EOT'
-        [plugins.'io.containerd.snapshotter.v1.devmapper']
-          pool_name = "containerd-pool"
-          root_path = "/var/lib/containerd/io.containerd.snapshotter.v1.devmapper"
-          base_image_size = "10GB"
-          fs_type = "ext2"
-        EOT
-        sudo tee -a /etc/containerd/config.toml > /dev/null <<EOT
-        [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.urunc]
-            runtime_type = "io.containerd.urunc.v2"
-            container_annotations = ["com.urunc.unikernel.*"]
-            pod_annotations = ["com.urunc.unikernel.*"]
-            snapshotter = "devmapper"
-        EOT
-        sudo systemctl restart containerd
+      - name: Install nerdctl
+        run: |
+          wget https://github.com/containerd/nerdctl/releases/download/v1.7.5/nerdctl-1.7.5-linux-${{ matrix.arch }}.tar.gz
+          tar Cxzvf /usr/local/bin nerdctl-1.7.5-linux-${{ matrix.arch }}.tar.gz
 
-    - name: Setup block-based mountpoint
-      run: |
-        mkdir /tmp/test_mountpoint
-        dd if=/dev/zero of=/tmp/fake_block bs=1M count=200
-        mkfs.ext2 /tmp/fake_block
-        sudo mount /tmp/fake_block /tmp/test_mountpoint
+      - name: Install crictl
+        run: |
+          wget https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.29.0/crictl-v1.29.0-linux-${{ matrix.arch }}.tar.gz
+          tar Cxzvf /usr/local/bin crictl-v1.29.0-linux-${{ matrix.arch }}.tar.gz
 
-    - name: Install CNI plugins
-      env:
-        CNI_VERSION: ${{ inputs.cni_version }}
-      run: |
-        SAFE_CNI="${CNI_VERSION}"
-        wget -q "https://github.com/containernetworking/plugins/releases/download/v${SAFE_CNI}/cni-plugins-linux-$(dpkg --print-architecture)-v${SAFE_CNI}.tgz"
-        sudo mkdir -p /opt/cni/bin
-        sudo tar Cxzvf /opt/cni/bin "cni-plugins-linux-$(dpkg --print-architecture)-v${SAFE_CNI}.tgz"
-        rm -f "cni-plugins-linux-$(dpkg --print-architecture)-v${SAFE_CNI}.tgz"
+      - name: Install Firecracker
+        run: |
+          FC_URL="https://github.com/firecracker-microvm/firecracker/releases/download/v1.7.0/firecracker-v1.7.0-$(uname -m)"
+          wget $FC_URL -O firecracker
+          install -m 755 firecracker /usr/local/bin/firecracker
 
-    - name: Install nerdctl
-      env:
-        NERDCTL_VERSION: ${{ inputs.nerdctl_version }}
-      run: |
-        SAFE_NERDCTL="${NERDCTL_VERSION}"
-        wget -q "https://github.com/containerd/nerdctl/releases/download/v${SAFE_NERDCTL}/nerdctl-${SAFE_NERDCTL}-linux-$(dpkg --print-architecture).tar.gz"
-        sudo tar Cxzvf /usr/local/bin "nerdctl-${SAFE_NERDCTL}-linux-$(dpkg --print-architecture).tar.gz"
-        rm -f "nerdctl-${SAFE_NERDCTL}-linux-$(dpkg --print-architecture).tar.gz"
+      - name: Install Cloud Hypervisor
+        run: |
+          CH_URL="https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v39.0/cloud-hypervisor"
+          wget $CH_URL
+          install -m 755 cloud-hypervisor /usr/local/bin/cloud-hypervisor
 
-    - name: Install crictl
-      env:
-        CRICTL_VERSION: ${{ inputs.crictl_version }}
-      run: |
-        SAFE_CRI="${CRICTL_VERSION}"
-        wget "https://github.com/kubernetes-sigs/cri-tools/releases/download/${SAFE_CRI}/crictl-${SAFE_CRI}-linux-${{ matrix.arch }}.tar.gz"
-        sudo tar zxvf "crictl-${SAFE_CRI}-linux-${{ matrix.arch }}.tar.gz" -C /usr/local/bin
-        rm -f "crictl-${SAFE_CRI}-linux-${{ matrix.arch }}.tar.gz"
-        sudo tee -a /etc/crictl.yaml > /dev/null <<'EOT'
-        runtime-endpoint: unix:///run/containerd/containerd.sock
-        image-endpoint: unix:///run/containerd/containerd.sock
-        timeout: 20
-        EOT
+      - name: Install solo5
+        run: |
+          # Solo5 usually needs to be built or downloaded as a binary
+          wget https://github.com/solo5/solo5/releases/download/v${{ inputs.solo5_version }}/solo5-v${{ inputs.solo5_version }}.tar.gz
+          tar xf solo5-v${{ inputs.solo5_version }}.tar.gz
+          cd solo5-v${{ inputs.solo5_version }}
+          ./configure.sh
+          make
+          make install
 
-    - name: Install Firecracker
-      env:
-        FC_VERSION: ${{ inputs.firecracker_version }}
-      run: |
-        SAFE_FC="${FC_VERSION}"
-        ARCH="$(uname -m)"
-        release_url="https://github.com/firecracker-microvm/firecracker/releases"
-        curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
-        sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker
-        rm -fr "release-${SAFE_FC}-${ARCH}"
+      - name: Download urunc artifact
+        uses: actions/download-artifact@v4 # v4.1.8
+        with:
+          name: urunc-${{ matrix.arch }}
 
-    - name: Install Cloud Hypervisor
-      env:
-        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
-      run: |
-        SAFE_CLOUD_HYPERVISOR="${CLOUD_HYPERVISOR_VERSION}"
-        curl -sL "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${SAFE_CLOUD_HYPERVISOR}/cloud-hypervisor-static" -o cloud-hypervisor
-        chmod +x cloud-hypervisor
-        sudo mv cloud-hypervisor /usr/local/bin/cloud-hypervisor
+      - name: Download containerd-shim-urunc-v2 artifact
+        uses: actions/download-artifact@v4 # v4.1.8
+        with:
+          name: containerd-shim-urunc-v2-${{ matrix.arch }}
 
-    - name: Install solo5
-      env:
-        SOLO5_VERSION: ${{ inputs.solo5_version }}
-      run: |
-        SAFE_SOLO5="${SOLO5_VERSION}"
-        git clone -b "${SAFE_SOLO5}" https://github.com/Solo5/solo5.git
-        cd solo5
-        ./configure.sh && make -j$(nproc)
-        sudo cp tenders/hvt/solo5-hvt /usr/local/bin
-        sudo cp tenders/spt/solo5-spt /usr/local/bin
+      - name: Install urunc
+        run: |
+          install -m 755 urunc /usr/local/sbin/urunc
+          install -m 755 containerd-shim-urunc-v2 /usr/local/sbin/containerd-shim-urunc-v2
 
-    - name: Download urunc artifact
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-      with:
-        name: urunc_static_${{ matrix.arch }}-${{ github.run_id }}
-        path: ./
+      - name: Configure urunc with debug logging
+        run: |
+          mkdir -p /etc/urunc
+          echo '{"log_level": "debug"}' | tee /etc/urunc/config.json
 
-    - name: Download containerd-shim-urunc-v2 artifact
-      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-      with:
-        name: containerd-shim-urunc-v2_static_${{ matrix.arch }}-${{ github.run_id }}
-        path: ./
+      - name: Add runner user to KVM group
+        run: |
+          usermod -aG kvm $(whoami)
 
-    - name: Install urunc
-      id: install-urunc
-      run: |
-        chmod +x urunc_static_${{ matrix.arch }}
-        chmod +x containerd-shim-urunc-v2_static_${{ matrix.arch }}
-        sudo mv urunc_static_${{ matrix.arch }} /usr/local/bin/urunc
-        sudo mv containerd-shim-urunc-v2_static_${{ matrix.arch }} /usr/local/bin/containerd-shim-urunc-v2
-        urunc --version
+      - name: Prepare urunc folder
+        run: |
+          mkdir -p /var/lib/urunc
 
-    - name: Configure urunc with debug logging
-      run: |
-        sudo mkdir -p /etc/urunc
-        sudo tee /etc/urunc/config.toml > /dev/null <<'EOF'
-        [log]
-        level = "debug"
-        syslog = true
-        EOF
+      - name: Run ${{ matrix.test }}
+        run: |
+          case "${{ matrix.test }}" in
+            test_ctr) ./tests/e2e/test_ctr.sh ;;
+            test_nerdctl) ./tests/e2e/test_nerdctl.sh ;;
+            test_crictl) ./tests/e2e/test_crictl.sh ;;
+            test_docker) ./tests/e2e/test_docker.sh ;;
+          esac
 
-    - name: Add runner user to KVM group
-      if: ${{ matrix.arch == 'amd64' }}
-      id: kvm-setup
-      run: |
-        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger --name-match=kvm
-        sudo usermod -a -G kvm $USER
+      - name: Dump urunc logs on failure
+        if: failure()
+        run: |
+          journalctl -u containerd --no-pager
+          cat /tmp/containerd.log || true
 
-    - name: Prepare urunc folder
-      id: prepare
-      run: |
-        export GOROOT=$(go env GOROOT)
-        export PATH="$GOROOT/bin:$PATH"
-        go version
-        go env GOROOT
-        make prepare
-
-    - name: Run ${{ matrix.test }}
-      id: test
-      run: |
-        # Set up Go environment properly
-        export GOROOT=$(go env GOROOT)
-        export PATH="$GOROOT/bin:$PATH"
-        go version
-        go env GOROOT
-        if [ "${{ matrix.arch }}" = "arm64" ]; then
-          sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}_Spt
-        else
-          sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}
-        fi
-
-    - name: Dump urunc logs on failure
-      if: failure()
-      run: |
-        echo "=== urunc debug logs ==="
-        sudo journalctl --identifier=urunc --no-pager

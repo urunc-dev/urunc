@@ -1,12 +1,12 @@
 name: Add Git Trailers to PR commits
 
 on:
-  pull_request_review:
-    types: [submitted]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    secrets:
+      GIT_CLONE_PAT:
+        required: false
+      URUNC_BOT_PRIVATE_KEY:
+        required: true
 
 permissions:
   contents: read
@@ -14,12 +14,16 @@ permissions:
 jobs:
   git-trailers:
     name: Add Git Trailers
-    if: >-
-      github.event.pull_request.base.ref == 'main' &&
-      github.event.review.state == 'approved'
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+    continue-on-error: true
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
@@ -36,6 +40,11 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Append git trailers
+        uses: nubificus/git-trailers@8e08c91bb4c1fd9cb1ccbd9cc8029c31acf8da66 # feat_use_rebase
+        with:
+          user_info: .github/contributors.yaml
+
       - name: Generate urunc-bot token
         id: generate-token
         uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
@@ -43,16 +52,20 @@ jobs:
           app-id: ${{ vars.URUNC_BOT_APP_ID }}
           private-key: ${{ secrets.URUNC_BOT_PRIVATE_KEY }}
 
+      - name: Set up Git
+        run: |
+          git config --global user.name "urunc-bot[bot]"
+          git config --global user.email "urunc-bot[bot]@users.noreply.github.com"
+
       - name: Append git trailers
-        uses: nubificus/git-trailers@1d1595aacfd9239ae69d773cb895606daa17e538
+        uses: nubificus/git-trailers@18fd322f3fbfd505b4de728974a4ac1f32f758a7 # feat_auto_merge
         with:
-          token: ${{ steps.generate-token.outputs.token }}
-          user-info: .github/contributors.yaml
+          user_info: .github/contributors.yaml
 
       - name: Merge PR
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          sleep 5 # Wait for github to get updated with the push. Otherwise merge will fail
+          PR_URL=${{ github.event.pull_request.html_url }}
+      
           gh pr merge "$PR_URL" --rebase --admin
