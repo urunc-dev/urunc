@@ -333,7 +333,7 @@ func handleNsenterRet(initSock *os.File, reexec *exec.Cmd) (int, error) {
 	}
 	if !status.Success() {
 		_ = reexec.Wait()
-		return -1, fmt.Errorf("nsenter unsuccessful exit: %w", err)
+		return -1, fmt.Errorf("nsenter unsuccessful exit: %d", status.ExitCode())
 	}
 
 	return pid.Stage2Pid, nil
