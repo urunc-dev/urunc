@@ -120,15 +120,15 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 		}
 	}
 
-	// Initrd configuration
-	if args.InitrdPath != "" {
-		exArgs = append(exArgs, "--initramfs", args.InitrdPath)
-	}
-
-	// Check for extra initrd from unikernel monitor args
 	extraMonArgs := ukernel.MonitorCli()
-	if extraMonArgs.ExtraInitrd != "" {
-		exArgs = append(exArgs, "--initramfs", extraMonArgs.ExtraInitrd)
+
+	// Initrd configuration — prefer args.InitrdPath, fall back to unikernel extra initrd
+	initrdPath := args.InitrdPath
+	if initrdPath == "" {
+		initrdPath = extraMonArgs.ExtraInitrd
+	}
+	if initrdPath != "" {
+		exArgs = append(exArgs, "--initramfs", initrdPath)
 	}
 
 	switch args.Sharedfs.Type {
