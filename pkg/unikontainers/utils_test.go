@@ -234,6 +234,12 @@ func TestMoveFile(t *testing.T) {
 	})
 }
 
+func TestRemovePreservesOrder(t *testing.T) {
+	t.Parallel()
+	result := remove([]string{"a", "b", "c", "d"}, 0)
+	assert.Equal(t, []string{"b", "c", "d"}, result)
+}
+
 func TestLoadSpec(t *testing.T) {
 	t.Run("load spec success", func(t *testing.T) {
 		t.Parallel()
