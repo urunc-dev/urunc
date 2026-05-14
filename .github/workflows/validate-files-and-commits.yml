@@ -111,3 +111,56 @@ jobs:
         with:
           config: .github/linters/licenserc.yml
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  check-contributor:
+    name: Check Contributor
+    if: github.event.pull_request != null
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+      fail-fast: false
+
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Check if PR author exists in contributors.yaml
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          # Normalize username (mirrors nubificus/git-trailers action logic)
+          AUTHOR=$(echo "$PR_AUTHOR" | sed 's/\[bot\]//g' | sed 's/app\///g')
+          echo "Checking for contributor: ${AUTHOR}"
+
+          # Primary lookup: check if username exists as a YAML key
+          if grep -q "^  ${AUTHOR}:" .github/contributors.yaml; then
+            echo "✓ Contributor '${AUTHOR}' found in contributors.yaml"
+            exit 0
+          fi
+
+          # Bot fallback: check if any entry has a matching bot name
+          if grep -q "name: ${AUTHOR}\[bot\]" .github/contributors.yaml; then
+            echo "✓ Contributor '${AUTHOR}' found in contributors.yaml (bot)"
+            exit 0
+          fi
+
+          echo "::error::PR author '${PR_AUTHOR}' is not listed in .github/contributors.yaml."
+          echo ""
+          echo "Please add the following entry to .github/contributors.yaml under the 'users' key as part of this PR:"
+          echo ""
+          echo "  ${AUTHOR}:"
+          echo "    name: Your Full Name"
+          echo "    email: your.email@example.com"
+          echo ""
+          echo "See: https://urunc.io/developer-guide/contribute/"
+          exit 1
