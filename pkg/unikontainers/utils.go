@@ -259,7 +259,7 @@ func findNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) 
 		}
 	}
 
-	return "", fmt.Errorf("Namespace %s was not found", string(nsType))
+	return "", fmt.Errorf("namespace %s was not found", string(nsType))
 }
 
 // findQemuDataDir tries to find the location of data and BIOS files for Qemu.

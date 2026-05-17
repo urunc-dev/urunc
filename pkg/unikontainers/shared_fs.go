@@ -60,7 +60,7 @@ func (s sharedfsRootfs) postSetup() error {
 		// Get the virtiofsd binary from host in monRootfs
 		err = fileFromHost(s.monRootfs, s.vfsdConfig.Path, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
-			return fmt.Errorf("Could not bind mount %s: %w", s.vfsdConfig.Path, err)
+			return fmt.Errorf("could not bind mount %s: %w", s.vfsdConfig.Path, err)
 		}
 	}
 

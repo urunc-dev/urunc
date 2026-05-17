@@ -220,7 +220,7 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 		flags := mFlags | unix.MS_BIND | unix.MS_REMOUNT
 		err = unix.Mount(dstPath, dstPath, "", uintptr(flags), "")
 		if err != nil {
-			return fmt.Errorf("Failed to set mount flags for %s: %w", dstPath, err)
+			return fmt.Errorf("failed to set mount flags for %s: %w", dstPath, err)
 		}
 	}
 
@@ -298,7 +298,7 @@ func rootfsParentMountPrivate(path string) error {
 		path = filepath.Dir(path)
 	}
 
-	return fmt.Errorf("Could not remount as private the parent mount of %s", path)
+	return fmt.Errorf("could not remount as private the parent mount of %s", path)
 }
 
 // prepareRoot prepares the directory of the container's rootfs to safely pivot
@@ -368,7 +368,7 @@ func mountVolumes(rootfsPath string, mounts []specs.Mount) error {
 		for _, pFlag := range propFlag {
 			err = unix.Mount(dstPath, dstPath, "", uintptr(pFlag), "")
 			if err != nil {
-				return fmt.Errorf("Failed to set propagation flag for %s: %w", m.Source, err)
+				return fmt.Errorf("failed to set propagation flag for %s: %w", m.Source, err)
 			}
 		}
 	}
