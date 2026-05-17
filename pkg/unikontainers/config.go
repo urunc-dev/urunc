@@ -196,7 +196,6 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 func tryDecode(s string) string {
 	decoded, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		uniklog.WithError(err).Errorf("Failed to decode string: %s", s)
 		return s
 	}
 	return string(decoded)
