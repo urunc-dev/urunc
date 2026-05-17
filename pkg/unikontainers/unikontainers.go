@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -344,58 +343,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		"initrd Path":       initrdPath,
 	}).Debug("Initialization values")
 
-	// ExecArgs
-	defaultVCPUs := u.UruncCfg.Monitors[vmmType].DefaultVCPUs
-	if defaultVCPUs < 1 {
-		defaultVCPUs = 1
+		// build VMM args and unikernel params via helpers
+	vmmArgs, err := u.buildVMMArgs(vmmType, unikernelPath, initrdPath)
+	if err != nil {
+		return err
 	}
-	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
-
-	// ExecArgs
-	vmmArgs := types.ExecArgs{
-		ContainerID:   u.State.ID,
-		UnikernelPath: unikernelPath,
-		InitrdPath:    initrdPath,
-		Seccomp:       true, // Enable Seccomp by default
-		MemSizeB:      uint64(defaultMemSizeMB * 1024 * 1024),
-		VCPUs:         uint(defaultVCPUs),
-		Environment:   os.Environ(),
-	}
-
-	// ExecArgs
-	// If memory limit is set in spec, use it instead of the config default value
-	if u.Spec.Linux.Resources != nil && u.Spec.Linux.Resources.Memory != nil {
-		if u.Spec.Linux.Resources.Memory.Limit != nil {
-			if *u.Spec.Linux.Resources.Memory.Limit > 0 {
-				vmmArgs.MemSizeB = uint64(*u.Spec.Linux.Resources.Memory.Limit) // nolint:gosec
-			}
-		}
-	}
-
-	// ExecArgs
-	// Check if container is set to unconfined -- disable seccomp
-	if u.Spec.Linux.Seccomp == nil {
-		uniklog.Warn("Seccomp is disabled")
-		vmmArgs.Seccomp = false
-	}
-
-	procAttrs := types.ProcessConfig{
-		UID:     u.Spec.Process.User.UID,
-		GID:     u.Spec.Process.User.GID,
-		WorkDir: u.Spec.Process.Cwd,
-	}
-	// UnikernelParams
-	// populate unikernel params
-	unikernelParams := types.UnikernelParams{
-		CmdLine:  u.Spec.Process.Args,
-		EnvVars:  u.Spec.Process.Env,
-		Monitor:  vmmType,
-		Version:  unikernelVersion,
-		ProcConf: procAttrs,
-	}
-	if len(unikernelParams.CmdLine) == 0 {
-		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
-	}
+	unikernelParams := u.buildUnikernelParams(vmmType, unikernelVersion)
 
 	// handle network
 	netArgs, err := u.SetupNet()
@@ -412,9 +365,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Net = netArgs
 
-	// virtiofsd config
-	virtiofsdConfig := u.UruncCfg.ExtraBins["virtiofsd"]
-
 	// guest rootfs
 	// block
 	// handle guest's rootfs.
@@ -426,131 +376,27 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
 	// both ae supported, then the block option will be used by default.
-	rootfsParams, err := u.chooseRootfs()
-	if err != nil {
-		uniklog.Errorf("could not choose guest rootfs: %v", err)
-		return err
-	}
-
-	// TODO: Add support for using both an existing
-	// block based snapshot of the container's rootfs
-	// and an auxiliary block image placed in the container's image
-	// Currently if a block Image is present in the container's image, then
-	// we will just use this image.
-	var rfsBuilder rootfsBuilder
-	switch rootfsParams.Type {
-	case "block":
-		rfsBuilder = blockRootfs{
-			mounts:        u.Spec.Mounts,
-			monRootfs:     rootfsParams.MonRootfs,
-			mountedPath:   rootfsParams.MountedPath,
-			path:          rootfsParams.Path,
-			kernelPath:    unikernelPath,
-			initrdPath:    initrdPath,
-			uruncJSONPath: uruncJSONFilename,
-			guestType:     unikernelType,
-			guest:         unikernel,
-		}
-	case "initrd":
-		rfsBuilder = initrdRootfs{
-			mounts:             u.Spec.Mounts,
-			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
-			monRootfs:          rootfsParams.MonRootfs,
-		}
-	case "virtiofs", "9pfs":
-		rfsBuilder = sharedfsRootfs{
-			mounts:      u.Spec.Mounts,
-			monRootfs:   rootfsParams.MonRootfs,
-			mountedPath: rootfsParams.MountedPath,
-			sfsType:     rootfsParams.Type,
-			vfsdConfig:  virtiofsdConfig,
-			sharedPath:  containerRootfsMountPath,
-			memory:      vmmArgs.MemSizeB,
-		}
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
-		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-	default:
-		uniklog.Debug("No rootfs for guest")
-		rfsBuilder = noRootfs{
-			monRootfs:            rootfsParams.MonRootfs,
-			annotBlockPath:       u.State.Annotations[annotBlock],
-			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
-		}
-	}
-
-	err = rfsBuilder.preSetup()
-	if err != nil {
-		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
-	}
-
-	// Prepare Monitor rootfs
-	// Make sure that rootfs is mounted with the correct propagation
-	// flags so we can later pivot if needed.
-	err = prepareRoot(rootfsParams.MonRootfs, u.Spec.Linux.RootfsPropagation)
+	rfsBuilder, rootfsParams, err := u.setupRootfs(vmmType, unikernelType, unikernelPath, initrdPath, unikernel, vmm, &vmmArgs, withTUNTAP)
 	if err != nil {
 		return err
 	}
-
-	// Setup the rootfs for the monitor execution, creating necessary
-	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), u.UruncCfg.Monitors[vmmType].DataPath, vmm.UsesKVM(), withTUNTAP)
-	if err != nil {
-		return err
-	}
-
-	err = rfsBuilder.postSetup()
-	if err != nil {
-		return fmt.Errorf("post setup step for block based rootfs failed: %w", err)
-	}
-
-	blockArgs, err := rfsBuilder.getBlockDevs()
-	if err != nil {
-		return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
-	}
-
-	sharedfsArgs, err := rfsBuilder.getSharedDirs()
-	if err != nil {
-		uniklog.Errorf("failed to get directories to share with sandbox: %v", err)
-		return err
-	}
-
-	unikernelParams.Rootfs = rootfsParams
 
 	metrics.Capture(m.TS17)
 
 	// unikernelParams
+	blockArgs, err := rfsBuilder.getBlockDevs()
+	if err != nil {
+		return fmt.Errorf("failed to get block devices: %w", err)
+	}
+	sharedfsArgs, err := rfsBuilder.getSharedDirs()
+	if err != nil {
+		return fmt.Errorf("failed to get shared dirs: %w", err)
+	}
 	unikernelParams.Block = blockArgs
-
-	// ExecArgs
 	vmmArgs.Sharedfs = sharedfsArgs
 
 	// vAccel setup
-	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
-	if err != nil {
-		uniklog.Debugf("vAccel config: %v", err)
-	}
-
-	if vAccelType == "vsock" && err == nil {
-		// Remove any existing VACCEL_RPC_ADDRESS and set the new value
-		for i, envVar := range unikernelParams.EnvVars {
-			if strings.HasPrefix(envVar, "VACCEL_RPC_ADDRESS"+"=") {
-				unikernelParams.EnvVars = remove(unikernelParams.EnvVars, i)
-				break
-			}
-		}
-		unikernelParams.EnvVars = append(unikernelParams.EnvVars, "VACCEL_RPC_ADDRESS="+rpcAddress)
-
-		// Prepare the guest environment for vAccel vsock communication
-		err = prepareVSockEnvironment(rootfsParams.MonRootfs, u.State.Annotations[annotHypervisor], vsockSocketPath)
-		if err != nil {
-			uniklog.Debugf("failed to prepare all required vsock mounts: %v", err)
-		}
-
-		vmmArgs.VAccelType = vAccelType
-		vmmArgs.VSockDevPath = vsockSocketPath
-		vmmArgs.VSockDevID = idToGuestCID(u.State.ID)
-	}
+	u.setupVAccel(&vmmArgs, &unikernelParams, rootfsParams.MonRootfs)
 
 	// unikernel
 	err = unikernel.Init(unikernelParams)
