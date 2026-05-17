@@ -130,7 +130,7 @@ func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string,
 	targetUnikernelDir, _ := filepath.Split(targetUnikernelPath)
 	err := moveFile(currentUnikernelPath, targetUnikernelDir)
 	if err != nil {
-		return fmt.Errorf("Could not move %s to %s: %w", currentUnikernelPath, targetUnikernelPath, err)
+		return fmt.Errorf("could not move %s to %s: %w", currentUnikernelPath, targetUnikernelPath, err)
 	}
 
 	if initrd != "" {
@@ -139,14 +139,14 @@ func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string,
 		targetInitrdDir, _ := filepath.Split(targetInitrdPath)
 		err = moveFile(currentInitrdPath, targetInitrdDir)
 		if err != nil {
-			return fmt.Errorf("Could not move %s to %s: %w", currentInitrdPath, targetInitrdPath, err)
+			return fmt.Errorf("could not move %s to %s: %w", currentInitrdPath, targetInitrdPath, err)
 		}
 	}
 
 	currentConfigPath := filepath.Join(rootfsPath, uruncJSON)
 	err = moveFile(currentConfigPath, newRootfsPath)
 	if err != nil {
-		return fmt.Errorf("Could not move %s to %s: %w", currentConfigPath, newRootfsPath, err)
+		return fmt.Errorf("could not move %s to %s: %w", currentConfigPath, newRootfsPath, err)
 	}
 
 	return nil
