@@ -553,7 +553,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// vAccel setup
 	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
 	if err != nil {
-		uniklog.Debugf("vAccel config: %v", err)
+		if !errors.Is(err, ErrVAccelDisabled) {
+			uniklog.Warnf("vAccel misconfiguration: %v", err)
+		}
 	}
 
 	if vAccelType == "vsock" && err == nil {

@@ -15,6 +15,7 @@
 package unikontainers
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -168,3 +169,46 @@ func TestIsValidVSockAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveVAccelConfig(t *testing.T) {
+	t.Run("vaccel disabled returns ErrVAccelDisabled", func(t *testing.T) {
+		t.Parallel()
+		annotations := map[string]string{}
+		_, _, _, err := resolveVAccelConfig("qemu", annotations)
+		assert.ErrorIs(t, err, ErrVAccelDisabled)
+	})
+
+	t.Run("vaccel enabled but rpc address missing returns error", func(t *testing.T) {
+		t.Parallel()
+		annotations := map[string]string{
+			"com.urunc.unikernel.vAccel": "vsock",
+		}
+		_, _, _, err := resolveVAccelConfig("qemu", annotations)
+		assert.Error(t, err)
+		assert.False(t, errors.Is(err, ErrVAccelDisabled), "missing rpc address should not be ErrVAccelDisabled")
+	})
+
+	t.Run("vaccel enabled with malformed rpc address returns error", func(t *testing.T) {
+		t.Parallel()
+		annotations := map[string]string{
+			"com.urunc.unikernel.vAccel":      "vsock",
+			"com.urunc.unikernel.RPCAddress":  "invalid-address",
+		}
+		_, _, _, err := resolveVAccelConfig("qemu", annotations)
+		assert.Error(t, err)
+		assert.False(t, errors.Is(err, ErrVAccelDisabled), "malformed address should not be ErrVAccelDisabled")
+	})
+
+	t.Run("vaccel enabled with valid qemu vsock address succeeds", func(t *testing.T) {
+		t.Parallel()
+		annotations := map[string]string{
+			"com.urunc.unikernel.vAccel":     "vsock",
+			"com.urunc.unikernel.RPCAddress": "vsock://2:1234",
+		}
+		vAccelType, _, addr, err := resolveVAccelConfig("qemu", annotations)
+		assert.NoError(t, err)
+		assert.Equal(t, "vsock", vAccelType)
+		assert.Equal(t, "vsock://2:1234", addr)
+	})
+}
+
