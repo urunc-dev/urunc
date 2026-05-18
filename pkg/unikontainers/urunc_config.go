@@ -35,10 +35,11 @@ type UruncTimestamps struct {
 }
 
 type UruncConfig struct {
-	Log        UruncLog                        `toml:"log"`
-	Timestamps UruncTimestamps                 `toml:"timestamps"`
-	Monitors   map[string]types.MonitorConfig  `toml:"monitors"`
-	ExtraBins  map[string]types.ExtraBinConfig `toml:"extra_binaries"`
+	Log                   UruncLog                        `toml:"log"`
+	Timestamps            UruncTimestamps                 `toml:"timestamps"`
+	Monitors              map[string]types.MonitorConfig  `toml:"monitors"`
+	ExtraBins             map[string]types.ExtraBinConfig `toml:"extra_binaries"`
+	DefaultHookTimeoutSec uint                            `toml:"default_hook_timeout_sec"`
 }
 
 // this struct is used to parse only the log and timestamp section of the urunc config file
@@ -96,10 +97,11 @@ func defaultExtraBinConfig() map[string]types.ExtraBinConfig {
 
 func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
-		Log:        defaultLogConfig(),
-		Timestamps: defaultTimestampsConfig(),
-		Monitors:   defaultMonitorsConfig(),
-		ExtraBins:  defaultExtraBinConfig(),
+		Log:                   defaultLogConfig(),
+		Timestamps:            defaultTimestampsConfig(),
+		Monitors:              defaultMonitorsConfig(),
+		ExtraBins:             defaultExtraBinConfig(),
+		DefaultHookTimeoutSec: 30,
 	}
 }
 

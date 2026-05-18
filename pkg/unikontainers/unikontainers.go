@@ -890,7 +890,7 @@ func (u *Unikontainer) executeHooksConcurrently(name string, hooks []specs.Hook,
 		wg.Add(1)
 		go func(h specs.Hook) {
 			defer wg.Done()
-			err := executeHook(h, s)
+			err := executeHook(h, s, u.UruncCfg.DefaultHookTimeoutSec)
 			if err != nil {
 				uniklog.WithFields(logrus.Fields{
 					"id":    u.State.ID,
@@ -930,7 +930,7 @@ func (u *Unikontainer) executeHooksSequentially(name string, hooks []specs.Hook,
 			"args": hooks[i].Args,
 		}).Debug("Executing hook")
 
-		err := executeHook(hooks[i], s)
+		err := executeHook(hooks[i], s, u.UruncCfg.DefaultHookTimeoutSec)
 		if err != nil {
 			uniklog.WithFields(logrus.Fields{
 				"id":    u.State.ID,

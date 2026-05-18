@@ -525,6 +525,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.Equal(t, testTimestampsPath, config.Timestamps.Destination)
 		assert.Len(t, config.Monitors, 5)
 		assert.Len(t, config.ExtraBins, 1)
+		assert.Equal(t, uint(30), config.DefaultHookTimeoutSec)
 	})
 
 	t.Run("defaultLogMetricsConfig", func(t *testing.T) {

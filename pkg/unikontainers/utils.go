@@ -304,7 +304,7 @@ func rmMultipleDirs(prefixPath string, dirs []string) error {
 	return nil
 }
 
-func executeHook(hook specs.Hook, state []byte) error {
+func executeHook(hook specs.Hook, state []byte, defaultTimeoutSec uint) error {
 	var stdout, stderr bytes.Buffer
 	var cancel context.CancelFunc
 	ctx := context.Background()
@@ -312,6 +312,8 @@ func executeHook(hook specs.Hook, state []byte) error {
 	// Apply hook-specific timeout if set, otherwise use global config timeout
 	if hook.Timeout != nil && *hook.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(*hook.Timeout)*time.Second)
+	} else if defaultTimeoutSec > 0 {
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(defaultTimeoutSec)*time.Second)
 	}
 	if cancel != nil {
 		defer cancel()
