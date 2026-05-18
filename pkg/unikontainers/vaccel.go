@@ -15,11 +15,16 @@
 package unikontainers
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 
 	"golang.org/x/sys/unix"
 )
+
+// ErrVAccelDisabled is returned by resolveVAccelConfig when the vAccel
+// annotation is absent. This is an expected condition, not a misconfiguration.
+var ErrVAccelDisabled = errors.New("vaccel is disabled")
 
 // idToGuestCID generates a deterministic guest CID (Context Identifier)
 // for vsock communication based on a container or VM ID.
@@ -87,8 +92,7 @@ func resolveVAccelConfig(hypervisor string, annotations map[string]string) (stri
 			return vAccelType, "", "", err
 		}
 	} else {
-		err = fmt.Errorf("vaccel is disabled")
-		return vAccelType, "", "", err
+		return "", "", "", ErrVAccelDisabled
 	}
 
 	if vAccelType == "vsock" {
