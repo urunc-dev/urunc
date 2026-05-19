@@ -9,9 +9,13 @@ One of the main goals of `urunc` is to bridge the gap between unikernels and
 the cloud-native ecosystem. For that reason, `urunc` aims to support all the
 available unikernel frameworks and similar technologies.
 
-For the time being, `urunc` provides support for
-[Unikraft](https://unikraft.org/) and
-[Rumprun](https://github.com/cloudkernels/rumprun) unikernels.
+Currently, `urunc` provides support for
+[Unikraft](https://unikraft.org/),
+[MirageOS](https://github.com/mirage/mirage),
+[Rumprun](https://github.com/cloudkernels/rumprun),
+[Mewz](https://github.com/Mewz-project/Mewz),
+[Linux](https://github.com/torvalds/linux) and
+[Hermit](https://hermit-os.org/).
 
 ## Unikraft
 
