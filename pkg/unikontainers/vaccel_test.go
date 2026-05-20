@@ -191,8 +191,8 @@ func TestResolveVAccelConfig(t *testing.T) {
 	t.Run("vaccel enabled with malformed rpc address returns error", func(t *testing.T) {
 		t.Parallel()
 		annotations := map[string]string{
-			"com.urunc.unikernel.vAccel":      "vsock",
-			"com.urunc.unikernel.RPCAddress":  "invalid-address",
+			"com.urunc.unikernel.vAccel":     "vsock",
+			"com.urunc.unikernel.RPCAddress": "invalid-address",
 		}
 		_, _, _, err := resolveVAccelConfig("qemu", annotations)
 		assert.Error(t, err)
@@ -211,4 +211,3 @@ func TestResolveVAccelConfig(t *testing.T) {
 		assert.Equal(t, "vsock://2:1234", addr)
 	})
 }
-
