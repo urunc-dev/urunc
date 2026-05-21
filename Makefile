@@ -233,7 +233,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics test_network test_hypervisors
+unittest: test_unikontainers test_metrics test_network test_hypervisors test_unikernels
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -261,6 +261,12 @@ test_network:
 test_hypervisors:
 	@echo "Unit testing in hypervisors"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/hypervisors -v
+	@echo " "
+
+## test_unikernels Run unit tests for unikernels package
+test_unikernels:
+	@echo "Unit testing in unikernels"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/unikernels -v
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
