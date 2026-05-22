@@ -41,6 +41,13 @@ For example, if the container id is "ubuntu01" the following will send a "KILL"
 signal to the init process of the "ubuntu01" container:
 
 	# urunc kill ubuntu01 KILL`,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:    "all",
+			Aliases: []string{"a"},
+			Usage:   "send the specified signal to all processes inside the container",
+		},
+	},
 	Action: func(_ context.Context, cmd *cli.Command) error {
 		runtime.GOMAXPROCS(1)
 		runtime.LockOSThread()
