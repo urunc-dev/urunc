@@ -28,6 +28,10 @@ import (
 // TODO: Find and set the correct size for the tmpfs in the host
 const tmpfsSizeForNoRootfs = "65536k"
 
+// annotRootfsParams holds JSON RootfsParams after shim chooseGuestRootfs.
+// When present in bundle config.json, Exec reuses it; otherwise Exec runs ChooseRootfs.
+const annotRootfsParams = "com.urunc.internal.rootfs.params"
+
 type rootfsBuilder interface {
 	preSetup() error
 	postSetup() error

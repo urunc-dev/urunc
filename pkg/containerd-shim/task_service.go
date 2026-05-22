@@ -16,6 +16,7 @@ package containerdshim
 
 import (
 	"context"
+	"errors"
 
 	taskAPI "github.com/containerd/containerd/api/runtime/task/v2"
 	"github.com/containerd/log"
@@ -47,7 +48,23 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 		}
 	}
 
-	return s.TaskService.Create(ctx, r)
+	resp, err := s.TaskService.Create(ctx, r)
+	if err != nil {
+		return resp, err
+	}
+
+	// ChooseRootfs after inner task Create so bundle rootfs is mounted;
+	// params are persisted in bundle config.json for runtime Exec.
+	if err := chooseGuestRootfs(r); err != nil {
+		if errors.Is(err, errGuestRootfsChoiceSkipped) {
+			log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
+			return resp, nil
+		}
+		log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (s *taskService) Delete(ctx context.Context, r *taskAPI.DeleteRequest) (*taskAPI.DeleteResponse, error) {
