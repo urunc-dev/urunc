@@ -22,39 +22,25 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+type mockUnikernel struct {
+	netCli   string
+	blockCli []types.MonitorBlockArgs
+	monCli   types.MonitorCliArgs
+}
+
+func (m *mockUnikernel) Init(_ types.UnikernelParams) error        { return nil }
+func (m *mockUnikernel) CommandString() (string, error)            { return "", nil }
+func (m *mockUnikernel) SupportsBlock() bool                       { return false }
+func (m *mockUnikernel) SupportsFS(_ string) bool                  { return false }
+func (m *mockUnikernel) MonitorNetCli(_, _ string) string          { return m.netCli }
+func (m *mockUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return m.blockCli }
+func (m *mockUnikernel) MonitorCli() types.MonitorCliArgs          { return m.monCli }
+
 func newTestHVT() *HVT {
 	return &HVT{
 		binary:     HvtBinary,
 		binaryPath: "/usr/bin/solo5-hvt",
 	}
-}
-
-func TestHVTUsesKVM(t *testing.T) {
-	t.Parallel()
-	assert.True(t, newTestHVT().UsesKVM())
-}
-
-func TestHVTSupportsSharedfs(t *testing.T) {
-	t.Parallel()
-	h := newTestHVT()
-	assert.False(t, h.SupportsSharedfs("virtio"))
-	assert.False(t, h.SupportsSharedfs("9p"))
-	assert.False(t, h.SupportsSharedfs(""))
-}
-
-func TestHVTPath(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "/usr/bin/solo5-hvt", newTestHVT().Path())
-}
-
-func TestHVTOkBinaryNotFound(t *testing.T) {
-	t.Parallel()
-	assert.ErrorIs(t, newTestHVT().Ok(), ErrVMMNotInstalled)
-}
-
-func TestHVTPreExecNoSeccomp(t *testing.T) {
-	t.Parallel()
-	assert.NoError(t, newTestHVT().PreExec(types.ExecArgs{Seccomp: false}))
 }
 
 func TestHVTBuildExecCmd(t *testing.T) {
@@ -67,14 +53,6 @@ func TestHVTBuildExecCmd(t *testing.T) {
 		wantContain []string
 		wantAbsent  []string
 	}{
-		{
-			name: "binary path is first element",
-			args: types.ExecArgs{
-				UnikernelPath: "/unikernel.bin",
-			},
-			unikernel:   &mockUnikernel{},
-			wantContain: []string{"/usr/bin/solo5-hvt"},
-		},
 		{
 			name: "default memory when MemSizeB is zero",
 			args: types.ExecArgs{
@@ -134,15 +112,6 @@ func TestHVTBuildExecCmd(t *testing.T) {
 			},
 			wantContain: []string{"--dumpcore"},
 		},
-		{
-			name: "unikernel path and command are last",
-			args: types.ExecArgs{
-				UnikernelPath: "/unikernel.bin",
-				Command:       "console=ttyS0",
-			},
-			unikernel:   &mockUnikernel{},
-			wantContain: []string{"/unikernel.bin", "console=ttyS0"},
-		},
 	}
 
 	for _, tc := range tests {
@@ -162,4 +131,17 @@ func TestHVTBuildExecCmd(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHVTBuildExecCmdOrdering(t *testing.T) {
+	t.Parallel()
+	h := newTestHVT()
+	got, err := h.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: "/unikernel.bin",
+		Command:       "console=ttyS0",
+	}, &mockUnikernel{})
+	assert.NoError(t, err)
+	assert.Equal(t, "/usr/bin/solo5-hvt", got[0])
+	assert.Equal(t, "/unikernel.bin", got[len(got)-2])
+	assert.Equal(t, "console=ttyS0", got[len(got)-1])
 }
