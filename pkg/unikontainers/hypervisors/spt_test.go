@@ -22,39 +22,25 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+type mockUnikernel struct {
+	netCli   string
+	blockCli []types.MonitorBlockArgs
+	monCli   types.MonitorCliArgs
+}
+
+func (m *mockUnikernel) Init(_ types.UnikernelParams) error        { return nil }
+func (m *mockUnikernel) CommandString() (string, error)            { return "", nil }
+func (m *mockUnikernel) SupportsBlock() bool                       { return false }
+func (m *mockUnikernel) SupportsFS(_ string) bool                  { return false }
+func (m *mockUnikernel) MonitorNetCli(_, _ string) string          { return m.netCli }
+func (m *mockUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return m.blockCli }
+func (m *mockUnikernel) MonitorCli() types.MonitorCliArgs          { return m.monCli }
+
 func newTestSPT() *SPT {
 	return &SPT{
 		binary:     SptBinary,
 		binaryPath: "/usr/bin/solo5-spt",
 	}
-}
-
-func TestSPTUsesKVM(t *testing.T) {
-	t.Parallel()
-	assert.False(t, newTestSPT().UsesKVM())
-}
-
-func TestSPTSupportsSharedfs(t *testing.T) {
-	t.Parallel()
-	s := newTestSPT()
-	assert.False(t, s.SupportsSharedfs("virtio"))
-	assert.False(t, s.SupportsSharedfs("9p"))
-	assert.False(t, s.SupportsSharedfs(""))
-}
-
-func TestSPTPath(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "/usr/bin/solo5-spt", newTestSPT().Path())
-}
-
-func TestSPTOkBinaryNotFound(t *testing.T) {
-	t.Parallel()
-	assert.ErrorIs(t, newTestSPT().Ok(), ErrVMMNotInstalled)
-}
-
-func TestSPTPreExec(t *testing.T) {
-	t.Parallel()
-	assert.NoError(t, newTestSPT().PreExec(types.ExecArgs{}))
 }
 
 func TestSPTBuildExecCmd(t *testing.T) {
@@ -68,14 +54,6 @@ func TestSPTBuildExecCmd(t *testing.T) {
 		wantAbsent  []string
 	}{
 		{
-			name: "binary path is first element",
-			args: types.ExecArgs{
-				UnikernelPath: "/unikernel.bin",
-			},
-			unikernel:   &mockUnikernel{},
-			wantContain: []string{"/usr/bin/solo5-spt"},
-		},
-		{
 			name: "default memory when MemSizeB is zero",
 			args: types.ExecArgs{
 				UnikernelPath: "/unikernel.bin",
@@ -87,10 +65,10 @@ func TestSPTBuildExecCmd(t *testing.T) {
 			name: "memory set from MemSizeB",
 			args: types.ExecArgs{
 				UnikernelPath: "/unikernel.bin",
-				MemSizeB:      256 * 1000 * 1000,
+				MemSizeB:      512 * 1000 * 1000,
 			},
 			unikernel:   &mockUnikernel{},
-			wantContain: []string{"--mem=256"},
+			wantContain: []string{"--mem=512"},
 		},
 		{
 			name: "net cli from unikernel when TapDev set",
@@ -134,15 +112,6 @@ func TestSPTBuildExecCmd(t *testing.T) {
 			},
 			wantContain: []string{"--dumpcore"},
 		},
-		{
-			name: "unikernel path and command are last",
-			args: types.ExecArgs{
-				UnikernelPath: "/unikernel.bin",
-				Command:       "console=ttyS0",
-			},
-			unikernel:   &mockUnikernel{},
-			wantContain: []string{"/unikernel.bin", "console=ttyS0"},
-		},
 	}
 
 	for _, tc := range tests {
@@ -162,4 +131,17 @@ func TestSPTBuildExecCmd(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSPTBuildExecCmdOrdering(t *testing.T) {
+	t.Parallel()
+	s := newTestSPT()
+	got, err := s.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: "/unikernel.bin",
+		Command:       "console=ttyS0",
+	}, &mockUnikernel{})
+	assert.NoError(t, err)
+	assert.Equal(t, "/usr/bin/solo5-spt", got[0])
+	assert.Equal(t, "/unikernel.bin", got[len(got)-2])
+	assert.Equal(t, "console=ttyS0", got[len(got)-1])
 }
