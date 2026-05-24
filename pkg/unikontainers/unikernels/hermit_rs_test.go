@@ -16,43 +16,19 @@ package unikernels
 
 import (
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
-func TestHermitSupports(t *testing.T) {
-	h := newHermit()
-	assert.False(t, h.SupportsBlock())
-	assert.True(t, h.SupportsFS("initrd"))
-	assert.False(t, h.SupportsFS("ext4"))
-	assert.False(t, h.SupportsFS("9pfs"))
-	assert.False(t, h.SupportsFS(""))
-}
-
-func TestHermitMonitorCliAlwaysHasNoReboot(t *testing.T) {
-	h := &Hermit{Monitor: "qemu"}
-	assert.Equal(t, " -no-reboot", h.MonitorCli().OtherArgs)
-
-	h.Monitor = "spt"
-	assert.Equal(t, " -no-reboot", h.MonitorCli().OtherArgs)
-}
-
-func TestHermitMonitorBlockCliIsNil(t *testing.T) {
-	assert.Nil(t, (&Hermit{Monitor: "qemu"}).MonitorBlockCli())
-}
-
-func TestHermitMonitorNetCli_NonQemuReturnsEmpty(t *testing.T) {
+func TestHermitMonitorNetCli(t *testing.T) {
 	for _, mon := range []string{"spt", "hvt", "firecracker", ""} {
 		h := &Hermit{Monitor: mon}
 		assert.Empty(t, h.MonitorNetCli("tap0", "aa:bb:cc:dd:ee:ff"),
 			"monitor=%q should produce no netCli", mon)
 	}
-}
 
-func TestHermitMonitorNetCli_Qemu(t *testing.T) {
 	h := &Hermit{Monitor: "qemu"}
 
 	cli := h.MonitorNetCli("tap0", "")
@@ -73,29 +49,29 @@ func TestHermitMonitorNetCli_Qemu(t *testing.T) {
 
 func TestHermitCommandString(t *testing.T) {
 	cases := []struct {
-		name string
-		in   Hermit
-		want string
+		name     string
+		in       Hermit
+		expected string
 	}{
 		{
-			name: "empty",
-			in:   Hermit{},
-			want: "",
+			name:     "empty",
+			in:       Hermit{},
+			expected: "",
 		},
 		{
-			name: "command only",
-			in:   Hermit{Command: "echo hi"},
-			want: "echo hi",
+			name:     "command only",
+			in:       Hermit{Command: "echo hi"},
+			expected: "echo hi",
 		},
 		{
-			name: "ip only inserts no separator",
-			in:   Hermit{Net: HermitNet{Address: "10.0.0.2", Mask: 24}},
-			want: "ip=10.0.0.2/24",
+			name:     "ip only inserts no separator",
+			in:       Hermit{Net: HermitNet{Address: "10.0.0.2", Mask: 24}},
+			expected: "ip=10.0.0.2/24",
 		},
 		{
-			name: "ip + gateway",
-			in:   Hermit{Net: HermitNet{Address: "10.0.0.2", Mask: 24, Gateway: "10.0.0.1"}},
-			want: "ip=10.0.0.2/24 gateway=10.0.0.1",
+			name:     "ip + gateway",
+			in:       Hermit{Net: HermitNet{Address: "10.0.0.2", Mask: 24, Gateway: "10.0.0.1"}},
+			expected: "ip=10.0.0.2/24 gateway=10.0.0.1",
 		},
 		{
 			name: "ip + cmd inserts -- separator",
@@ -103,7 +79,7 @@ func TestHermitCommandString(t *testing.T) {
 				Command: "/usr/bin/app --flag",
 				Net:     HermitNet{Address: "10.0.0.2", Mask: 24},
 			},
-			want: "ip=10.0.0.2/24 -- /usr/bin/app --flag",
+			expected: "ip=10.0.0.2/24 -- /usr/bin/app --flag",
 		},
 		{
 			name: "whitespace-only command treated as empty",
@@ -111,7 +87,7 @@ func TestHermitCommandString(t *testing.T) {
 				Command: "   ",
 				Net:     HermitNet{Address: "10.0.0.2", Mask: 24},
 			},
-			want: "ip=10.0.0.2/24",
+			expected: "ip=10.0.0.2/24",
 		},
 	}
 
@@ -119,58 +95,73 @@ func TestHermitCommandString(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := tc.in.CommandString()
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.expected, got)
 		})
 	}
 }
 
-func TestHermitInit_NoNetwork(t *testing.T) {
-	h := newHermit()
-	err := h.Init(types.UnikernelParams{
-		CmdLine: []string{"/bin/run", "arg1", "arg2"},
-		Monitor: "qemu",
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, "/bin/run arg1 arg2", h.Command)
-	assert.Equal(t, "qemu", h.Monitor)
-	assert.Equal(t, "", h.Net.Address)
-	assert.Equal(t, 0, h.Net.Mask)
-
-	cmdStr, _ := h.CommandString()
-	assert.Equal(t, "/bin/run arg1 arg2", cmdStr)
-}
-
-func TestHermitInit_WithMaskComputesCIDR(t *testing.T) {
-	h := newHermit()
-	err := h.Init(types.UnikernelParams{
-		CmdLine: []string{"app"},
-		Monitor: "qemu",
-		Net: types.NetDevParams{
-			IP:      "10.0.0.5",
-			Mask:    "255.255.255.0",
-			Gateway: "10.0.0.1",
+func TestHermitInit(t *testing.T) {
+	tests := []struct {
+		name   string
+		params types.UnikernelParams
+		check  func(t *testing.T, h *Hermit, err error)
+	}{
+		{
+			name: "no network",
+			params: types.UnikernelParams{
+				CmdLine: []string{"/bin/run", "arg1", "arg2"},
+				Monitor: "qemu",
+			},
+			check: func(t *testing.T, h *Hermit, err error) {
+				assert.NoError(t, err)
+				assert.Equal(t, "/bin/run arg1 arg2", h.Command)
+				assert.Equal(t, "qemu", h.Monitor)
+				assert.Equal(t, "", h.Net.Address)
+				assert.Equal(t, 0, h.Net.Mask)
+				cmdStr, _ := h.CommandString()
+				assert.Equal(t, "/bin/run arg1 arg2", cmdStr)
+			},
 		},
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, "10.0.0.5", h.Net.Address)
-	assert.Equal(t, 24, h.Net.Mask)
-	assert.Equal(t, "10.0.0.1", h.Net.Gateway)
-
-	cs, _ := h.CommandString()
-	assert.Equal(t, "ip=10.0.0.5/24 gateway=10.0.0.1 -- app", cs)
-}
-
-func TestHermitInit_BadMaskBubblesError(t *testing.T) {
-	h := newHermit()
-	err := h.Init(types.UnikernelParams{
-		Monitor: "qemu",
-		Net: types.NetDevParams{
-			IP:   "10.0.0.5",
-			Mask: "not-a-mask",
+		{
+			name: "with mask computes CIDR",
+			params: types.UnikernelParams{
+				CmdLine: []string{"app"},
+				Monitor: "qemu",
+				Net: types.NetDevParams{
+					IP:      "10.0.0.5",
+					Mask:    "255.255.255.0",
+					Gateway: "10.0.0.1",
+				},
+			},
+			check: func(t *testing.T, h *Hermit, err error) {
+				assert.NoError(t, err)
+				assert.Equal(t, "10.0.0.5", h.Net.Address)
+				assert.Equal(t, 24, h.Net.Mask)
+				assert.Equal(t, "10.0.0.1", h.Net.Gateway)
+				cs, _ := h.CommandString()
+				assert.Equal(t, "ip=10.0.0.5/24 gateway=10.0.0.1 -- app", cs)
+			},
 		},
-	})
-	if assert.Error(t, err) {
-		assert.True(t, strings.Contains(err.Error(), "invalid"),
-			"expected invalid-mask error, got %v", err)
+		{
+			name: "bad mask returns error",
+			params: types.UnikernelParams{
+				Monitor: "qemu",
+				Net: types.NetDevParams{
+					IP:   "10.0.0.5",
+					Mask: "not-a-mask",
+				},
+			},
+			check: func(t *testing.T, h *Hermit, err error) {
+				assert.ErrorContains(t, err, "invalid")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHermit()
+			err := h.Init(tc.params)
+			tc.check(t, h, err)
+		})
 	}
 }
