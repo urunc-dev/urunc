@@ -15,7 +15,6 @@
 package unikernels
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,7 +59,10 @@ func TestMewzMonitorCli(t *testing.T) {
 	assert.Contains(t, got.OtherArgs, "isa-debug-exit")
 	assert.Empty(t, got.ExtraInitrd)
 
-	assert.Equal(t, types.MonitorCliArgs{}, (&Mewz{Monitor: "spt"}).MonitorCli())
+	for _, mon := range []string{"hvt", "spt", "firecracker", ""} {
+		assert.Equal(t, types.MonitorCliArgs{}, (&Mewz{Monitor: mon}).MonitorCli(),
+			"monitor %q should return empty MonitorCliArgs", mon)
+	}
 }
 
 func TestMewzInit(t *testing.T) {
@@ -91,10 +93,9 @@ func TestMewzInit(t *testing.T) {
 			Net:     types.NetDevParams{IP: "10.0.0.2", Gateway: "10.0.0.1"},
 		})
 		assert.NoError(t, err)
+		assert.Equal(t, "10.0.0.2", m.Net.Address)
 		assert.Equal(t, 24, m.Net.Mask)
-
-		out, _ := m.CommandString()
-		assert.True(t, strings.HasPrefix(out, "ip=10.0.0.2/24"))
+		assert.Equal(t, "10.0.0.1", m.Net.Gateway)
 	})
 
 	t.Run("garbage mask returns error", func(t *testing.T) {
