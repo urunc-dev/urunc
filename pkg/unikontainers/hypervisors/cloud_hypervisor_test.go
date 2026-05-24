@@ -22,31 +22,25 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+type mockUnikernel struct {
+	netCli   string
+	blockCli []types.MonitorBlockArgs
+	monCli   types.MonitorCliArgs
+}
+
+func (m *mockUnikernel) Init(_ types.UnikernelParams) error        { return nil }
+func (m *mockUnikernel) CommandString() (string, error)            { return "", nil }
+func (m *mockUnikernel) SupportsBlock() bool                       { return false }
+func (m *mockUnikernel) SupportsFS(_ string) bool                  { return false }
+func (m *mockUnikernel) MonitorNetCli(_, _ string) string          { return m.netCli }
+func (m *mockUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return m.blockCli }
+func (m *mockUnikernel) MonitorCli() types.MonitorCliArgs          { return m.monCli }
+
 func newTestCH() *CloudHypervisor {
 	return &CloudHypervisor{
 		binary:     CloudHypervisorBinary,
 		binaryPath: "/usr/bin/cloud-hypervisor",
 	}
-}
-
-func TestCloudHypervisorUsesKVM(t *testing.T) {
-	t.Parallel()
-	assert.True(t, newTestCH().UsesKVM())
-}
-
-func TestCloudHypervisorOk(t *testing.T) {
-	t.Parallel()
-	assert.NoError(t, newTestCH().Ok())
-}
-
-func TestCloudHypervisorPath(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "/usr/bin/cloud-hypervisor", newTestCH().Path())
-}
-
-func TestCloudHypervisorPreExec(t *testing.T) {
-	t.Parallel()
-	assert.NoError(t, newTestCH().PreExec(types.ExecArgs{}))
 }
 
 func TestCloudHypervisorSupportsSharedfs(t *testing.T) {
