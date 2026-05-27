@@ -71,10 +71,11 @@ type containerTestArgs struct {
 }
 
 const (
-	testCtr     = "TestCtr"
-	testCrictl  = "TestCrictl"
-	testDocker  = "TestDocker"
-	testNerdctl = "TestNerdctl"
+	testCtr       = "TestCtr"
+	testCrictl    = "TestCrictl"
+	testDocker    = "TestDocker"
+	testNerdctl   = "TestNerdctl"
+	testNamespace = "urunc-test"
 )
 
 var errToolDoesNotSupport = errors.New("Operation not support")
