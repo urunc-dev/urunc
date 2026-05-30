@@ -101,11 +101,12 @@ func (s sharedfsRootfs) preStart() error {
 		args = append(args, strings.Fields(s.vfsdConfig.Options)...)
 	}
 
-	err := spawnProcess(s.vfsdConfig.Path, args)
+	vfsdPid, err := spawnProcess(s.vfsdConfig.Path, args)
 	if err != nil {
-		err = fmt.Errorf("failed to start virtiofsd: %w", err)
+		return fmt.Errorf("failed to start virtiofsd: %w", err)
 	}
-	return err
+	uniklog.WithField("virtiofsd_pid", vfsdPid).Debug("virtiofsd started")
+	return nil
 }
 
 func chooseTmpfsSize(sfsType string, mem uint64) string {

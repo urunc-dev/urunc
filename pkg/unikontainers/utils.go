@@ -203,17 +203,17 @@ func convertUint32ToIntSlice(valSlice []uint32, size int) []int {
 // 	return data.Bytes(), nil
 // }
 
-func spawnProcess(binaryPath string, args []string) error {
+func spawnProcess(binaryPath string, args []string) (int, error) {
 	cmd := exec.Command(binaryPath, args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return -1, err
 	}
 
-	return nil
+	return cmd.Process.Pid, nil
 }
 
 func resolveAgainstBase(base string, path string) (string, error) {
