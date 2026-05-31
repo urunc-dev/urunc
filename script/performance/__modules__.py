@@ -117,7 +117,9 @@ class TimestampSeries:
         return temp
 
 
-def parseSingleContainerTimestamps(filename: str, containerID: str) -> List[str]:
+def parseSingleContainerTimestamps(
+    filename: str, containerID: str
+) -> List[str]:
     with open(filename, 'r') as f:
         data = f.readlines()
         return [line for line in data if containerID in line]
@@ -127,8 +129,19 @@ def emptyFile(filename: str) -> None:
     open(filename, "w").close()
 
 
-def spawnContainer() -> str:
-    command = "nerdctl run --name redis-test -d --snapshotter devmapper --runtime io.containerd.uruncts.v2 harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest"
+def spawnContainer(
+    image: str = (
+        "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest"
+    ),
+    name: str = "redis-test",
+    snapshotter: str = "devmapper",
+    runtime: str = "io.containerd.uruncts.v2"
+) -> str:
+    command = (
+        f"nerdctl run --name {name} -d"
+        f" --snapshotter {snapshotter}"
+        f" --runtime {runtime} {image}"
+    )
     cmdParts = command.split(" ")
     cmd = run(cmdParts,
               stdout=PIPE,
@@ -138,15 +151,15 @@ def spawnContainer() -> str:
     return containerID
 
 
-def deleteContainer() -> bool:
-    command = "nerdctl rm --force redis-test"
+def deleteContainer(name: str = "redis-test") -> bool:
+    command = f"nerdctl rm --force {name}"
     cmdParts = command.split(" ")
     cmd = run(cmdParts,
               stdout=PIPE,
               text=True)
     response = cmd.stdout
-    containerID = response.splitlines()[-1]
-    return containerID == "redis-test"
+    result = response.splitlines()[-1]
+    return result == name
 
 
 def myprint(msg: str):

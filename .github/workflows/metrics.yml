@@ -1,0 +1,60 @@
+# Copyright (c) 2023-2026, Nubificus LTD
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: metrics
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1'  # every Monday at midnight
+
+jobs:
+  measure:
+    runs-on: [self-hosted, linux, amd64]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - unikernel: solo5-hvt
+            image: harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun:latest
+          - unikernel: unikraft-nginx
+            image: harbor.nbfc.io/nubificus/urunc/nginx-unikraft-fc-initrd:latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup timestamping shim
+        run: |
+          sudo tee /usr/local/bin/containerd-shim-uruncts-v2 > /dev/null << 'EOT'
+          #!/bin/bash
+          URUNC_TIMESTAMPS=1 /usr/local/bin/containerd-shim-urunc-v2 $@
+          EOT
+          sudo chmod +x /usr/local/bin/containerd-shim-uruncts-v2
+
+      - name: Run metrics measurement
+        run: |
+          cd script/performance
+          sudo python3 measure_to_csv.py \
+            5 \
+            ${{ matrix.image }} \
+            metrics-${{ matrix.unikernel }}.csv
+
+      - name: Upload CSV artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-${{ matrix.unikernel }}
+          path: script/performance/metrics-${{ matrix.unikernel }}.csv
+          if-no-files-found: warn
