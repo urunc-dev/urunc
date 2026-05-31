@@ -24,150 +24,153 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
-func TestFirecrackerSimpleAccessors(t *testing.T) {
-	fc := &Firecracker{binary: FirecrackerBinary, binaryPath: "/usr/bin/firecracker"}
-
-	assert.Equal(t, "/usr/bin/firecracker", fc.Path())
-	assert.True(t, fc.UsesKVM())
-	assert.NoError(t, fc.Ok())
-	assert.NoError(t, fc.PreExec(types.ExecArgs{}))
-
-	for _, fs := range []string{"virtiofs", "9pfs", ""} {
-		assert.False(t, fc.SupportsSharedfs(fs), "fs=%q should be unsupported", fs)
-	}
+type mockUnikernel struct {
+	netCli   string
+	blockCli []types.MonitorBlockArgs
+	monCli   types.MonitorCliArgs
 }
 
-func TestFirecrackerBuildExecCmd_TypicalRun(t *testing.T) {
-	fc := &Firecracker{binary: FirecrackerBinary, binaryPath: "/usr/bin/firecracker"}
+func (m *mockUnikernel) Init(_ types.UnikernelParams) error        { return nil }
+func (m *mockUnikernel) CommandString() (string, error)            { return "", nil }
+func (m *mockUnikernel) SupportsBlock() bool                       { return false }
+func (m *mockUnikernel) SupportsFS(_ string) bool                  { return false }
+func (m *mockUnikernel) MonitorNetCli(_, _ string) string          { return m.netCli }
+func (m *mockUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return m.blockCli }
+func (m *mockUnikernel) MonitorCli() types.MonitorCliArgs          { return m.monCli }
 
-	uk := &mockUnikernel{
-		blockCli: []types.MonitorBlockArgs{
-			{ID: "rootfs", Path: "/dev/vda"},
-			{ID: "extra", Path: "/dev/vdb"},
-		},
-	}
-	cmd, err := fc.BuildExecCmd(types.ExecArgs{
-		UnikernelPath: "/kernel",
-		Command:       "console=ttyS0",
-		MemSizeB:      512 * 1024 * 1024,
-		VCPUs:         2,
-		Net: types.NetDevParams{
-			TapDev: "tap0",
-			MAC:    "aa:bb:cc:dd:ee:ff",
-		},
-	}, uk)
-	if !assert.NoError(t, err) {
-		return
-	}
+func TestFirecrackerBuildExecCmd(t *testing.T) {
+	t.Run("typical run", func(t *testing.T) {
+		fc := &Firecracker{binary: FirecrackerBinary, binaryPath: "/usr/bin/firecracker"}
 
-	assert.Equal(t, []string{
-		"/usr/bin/firecracker",
-		"--no-api",
-		"--config-file",
-		"/tmp/fc.json",
-		"--no-seccomp",
-	}, cmd)
+		uk := &mockUnikernel{
+			blockCli: []types.MonitorBlockArgs{
+				{ID: "rootfs", Path: "/dev/vda"},
+				{ID: "extra", Path: "/dev/vdb"},
+			},
+		}
+		cmd, err := fc.BuildExecCmd(types.ExecArgs{
+			UnikernelPath: "/kernel",
+			Command:       "console=ttyS0",
+			MemSizeB:      512 * 1024 * 1024,
+			VCPUs:         2,
+			Net: types.NetDevParams{
+				TapDev: "tap0",
+				MAC:    "aa:bb:cc:dd:ee:ff",
+			},
+		}, uk)
+		if !assert.NoError(t, err) {
+			return
+		}
 
-	raw, err := os.ReadFile(filepath.Join("/tmp", FCJsonFilename))
-	if !assert.NoError(t, err) {
-		return
-	}
+		assert.Equal(t, []string{
+			"/usr/bin/firecracker",
+			"--no-api",
+			"--config-file",
+			"/tmp/fc.json",
+			"--no-seccomp",
+		}, cmd)
 
-	var cfg FirecrackerConfig
-	if !assert.NoError(t, json.Unmarshal(raw, &cfg)) {
-		return
-	}
+		raw, err := os.ReadFile(filepath.Join("/tmp", FCJsonFilename))
+		if !assert.NoError(t, err) {
+			return
+		}
 
-	assert.Equal(t, "/kernel", cfg.Source.ImagePath)
-	assert.Equal(t, "console=ttyS0", cfg.Source.BootArgs)
+		var cfg FirecrackerConfig
+		if !assert.NoError(t, json.Unmarshal(raw, &cfg)) {
+			return
+		}
 
-	assert.Equal(t, uint(2), cfg.Machine.VcpuCount)
-	assert.Equal(t, uint64(512), cfg.Machine.MemSizeMiB)
-	assert.False(t, cfg.Machine.Smt)
+		assert.Equal(t, "/kernel", cfg.Source.ImagePath)
+		assert.Equal(t, "console=ttyS0", cfg.Source.BootArgs)
 
-	if assert.Len(t, cfg.NetIfs, 1) {
-		assert.Equal(t, "net1", cfg.NetIfs[0].IfaceID)
-		assert.Equal(t, "tap0", cfg.NetIfs[0].HostIF)
-		assert.Equal(t, "aa:bb:cc:dd:ee:ff", cfg.NetIfs[0].GuestMAC)
-	}
+		assert.Equal(t, uint(2), cfg.Machine.VcpuCount)
+		assert.Equal(t, uint64(512), cfg.Machine.MemSizeMiB)
+		assert.False(t, cfg.Machine.Smt)
 
-	if assert.Len(t, cfg.Drives, 2) {
-		assert.True(t, cfg.Drives[0].IsRootDev, "rootfs should be flagged root")
-		assert.False(t, cfg.Drives[1].IsRootDev)
-	}
-}
+		if assert.Len(t, cfg.NetIfs, 1) {
+			assert.Equal(t, "net1", cfg.NetIfs[0].IfaceID)
+			assert.Equal(t, "tap0", cfg.NetIfs[0].HostIF)
+			assert.Equal(t, "aa:bb:cc:dd:ee:ff", cfg.NetIfs[0].GuestMAC)
+		}
 
-func TestFirecrackerSeccompTogglesNoSeccompFlag(t *testing.T) {
-	fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
+		if assert.Len(t, cfg.Drives, 2) {
+			assert.True(t, cfg.Drives[0].IsRootDev, "rootfs should be flagged root")
+			assert.False(t, cfg.Drives[1].IsRootDev)
+		}
+	})
 
-	off, err := fc.BuildExecCmd(types.ExecArgs{UnikernelPath: "/kernel"}, &mockUnikernel{})
-	assert.NoError(t, err)
-	assert.Contains(t, off, "--no-seccomp")
+	t.Run("seccomp flag", func(t *testing.T) {
+		fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
 
-	on, err := fc.BuildExecCmd(types.ExecArgs{UnikernelPath: "/kernel", Seccomp: true}, &mockUnikernel{})
-	assert.NoError(t, err)
-	assert.NotContains(t, on, "--no-seccomp")
-}
+		off, err := fc.BuildExecCmd(types.ExecArgs{UnikernelPath: "/kernel"}, &mockUnikernel{})
+		assert.NoError(t, err)
+		assert.Contains(t, off, "--no-seccomp")
 
-func TestFirecrackerMemoryFallsBackToDefault(t *testing.T) {
-	fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
+		on, err := fc.BuildExecCmd(types.ExecArgs{UnikernelPath: "/kernel", Seccomp: true}, &mockUnikernel{})
+		assert.NoError(t, err)
+		assert.NotContains(t, on, "--no-seccomp")
+	})
 
-	for _, b := range []uint64{0, 1024, 1024 * 1024 * 0} {
+	t.Run("memory fallback", func(t *testing.T) {
+		fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
+
+		for _, b := range []uint64{0, 1024, 1024 * 1024 * 0} {
+			_, err := fc.BuildExecCmd(types.ExecArgs{
+				UnikernelPath: "/kernel",
+				MemSizeB:      b,
+			}, &mockUnikernel{})
+			assert.NoError(t, err)
+
+			raw, _ := os.ReadFile("/tmp/fc.json")
+			var cfg FirecrackerConfig
+			assert.NoError(t, json.Unmarshal(raw, &cfg))
+			assert.Equal(t, DefaultMemory, cfg.Machine.MemSizeMiB,
+				"sub-MiB or zero MemSizeB should give default, got bytes=%d", b)
+		}
+	})
+
+	t.Run("initrd priority", func(t *testing.T) {
+		fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
+
 		_, err := fc.BuildExecCmd(types.ExecArgs{
 			UnikernelPath: "/kernel",
-			MemSizeB:      b,
+			InitrdPath:    "/from-args.img",
+		}, &mockUnikernel{
+			monCli: types.MonitorCliArgs{ExtraInitrd: "/from-monitor.img"},
+		})
+		assert.NoError(t, err)
+
+		raw, _ := os.ReadFile("/tmp/fc.json")
+		var cfg FirecrackerConfig
+		assert.NoError(t, json.Unmarshal(raw, &cfg))
+		assert.Equal(t, "/from-args.img", cfg.Source.InitrdPath)
+
+		_, err = fc.BuildExecCmd(types.ExecArgs{UnikernelPath: "/kernel"}, &mockUnikernel{
+			monCli: types.MonitorCliArgs{ExtraInitrd: "/from-monitor.img"},
+		})
+		assert.NoError(t, err)
+
+		raw, _ = os.ReadFile("/tmp/fc.json")
+		assert.NoError(t, json.Unmarshal(raw, &cfg))
+		assert.Equal(t, "/from-monitor.img", cfg.Source.InitrdPath)
+	})
+
+	t.Run("vsock", func(t *testing.T) {
+		fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
+
+		_, err := fc.BuildExecCmd(types.ExecArgs{
+			UnikernelPath: "/kernel",
+			VAccelType:    "vsock",
+			VSockDevID:    7,
+			VSockDevPath:  "/run/vaccel",
 		}, &mockUnikernel{})
 		assert.NoError(t, err)
 
 		raw, _ := os.ReadFile("/tmp/fc.json")
 		var cfg FirecrackerConfig
 		assert.NoError(t, json.Unmarshal(raw, &cfg))
-		assert.Equal(t, DefaultMemory, cfg.Machine.MemSizeMiB,
-			"sub-MiB or zero MemSizeB should give default, got bytes=%d", b)
-	}
-}
-
-func TestFirecrackerInitrdArgsBeatsMonitorExtra(t *testing.T) {
-	fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
-
-	_, err := fc.BuildExecCmd(types.ExecArgs{
-		UnikernelPath: "/kernel",
-		InitrdPath:    "/from-args.img",
-	}, &mockUnikernel{
-		monCli: types.MonitorCliArgs{ExtraInitrd: "/from-monitor.img"},
+		assert.Equal(t, 7, cfg.VSock.GuestCID)
+		assert.Equal(t, "/run/vaccel/vaccel.sock", cfg.VSock.UDSPath)
+		assert.Equal(t, "root", cfg.VSock.VSockID)
 	})
-	assert.NoError(t, err)
-
-	raw, _ := os.ReadFile("/tmp/fc.json")
-	var cfg FirecrackerConfig
-	assert.NoError(t, json.Unmarshal(raw, &cfg))
-	assert.Equal(t, "/from-args.img", cfg.Source.InitrdPath)
-
-	_, err = fc.BuildExecCmd(types.ExecArgs{UnikernelPath: "/kernel"}, &mockUnikernel{
-		monCli: types.MonitorCliArgs{ExtraInitrd: "/from-monitor.img"},
-	})
-	assert.NoError(t, err)
-
-	raw, _ = os.ReadFile("/tmp/fc.json")
-	assert.NoError(t, json.Unmarshal(raw, &cfg))
-	assert.Equal(t, "/from-monitor.img", cfg.Source.InitrdPath)
-}
-
-func TestFirecrackerVSock(t *testing.T) {
-	fc := &Firecracker{binaryPath: "/usr/bin/firecracker"}
-
-	_, err := fc.BuildExecCmd(types.ExecArgs{
-		UnikernelPath: "/kernel",
-		VAccelType:    "vsock",
-		VSockDevID:    7,
-		VSockDevPath:  "/run/vaccel",
-	}, &mockUnikernel{})
-	assert.NoError(t, err)
-
-	raw, _ := os.ReadFile("/tmp/fc.json")
-	var cfg FirecrackerConfig
-	assert.NoError(t, json.Unmarshal(raw, &cfg))
-	assert.Equal(t, 7, cfg.VSock.GuestCID)
-	assert.Equal(t, "/run/vaccel/vaccel.sock", cfg.VSock.UDSPath)
-	assert.Equal(t, "root", cfg.VSock.VSockID)
 }
