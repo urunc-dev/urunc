@@ -26,7 +26,7 @@ DELAY = 2
 # Key phase definitions: (start_tsID, end_tsID, column_name)
 PHASES = [
     ("TS00", "TS11", "create_ns"),   # full create phase
-    ("TS12", "TS19", "start_ns"),    # full start phase
+    ("TS12", "TS18", "start_ns"),    # full start phase
     ("TS16", "TS17", "network_ns"),  # network setup
     ("TS17", "TS18", "disk_ns"),     # disk setup
 ]
