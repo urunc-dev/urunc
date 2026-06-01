@@ -148,6 +148,12 @@ supported VM/Sandbox monitors and unikernels:
 | Linux     | QEMU, Firecracker          | x86         | Initrd, Block/Devmapper, 9pfs, Virtiofs |
 | Hermit    | QEMU                       | x86         | Initrd                                  |
 
+The `Storage` column summarizes the storage modes supported by each
+guest across the listed monitors. Not every storage mode in a row is
+available on every monitor. For monitor-specific limitations, such as
+Firecracker only supporting initramfs today, refer to the
+[hypervisor support guide](https://urunc.io/hypervisor-support/).
+
 We plan to add support for more unikernel frameworks and other platforms too.
 Feel free to [contact](#Contact) us for a specific unikernel framework or similar
 technologies that you would like to see in `urunc`.

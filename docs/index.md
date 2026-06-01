@@ -62,6 +62,11 @@ Sandbox monitors, along with the unikernels that can run on top of them.
 | [Linux](./unikernel-support#linux)| [Qemu](./hypervisor-support#qemu), [Firecracker](./hypervisor-support#aws-firecracker) | x86, aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
 | [Hermit](./unikernel-support#hermit)| [Qemu](./hypervisor-support#qemu) | x86 | Initrd |
 
+The `Storage` column summarizes the storage modes supported by each
+guest across the listed monitors. Not every storage mode in a row is
+available on every monitor. For monitor-specific limitations, refer to
+the [hypervisor support guide](./hypervisor-support.md).
+
 <!-- ## urunc and the CNCF -->
 
 ## Community and Meetings
