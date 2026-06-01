@@ -56,8 +56,9 @@ initrd option in order to provide the Unikernel with an initial RamFS
 provide storage in VMs such as block devices through virtio-blk,
 shared-fs through 9pfs, virtiofs and initramfs.
 
-We plan to add support for all the above options, but as previously mentioned
-only Initramfs is supported for the time being.
+The storage modes available through `urunc` depend on the guest and monitor
+combination. Refer to the supported platform tables for the currently supported
+storage modes for each guest.
 
 Supported unikernel frameworks with `urunc`:
 
@@ -127,8 +128,9 @@ to provide the Unikernel with an initial RamFS (initramfs).
 shared-fs between the host and the guest. However, it does provide support for
 virtio-block.
 
-We plan to add support for virtio-block, but as previously mentioned only
-Initramfs is supported for the time being.
+The storage modes available through `urunc` depend on the guest and monitor
+combination. Refer to the supported platform tables for the currently supported
+storage modes for each guest.
 
 Supported unikernel frameworks with `urunc`:
 
