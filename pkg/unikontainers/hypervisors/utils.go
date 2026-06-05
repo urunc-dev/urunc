@@ -68,6 +68,13 @@ func BytesToStringMB(argMem uint64) string {
 
 func killProcess(pid int) error {
 	const timeout = 2 * time.Second
+	// Guard against non-positive PIDs. unix.Kill interprets pid <= 0 as a
+	// process-group/broadcast target (e.g. -1 means every process the caller
+	// may signal), so a sentinel PID (-1) from a partially-created container
+	// would SIGKILL the whole host.
+	if pid <= 0 {
+		return fmt.Errorf("refusing to kill invalid pid %d", pid)
+	}
 	err := unix.Kill(pid, unix.SIGKILL)
 	if err != nil {
 		if errors.Is(err, unix.ESRCH) {

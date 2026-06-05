@@ -692,6 +692,13 @@ func setupUser(user specs.User) error {
 
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
+	// Guard against non-positive PIDs. A partially-created container persists
+	// a sentinel PID (-1) in its state, and unix.Kill treats pid <= 0 as a
+	// process-group/broadcast target, which would signal every process on the
+	// host instead of the container's monitor.
+	if u.State.Pid <= 0 {
+		return fmt.Errorf("container %s has no valid pid to signal", u.State.ID)
+	}
 	vmmType := u.State.Annotations[annotHypervisor]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
@@ -1293,6 +1300,14 @@ func (u *Unikontainer) SendMessage(message IPCMessage) error {
 func (u *Unikontainer) isRunning() bool {
 	vmmType := hypervisors.VmmType(u.State.Annotations[annotHypervisor])
 	if vmmType != hypervisors.HedgeVmm {
+		// A non-positive PID means the container never reached a running
+		// state (e.g. it failed during creation while still holding the
+		// sentinel PID -1). Treat it as not running so it can be cleaned up.
+		// This also avoids syscall.Kill(-1, 0) returning nil and falsely
+		// reporting the container as running.
+		if u.State.Pid <= 0 {
+			return false
+		}
 		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
 	}
 	hedge := hypervisors.Hedge{}
