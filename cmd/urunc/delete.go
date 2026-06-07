@@ -74,9 +74,14 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 			return err
 		}
 		if cmd.Bool("force") {
-			err := unikontainer.Kill()
-			if err != nil {
-				return err
+			// Forcing a delete must remain idempotent even if the
+			// container's process has already exited (e.g. it was
+			// killed by a previous attempt or exited on its own).
+			// Log any kill error but still proceed to clean up the
+			// container's resources, otherwise a stale state would
+			// make every subsequent delete attempt fail the same way.
+			if err := unikontainer.Kill(); err != nil {
+				logrus.WithError(err).Error("failed to kill container during forced delete")
 			}
 		}
 		err = unikontainer.Delete()

@@ -71,6 +71,10 @@ func killProcess(pid int) error {
 	const timeout = 2 * time.Second
 	err := syscall.Kill(pid, unix.SIGKILL)
 	if err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			// process is already dead
+			return nil
+		}
 		return err
 	}
 	deadline := time.Now().Add(timeout)
