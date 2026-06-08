@@ -28,7 +28,7 @@ and containerized environments, enabling seamless integration with cloud-native
 architectures. Designed to fully leverage the container semantics and benefits
 from the OCI tools and methodology, `urunc` aims to become “runc for
 unikernels”, while offering compatibility with the Container Runtime Interface
-(CRI). Unikernels are packaged inside OCI-compatible images and `urunc` launces
+(CRI). Unikernels are packaged inside OCI-compatible images and `urunc` launches
 the unikernel on top of the underlying Virtual Machine or seccomp monitors.
 Thus, developers and administrators can package, deliver, deploy and manage
 unikernels using familiar cloud-native practices.
@@ -56,26 +56,26 @@ following dependencies:
 Install Docker:
 
 ```bash
-$ curl -fsSL https://get.docker.com -o get-docker.sh
-$ sudo sh get-docker.sh
-$ rm get-docker.sh
-$ sudo groupadd docker
-$ sudo usermod -aG docker $USER
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+rm get-docker.sh
+sudo groupadd docker
+sudo usermod -aG docker $USER
 ```
 
 Install `urunc`:
 
 ```bash
-$ sudo apt-get install -y git
-$ git clone https://github.com/urunc-dev/urunc.git
-$ docker run --rm -ti -v $PWD/urunc:/urunc -w /urunc golang:latest bash -c "git config --global --add safe.directory /urunc && make"
-$ sudo make -C urunc install
+sudo apt-get install -y git
+git clone https://github.com/urunc-dev/urunc.git
+docker run --rm -ti -v $PWD/urunc:/urunc -w /urunc golang:latest bash -c "git config --global --add safe.directory /urunc && make"
+sudo make -C urunc install
 ```
 
 Install QEMU:
 
 ```bash
-$ sudo apt install -y qemu-kvm
+sudo apt install -y qemu-kvm
 ```
 
 Now we are ready to run nginx as a Unikraft unikernel using Docker and `urunc`:
@@ -139,13 +139,14 @@ At the moment, `urunc` is available on GNU/Linux for x86\_64 and arm64 architect
 In addition, the following table provides an overview of the currently
 supported VM/Sandbox monitors and unikernels:
 
-| Unikernel  | VM/Sandbox Monitor         | Arch         | Storage                                 |
-|----------- |--------------------------- |------------- |------------------------------           |
-| Rumprun    | Solo5-hvt, Solo5-spt       | x86,aarch64  | Block/Devmapper                         |
-| Unikraft   | QEMU, Firecracker          | x86          | Initrd, 9pfs                            |
-| MirageOS   | QEMU, Solo5-hvt, Solo5-spt | x86,aarch64  | Block/Devmapper                         |
-| Mewz       | QEMU                       | x86          | In-memory                               |
-| Linux      | QEMU, Firecracker          | x86          | Initrd, Block/Devmapper, 9pfs, Virtiofs |
+| Unikernel | VM/Sandbox Monitor         | Arch        | Storage                                 |
+| --------- | -------------------------- | ----------- | --------------------------------------- |
+| Rumprun   | Solo5-hvt, Solo5-spt       | x86,aarch64 | Block/Devmapper                         |
+| Unikraft  | QEMU, Firecracker          | x86         | Initrd, 9pfs                            |
+| MirageOS  | QEMU, Solo5-hvt, Solo5-spt | x86,aarch64 | Block/Devmapper                         |
+| Mewz      | QEMU                       | x86         | In-memory                               |
+| Linux     | QEMU, Firecracker          | x86         | Initrd, Block/Devmapper, 9pfs, Virtiofs |
+| Hermit    | QEMU                       | x86         | Initrd                                  |
 
 We plan to add support for more unikernel frameworks and other platforms too.
 Feel free to [contact](#Contact) us for a specific unikernel framework or similar

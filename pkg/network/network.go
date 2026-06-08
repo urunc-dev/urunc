@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 
 	"github.com/jackpal/gateway"
@@ -27,8 +28,7 @@ import (
 )
 
 const (
-	DefaultInterface = "eth0" // FIXME: Discover the veth endpoint name instead of using default "eth0". See: https://github.com/urunc-dev/urunc/issues/14
-	DefaultTap       = "tapX_urunc"
+	DefaultTap = "tapX_urunc"
 )
 
 var netlog = logrus.WithField("subsystem", "network")
@@ -47,6 +47,7 @@ type Interface struct {
 	Mask           string
 	Interface      string
 	MAC            string
+	MTU            int
 }
 
 func NewNetworkManager(networkType string) (Manager, error) {
@@ -120,21 +121,6 @@ func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.L
 	return tapLink, nil
 }
 
-// ensureEth0Exists checks all network interfaces in current netns and returns
-// nil if eth0 is present or ErrEth0NotFound if not
-func ensureEth0Exists() error {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return err
-	}
-	for _, iface := range ifaces {
-		if iface.Name == DefaultInterface {
-			return nil
-		}
-	}
-	return errors.New("eth0 device not found")
-}
-
 func getInterfaceInfo(iface string) (Interface, error) {
 	ief, err := net.InterfaceByName(iface)
 	if err != nil {
@@ -163,7 +149,7 @@ func getInterfaceInfo(iface string) (Interface, error) {
 		}
 	}
 	if mask == "" {
-		return Interface{}, fmt.Errorf("failed to find mask for %q", DefaultInterface)
+		return Interface{}, fmt.Errorf("failed to find mask for %q", iface)
 	}
 	// convert to decimal notation
 	decimalParts := make([]string, len(netMask))
@@ -172,7 +158,7 @@ func getInterfaceInfo(iface string) (Interface, error) {
 	}
 	mask = strings.Join(decimalParts, ".")
 	if ipAddress == "" {
-		return Interface{}, fmt.Errorf("failed to find IPv4 address for %q", DefaultInterface)
+		return Interface{}, fmt.Errorf("failed to find IPv4 address for %q", iface)
 	}
 	gateway, err := gateway.DiscoverGateway()
 	if err != nil {
@@ -182,8 +168,9 @@ func getInterfaceInfo(iface string) (Interface, error) {
 		IP:             ipAddress,
 		DefaultGateway: gateway.String(),
 		Mask:           mask,
-		Interface:      DefaultInterface,
+		Interface:      iface,
 		MAC:            IfMAC,
+		MTU:            ief.MTU,
 	}, nil
 }
 
@@ -219,14 +206,6 @@ func addRedirectFilter(source netlink.Link, target netlink.Link) error {
 func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32) (netlink.Link, error) {
 	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v",
 		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
-
-	// Sanity check: ensure eth0 exists in this namespace
-	err := ensureEth0Exists()
-	if err != nil {
-		netlog.Warnf("eth0 interface not found in namespace (unikernel may have been spawned using ctr): %v", err)
-		return nil, nil
-	}
-
 	// Create TAP
 	netlog.Debugf("creating tap device %s (mtu=%d)", tapName, redirectLink.Attrs().MTU)
 	newTapDevice, err := createTapDevice(tapName, redirectLink.Attrs().MTU, uid, gid)
@@ -286,35 +265,53 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	return newTapDevice, nil
 }
 
-func Cleanup(tapDevice string) error {
+func CleanupAllUruncTaps() error {
 	netlog.Debug("net cleanup called")
-	ifaces, err := net.Interfaces()
+
+	handle, err := netlink.NewHandle()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get netlink handle: %w", err)
 	}
-	for _, iface := range ifaces {
-		netlog.Debugf("Discovered device %s", iface.Name)
-	}
-	tapLink, err := netlink.LinkByName(tapDevice)
+	defer handle.Close()
+
+	links, err := handle.LinkList()
 	if err != nil {
-		netlog.Errorf("Failed to get link %s by name: %v", tapDevice, err)
-		return nil
+		return fmt.Errorf("failed to list links: %w", err)
 	}
-	err = deleteAllTCFilters(tapLink)
-	if err != nil {
-		netlog.Errorf("Failed to delete all TC filters: %v", err)
-		return err
+
+	var retErr error
+	tapRe := regexp.MustCompile(`^tap\d+_urunc$`)
+	for _, link := range links {
+		attrs := link.Attrs()
+		if attrs == nil {
+			continue
+		}
+		name := attrs.Name
+		if !tapRe.MatchString(name) {
+			continue
+		}
+
+		netlog.Debugf("cleaning up tap device %s", name)
+		var devErr error
+		if err := deleteAllTCFilters(link); err != nil {
+			netlog.Errorf("failed to delete TC filters for %s: %v", name, err)
+			devErr = errors.Join(devErr, err)
+		}
+		if err := deleteAllQDiscs(link); err != nil {
+			netlog.Errorf("failed to delete qdiscs for %s: %v", name, err)
+			devErr = errors.Join(devErr, err)
+		}
+		if err := deleteTapDevice(link); err != nil {
+			netlog.Errorf("failed to delete tap %s: %v", name, err)
+			devErr = errors.Join(devErr, err)
+		}
+		if devErr == nil {
+			netlog.Debugf("deleted tap device %s", name)
+		}
+		retErr = errors.Join(retErr, devErr)
 	}
-	err = deleteAllQDiscs(tapLink)
-	if err != nil {
-		netlog.Errorf("Failed to delete all qdiscs: %v", err)
-		return err
-	}
-	err = deleteTapDevice(tapLink)
-	if err != nil {
-		netlog.Errorf("Failed to delete link %s: %v", tapDevice, err)
-	}
-	return nil
+
+	return retErr
 }
 
 func deleteIngressQdisc(link netlink.Link) error {
@@ -333,12 +330,69 @@ func deleteIngressQdisc(link netlink.Link) error {
 	return nil
 }
 
+// discoverContainerIface discovers the container's network interface by
+// scanning all links in the current network namespace and returning the first
+// non-loopback link that has an IP address and a default route.
+func discoverContainerIface() (netlink.Link, error) {
+	handle, err := netlink.NewHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer handle.Close()
+	links, err := handle.LinkList()
+	if err != nil {
+		return nil, err
+	}
+	for _, link := range links {
+		attrs := link.Attrs()
+		if attrs == nil {
+			netlog.Debug("skipping link with nil attributes")
+			continue
+		}
+		// skip loopback
+		if (attrs.Flags & net.FlagLoopback) != 0 {
+			netlog.Debugf("skipping loopback interface %s", attrs.Name)
+			continue
+		}
+		// must have addresses configured
+		addrs, err := handle.AddrList(link, netlink.FAMILY_ALL)
+		if err != nil {
+			netlog.Debugf("skipping interface %s: failed to list addresses: %v", attrs.Name, err)
+			continue
+		}
+		if len(addrs) == 0 {
+			netlog.Debugf("skipping interface %s: no addresses configured", attrs.Name)
+			continue
+		}
+		// look for a default route on this interface
+		routes, err := handle.RouteList(link, netlink.FAMILY_ALL)
+		if err != nil {
+			netlog.Debugf("skipping interface %s: failed to list routes: %v", attrs.Name, err)
+			continue
+		}
+		for _, r := range routes {
+			// default route: Dst == nil OR represented as 0.0.0.0/0 or ::/0
+			if r.Dst == nil {
+				return link, nil
+			}
+			if r.Dst != nil {
+				dstStr := r.Dst.String()
+				if dstStr == "0.0.0.0/0" || dstStr == "::/0" {
+					return link, nil
+				}
+			}
+		}
+		netlog.Debugf("skipping interface %s: no default route found", attrs.Name)
+	}
+	return nil, errors.New("no suitable network interface found in namespace")
+}
+
 func deleteAllQDiscs(device netlink.Link) error {
 	err := deleteIngressQdisc(device)
 	if err != nil {
 		return err
 	}
-	device, err = netlink.LinkByName(DefaultInterface)
+	device, err = discoverContainerIface()
 	if err != nil {
 		return err
 	}
@@ -354,11 +408,10 @@ func deleteAllTCFilters(device netlink.Link) error {
 	parent := uint32(netlink.HANDLE_ROOT)
 	tapFilters, err := netlink.FilterList(device, parent)
 	if err != nil {
-		return nil
+		return err
 	}
 	allFilters = append(allFilters, tapFilters...)
-
-	device, err = netlink.LinkByName(DefaultInterface)
+	device, err = discoverContainerIface()
 	if err != nil {
 		return err
 	}

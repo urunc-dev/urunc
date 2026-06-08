@@ -99,7 +99,11 @@ func (m *Mirage) MonitorCli() types.MonitorCliArgs {
 func (m *Mirage) Init(data types.UnikernelParams) error {
 	// if Mask is empty, there is no network support
 	if data.Net.Mask != "" {
-		m.Net.Address = "--ipv4=" + data.Net.IP + "/24"
+		mask, err := subnetMaskToCIDR(data.Net.Mask)
+		if err != nil {
+			return err
+		}
+		m.Net.Address = fmt.Sprintf("--ipv4=%s/%d", data.Net.IP, mask)
 		m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 	}
 	m.Block = make([]MirageBlock, 0, len(data.Block))

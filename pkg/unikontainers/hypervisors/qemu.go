@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -31,6 +31,11 @@ const (
 type Qemu struct {
 	binaryPath string
 	binary     string
+	vhost      bool
+}
+
+func (q *Qemu) Signal(pid int, signal unix.Signal) error {
+	return unix.Kill(pid, signal)
 }
 
 func (q *Qemu) Stop(pid int) error {
@@ -55,13 +60,13 @@ func (q *Qemu) Path() string {
 	return q.binaryPath
 }
 
-func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
+func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	cmdString := q.binaryPath + " -m " + qemuMem + "M"
-	cmdString += " -L /usr/share/qemu"   // Set the path for qemu bios/data
-	cmdString += " -cpu host"            // Choose CPU
-	cmdString += " -enable-kvm"          // Enable KVM to use CPU virt extensions
-	cmdString += " -nographic -vga none" // Disable graphic output
+	cmdString += " -L /usr/share/qemu"                                  // Set the path for qemu bios/data
+	cmdString += " -cpu host"                                           // Choose CPU
+	cmdString += " -enable-kvm"                                         // Enable KVM to use CPU virt extensions
+	cmdString += " -display none -vga none -serial stdio -monitor null" // Disable graphic output
 
 	if args.VCPUs > 0 {
 		cmdString += fmt.Sprintf(" -smp %d", args.VCPUs)
@@ -91,10 +96,12 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	if args.Net.TapDev != "" {
 		netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 		if netcli == "" {
-			netcli += " -net nic,model=virtio,macaddr="
-			netcli += args.Net.MAC
-			netcli += " -net tap,script=no,downscript=no,ifname="
+			netcli += " -netdev tap,id=net0,script=no,downscript=no,ifname="
 			netcli += args.Net.TapDev
+			if q.vhost {
+				netcli += ",vhost=on"
+			}
+			netcli += fmt.Sprintf(" %s,host_mtu=%d,mac=%s", getVirtioNetArg(), args.Net.MTU, args.Net.MAC)
 		}
 		cmdString += netcli
 	} else {
@@ -137,6 +144,18 @@ func (q *Qemu) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 
 	exArgs := strings.Split(cmdString, " ")
 	exArgs = append(exArgs, "-append", args.Command)
-	vmmLog.WithField("qemu command", exArgs).Debug("Ready to execve qemu")
-	return syscall.Exec(q.Path(), exArgs, args.Environment) //nolint: gosec
+	return exArgs, nil
+}
+
+// PreExec performs pre-execution setup. QEMU has no special pre-exec requirements.
+func (q *Qemu) PreExec(_ types.ExecArgs) error {
+	return nil
+}
+
+func getVirtioNetArg() string {
+	devType := "virtio-net-pci"
+	if runtime.GOARCH == "arm64" {
+		devType = "virtio-net-device"
+	}
+	return "-device " + devType + ",netdev=net0"
 }

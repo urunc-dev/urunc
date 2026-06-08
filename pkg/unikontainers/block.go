@@ -22,20 +22,40 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/moby/sys/mount"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// TODO: Find and set the correct size for the tmpfs in the host
+const tmpfsSizeForBlockRootfs = "65536k"
+
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
-// getMountInfo checks if the path (given as argument) is a mountpoint
-// looking at /proc/self/mountinfo.
-// If the path is indeed a mount point then getMountInfo stores and returns
-// the respective info in a BlockDevParams struct.
-// If the path is not a mount point (not present in /proc/self/mountinfo)
-// then getMountInfo returns an empty BlockDevParams struct and ErrMountpoint error.
+type blockRootfs struct {
+	mounts        []specs.Mount
+	monRootfs     string
+	mountedPath   string
+	path          string
+	kernelPath    string
+	initrdPath    string
+	uruncJSONPath string
+	guestType     string
+	guest         types.Unikernel
+}
+
+// getMountInfo determines whether the provided path is a mount point
+// by inspecting /proc/self/mountinfo.
+// If the path is a mount point, it populates and returns a BlockDevParams struct.
+// Otherwise, it returns an error along with an empty BlockDevParams.
+// Additionally, when the path is a mount point, getMountInfo verifies
+// the mount source to ensure it can use the source as a block device.
+// There are cases (e.g. bind mounts) where mounts use the same underlying
+// source device as the original mount, so they can appear identical to
+// regular mounts when inspecting mount information.
 func getMountInfo(path string) (types.BlockDevParams, error) {
 	selfProcMountInfo := "/proc/self/mountinfo"
 
@@ -45,6 +65,8 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 	}
 	defer file.Close()
 
+	blockDev := types.BlockDevParams{}
+	nonSpecialSources := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
@@ -54,42 +76,61 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 			return types.BlockDevParams{}, fmt.Errorf("invalid mountinfo line in /proc/self/mountinfo")
 		}
 
-		fields := strings.Fields(parts[0])
-		if len(fields) < 5 || fields[4] != path {
+		preDash := strings.Fields(parts[0])
+		if len(preDash) < 5 {
 			continue
 		}
-		fields = strings.Fields(parts[1])
-		if len(fields) < 2 {
+		postDash := strings.Fields(parts[1])
+		if len(postDash) < 2 {
 			continue
 		}
-		uniklog.WithFields(logrus.Fields{
-			"mounted at": path,
-			"device":     fields[1],
-			"fstype":     fields[0],
-		}).Debug("Found container rootfs mount")
+		if preDash[4] == path {
+			uniklog.WithFields(logrus.Fields{
+				"mounted at": path,
+				"device":     postDash[1],
+				"fstype":     postDash[0],
+			}).Debug("Found block device")
 
-		return types.BlockDevParams{
-			Source:     fields[1],
-			FsType:     fields[0],
-			MountPoint: path,
-			ID:         "",
-		}, nil
+			blockDev.Source = postDash[1]
+			blockDev.FsType = postDash[0]
+			blockDev.MountPoint = path
+			blockDev.ID = ""
+			continue
+		}
+		// Store the source of all mounts with non-special fs
+		// (e.g. overlay, tmpfs) in a map
+		if postDash[0] != postDash[1] {
+			nonSpecialSources[postDash[1]] = struct{}{}
+		}
 	}
 
-	return types.BlockDevParams{}, ErrMountpoint
+	if blockDev.Source == "" {
+		return types.BlockDevParams{}, ErrMountpoint
+	}
+
+	// Check if the source of the mountpoint that refers to path
+	// exists i the map with the found sources. If this is the case,
+	// then we are not dealing with a mount regarding a block device
+	// that we can attach to the sandbox.
+	_, ok := nonSpecialSources[blockDev.Source]
+	if ok {
+		return types.BlockDevParams{}, ErrMountpoint
+	}
+
+	return blockDev, nil
 }
 
 // extractUnikernelFromBlock moves unikernel binary, initrd and urunc.json
 // files from old rootfsPath to newRootfsPath
 // FIXME: This approach fills up /run with unikernel binaries, initrds and urunc.json
 // files for each unikernel we run
-func extractFilesFromBlock(rootfsPath string, newRootfsPath string, unikernel string, uruncJSON string, initrd string) error {
+func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string, uruncJSON string, initrd string) error {
 	currentUnikernelPath := filepath.Join(rootfsPath, unikernel)
 	targetUnikernelPath := filepath.Join(newRootfsPath, unikernel)
 	targetUnikernelDir, _ := filepath.Split(targetUnikernelPath)
 	err := moveFile(currentUnikernelPath, targetUnikernelDir)
 	if err != nil {
-		return fmt.Errorf("Could not move %s to %s: %w", currentUnikernelPath, targetUnikernelPath, err)
+		return fmt.Errorf("could not move %s to %s: %w", currentUnikernelPath, targetUnikernelPath, err)
 	}
 
 	if initrd != "" {
@@ -98,37 +139,14 @@ func extractFilesFromBlock(rootfsPath string, newRootfsPath string, unikernel st
 		targetInitrdDir, _ := filepath.Split(targetInitrdPath)
 		err = moveFile(currentInitrdPath, targetInitrdDir)
 		if err != nil {
-			return fmt.Errorf("Could not move %s to %s: %w", currentInitrdPath, targetInitrdPath, err)
+			return fmt.Errorf("could not move %s to %s: %w", currentInitrdPath, targetInitrdPath, err)
 		}
 	}
 
 	currentConfigPath := filepath.Join(rootfsPath, uruncJSON)
 	err = moveFile(currentConfigPath, newRootfsPath)
 	if err != nil {
-		return fmt.Errorf("Could not move %s to %s: %w", currentConfigPath, newRootfsPath, err)
-	}
-
-	return nil
-}
-
-// prepareDMAsBLock copies the files needed for the unikernel boot (e.g.
-// unikernel binary, initrd file) and the urunc.json file in a new temporary
-// directory. Then it unmounts the devmapper device and renames the temporary
-// directory as the container rootfs. This is needed to keep the same paths
-// for the unikernel files.
-func prepareDMAsBlock(rootfsPath string, newRootfsPath string, unikernel string, uruncJSON string, initrd string) error {
-	// extract unikernel
-	// FIXME: This approach fills up /run with unikernel binaries and
-	// urunc.json files for each unikernel instance we run
-	err := extractFilesFromBlock(rootfsPath, newRootfsPath, unikernel, uruncJSON, initrd)
-	if err != nil {
-		return err
-	}
-	// unmount block device
-	// FIXME: umount and rm might need some retries
-	err = mount.Unmount(rootfsPath)
-	if err != nil {
-		return err
+		return fmt.Errorf("could not move %s to %s: %w", currentConfigPath, newRootfsPath, err)
 	}
 
 	return nil
@@ -166,38 +184,6 @@ func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDe
 		Source:     blockImg,
 		MountPoint: mountPoint,
 		ID:         id,
-	}, nil
-}
-
-func handleCntrRootfsAsBlock(rfs types.RootfsParams, unikernelType string, unikernelPath string, uruncJSONFilename string, initrdPath string, mounts []specs.Mount) (types.BlockDevParams, error) {
-	err := copyMountfiles(rfs.MountedPath, mounts)
-	if err != nil {
-		return types.BlockDevParams{}, err
-	}
-
-	err = prepareDMAsBlock(rfs.MountedPath, rfs.MonRootfs, unikernelPath, uruncJSONFilename, initrdPath)
-	if err != nil {
-		return types.BlockDevParams{}, err
-	}
-
-	err = setupDev(rfs.MonRootfs, rfs.Path)
-	if err != nil {
-		return types.BlockDevParams{}, err
-	}
-
-	mp := "/"
-	// NOTE: Rumprun does not allow us to mount
-	// anything at '/'. As a result, we use the
-	// /data mount point for Rumprun. For all the
-	// other guests we use '/'.
-	if unikernelType == "rumprun" {
-		mp = "/data"
-	}
-
-	return types.BlockDevParams{
-		Source:     rfs.Path,
-		MountPoint: mp,
-		ID:         "rootfs",
 	}, nil
 }
 
@@ -239,27 +225,80 @@ func getBlockVolumes(monRootfs string, mounts []specs.Mount, ukernel types.Unike
 	return blkImgs, nil
 }
 
-func handleBlockBasedRootfs(rfs types.RootfsParams, ukernel types.Unikernel, unikernelType string, unikernelPath string, uruncJSONFilename string, initrdPath string, mounts []specs.Mount) ([]types.BlockDevParams, error) {
-	var blockArgs []types.BlockDevParams
-	var rootfsBlock types.BlockDevParams
-	var err error
-	if rfs.MountedPath == "" {
-		// The Mountpoint in the annotation was "/" and hence the rootfs
-		// of the guest is a block Image inside the container's image.
-		rootfsBlock, err = handleExplicitBlockImage(rfs.Path, "/")
-	} else {
-		rootfsBlock, err = handleCntrRootfsAsBlock(rfs, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, mounts)
+func (b blockRootfs) preSetup() error {
+	if b.mountedPath == "" {
+		return nil
 	}
+
+	err := copyMountfiles(b.mountedPath, b.mounts)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to copy files from mount list: %w", err)
 	}
-	rootfsBlock.ID = "rootfs"
+
+	// FIXME: This approach fills up /run with unikernel binaries and
+	// urunc.json files for each unikernel instance we run
+	err = extractBootFiles(b.mountedPath, b.monRootfs, b.kernelPath, b.uruncJSONPath, b.initrdPath)
+	if err != nil {
+		return fmt.Errorf("failed to extract boot files from rootfs: %w", err)
+	}
+
+	err = mount.Unmount(b.mountedPath)
+	if err != nil {
+		return fmt.Errorf("failed to unmount rootfs: %w", err)
+	}
+
+	return nil
+}
+
+func (b blockRootfs) postSetup() error {
+	if b.mountedPath != "" {
+		err := setupDev(b.monRootfs, b.path)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := createTmpfs(b.monRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSizeForBlockRootfs)
+	if err != nil {
+		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
+	}
+
+	return err
+}
+
+func (b blockRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
+	var blockArgs []types.BlockDevParams
+	rootfsBlock := types.BlockDevParams{
+		Source:     b.path,
+		MountPoint: "/",
+		ID:         "rootfs",
+	}
+
+	// NOTE: Rumprun does not allow us to mount
+	// anything at '/'. As a result, we use the
+	// /data mount point for Rumprun. For all the
+	// other guests we use '/'.
+	if b.guestType == "rumprun" {
+		rootfsBlock.MountPoint = "/data"
+	}
+
 	blockArgs = append(blockArgs, rootfsBlock)
-	blockFromMounts, err := getBlockVolumes(rfs.MonRootfs, mounts, ukernel)
+	blockFromMounts, err := getBlockVolumes(b.monRootfs, b.mounts, b.guest)
 	if err != nil {
 		return nil, err
 	}
 	blockArgs = append(blockArgs, blockFromMounts...)
 
 	return blockArgs, nil
+}
+
+// TODO: Return an array instead of a single struct
+func (b blockRootfs) getSharedDirs() (types.SharedfsParams, error) {
+	return types.SharedfsParams{}, nil
+}
+
+func (b blockRootfs) preStart() error {
+	return nil
 }

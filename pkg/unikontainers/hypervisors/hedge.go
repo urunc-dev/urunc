@@ -19,6 +19,7 @@ import (
 
 	hedge "github.com/nubificus/hedge_cli/hedge_api"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -30,6 +31,10 @@ const (
 type Hedge struct{}
 
 func (h *Hedge) Ok() error {
+	return fmt.Errorf("hedge not implemented yet")
+}
+
+func (h *Hedge) Signal(_ int, _ unix.Signal) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 
@@ -50,7 +55,12 @@ func (h *Hedge) Path() string {
 	return ""
 }
 
-func (h *Hedge) Execve(_ types.ExecArgs, _ types.Unikernel) error {
+func (h *Hedge) BuildExecCmd(_ types.ExecArgs, _ types.Unikernel) ([]string, error) {
+	return nil, fmt.Errorf("hedge not implemented yet")
+}
+
+// PreExec performs pre-execution setup. Hedge is not fully implemented.
+func (h *Hedge) PreExec(_ types.ExecArgs) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 

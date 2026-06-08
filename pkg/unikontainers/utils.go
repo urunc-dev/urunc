@@ -32,7 +32,6 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/internal/constants"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
@@ -42,31 +41,6 @@ const (
 	uruncJSONFilename = "urunc.json"
 	rootfsDirName     = "rootfs"
 )
-
-// getInitPid extracts "init_process_pid" value from the given JSON file
-func getInitPid(filePath string) (float64, error) {
-	// Open the JSON file for reading
-	file, err := os.Open(filePath)
-	if err != nil {
-		return 0, nil
-	}
-	defer file.Close()
-
-	// Decode the JSON data into a map[string]interface{}
-	var jsonData map[string]interface{}
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&jsonData); err != nil {
-		return 0, nil
-
-	}
-
-	// Extract the specific value "init_process_pid"
-	initProcessPID, found := jsonData["init_process_pid"].(float64) // Assuming it's a numeric value
-	if !found {
-		return 0, nil
-	}
-	return initProcessPID, nil
-}
 
 // copy sourceFile to targetDir
 // creates targetDir and all necessary parent directories
@@ -190,8 +164,7 @@ func handleQueueProxy(spec specs.Spec, configFile string) error {
 }
 
 func remove(s []string, i int) []string {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
+	return append(s[:i], s[i+1:]...)
 }
 
 func checkValidNsPath(path string) error {
@@ -229,19 +202,8 @@ func convertUint32ToIntSlice(valSlice []uint32, size int) []int {
 // 	return data.Bytes(), nil
 // }
 
-func spawnVirtiofsd(vfsdConf types.ExtraBinConfig, sharedPath string) error {
-	args := []string{
-		"--socket-path=/tmp/vhostqemu",
-		"--shared-dir",
-		sharedPath,
-	}
-
-	if vfsdConf.Options != "" {
-		args = append(args, strings.Fields(vfsdConf.Options)...)
-	}
-
-	// #nosec G204 -- virtiofsd path and options come from the urunc configuration, which is considered trusted
-	cmd := exec.Command(vfsdConf.Path, args...)
+func spawnProcess(binaryPath string, args []string) error {
+	cmd := exec.Command(binaryPath, args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -296,7 +258,7 @@ func findNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) 
 		}
 	}
 
-	return "", fmt.Errorf("Namespace %s was not found", string(nsType))
+	return "", fmt.Errorf("namespace %s was not found", string(nsType))
 }
 
 // findQemuDataDir tries to find the location of data and BIOS files for Qemu.

@@ -24,7 +24,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
-func AddInitrdRecord(w *cpio.Writer, content []byte, fileInfo *syscall.Stat_t, name string) error {
+func addInitrdRecord(w *cpio.Writer, content []byte, fileInfo *syscall.Stat_t, name string) error {
 	hdr := &cpio.Header{
 		Name:    name,
 		Mode:    cpio.FileMode(fileInfo.Mode),
@@ -35,11 +35,11 @@ func AddInitrdRecord(w *cpio.Writer, content []byte, fileInfo *syscall.Stat_t, n
 	}
 	err := w.WriteHeader(hdr)
 	if err != nil {
-		return fmt.Errorf("could not write header in initrd: %v", err)
+		return fmt.Errorf("could not write header in initrd: %w", err)
 	}
 	_, err = w.Write(content)
 	if err != nil {
-		return fmt.Errorf("could not write contents in initrd: %v", err)
+		return fmt.Errorf("could not write contents in initrd: %w", err)
 	}
 
 	return nil
@@ -49,7 +49,7 @@ func CopyFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
 	// Get the info of the original file
 	fi, err := os.Stat(srcFile)
 	if err != nil {
-		return fmt.Errorf("Could not Stat file %s: %w", srcFile, err)
+		return fmt.Errorf("could not stat file %s: %w", srcFile, err)
 	}
 	fileInfo := fi.Sys().(*syscall.Stat_t)
 	if fi.Mode().IsRegular() {
@@ -57,7 +57,7 @@ func CopyFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
 		if err != nil {
 			return fmt.Errorf("could not read file %s: %w", srcFile, err)
 		}
-		err = AddInitrdRecord(w, content, fileInfo, destFile)
+		err = addInitrdRecord(w, content, fileInfo, destFile)
 		if err != nil {
 			return fmt.Errorf("could not add record for %s: %w", srcFile, err)
 		}
@@ -69,7 +69,7 @@ func CopyFileToInitrd(w *cpio.Writer, srcFile string, destFile string) error {
 func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("Could not open %s: %v", oldInitrd, err)
+		return fmt.Errorf("could not open %s: %w", oldInitrd, err)
 	}
 	defer f.Close()
 
@@ -80,12 +80,12 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 		}
 		err = CopyFileToInitrd(w, m.Source, m.Destination)
 		if err != nil {
-			return fmt.Errorf("Could not add file %s to initrd: %v", m.Source, err)
+			return fmt.Errorf("could not add file %s to initrd: %w", m.Source, err)
 		}
 	}
 	err = w.Close()
 	if err != nil {
-		return fmt.Errorf("Could not close initrd %v", err)
+		return fmt.Errorf("could not close initrd: %w", err)
 	}
 
 	return nil
@@ -94,7 +94,7 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 func AddFileToInitrd(oldInitrd string, data string, name string) error {
 	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("could not open %s: %v", oldInitrd, err)
+		return fmt.Errorf("could not open %s: %w", oldInitrd, err)
 	}
 	defer f.Close()
 
@@ -106,14 +106,14 @@ func AddFileToInitrd(oldInitrd string, data string, name string) error {
 		Uid:  0,
 		Gid:  0,
 	}
-	err = AddInitrdRecord(w, []byte(data), &fileInfo, name)
+	err = addInitrdRecord(w, []byte(data), &fileInfo, name)
 	if err != nil {
-		return fmt.Errorf("Could not add file %s to initrd: %v", name, err)
+		return fmt.Errorf("could not add file %s to initrd: %w", name, err)
 	}
 
 	err = w.Close()
 	if err != nil {
-		return fmt.Errorf("Could not close initrd %v", err)
+		return fmt.Errorf("could not close initrd: %w", err)
 	}
 
 	return nil

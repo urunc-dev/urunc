@@ -25,6 +25,21 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
+// TODO: Find and set the correct size for the tmpfs in the host
+const tmpfsSizeForNoRootfs = "65536k"
+
+// annotRootfsParams holds JSON RootfsParams after shim chooseGuestRootfs.
+// When present in bundle config.json, Exec reuses it; otherwise Exec runs ChooseRootfs.
+const annotRootfsParams = "com.urunc.internal.rootfs.params"
+
+type rootfsBuilder interface {
+	preSetup() error
+	postSetup() error
+	getBlockDevs() ([]types.BlockDevParams, error)
+	getSharedDirs() (types.SharedfsParams, error)
+	preStart() error
+}
+
 // rootfsSelector encapsulates the context for rootfs selection
 type rootfsSelector struct {
 	bundle     string
@@ -33,6 +48,54 @@ type rootfsSelector struct {
 	unikernel  types.Unikernel
 	vmm        types.VMM
 	vfsdPath   string
+}
+
+type noRootfs struct {
+	monRootfs            string
+	annotBlockPath       string
+	annotBlockMountPoint string
+}
+
+func (n noRootfs) preSetup() error {
+	return nil
+}
+
+func (n noRootfs) postSetup() error {
+	err := createTmpfs(n.monRootfs, "/tmp",
+		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
+		"1777", tmpfsSizeForNoRootfs)
+	if err != nil {
+		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
+	}
+
+	return err
+}
+
+func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
+	blkImgs := []types.BlockDevParams{}
+	blockFromAnnot, err := handleExplicitBlockImage(n.annotBlockPath,
+		n.annotBlockMountPoint)
+	if err != nil {
+		return nil, err
+	}
+
+	if blockFromAnnot.Source != "" && blockFromAnnot.MountPoint != "/" {
+		// TODO: Add proper support for multiple block Images from the container's
+		// image. This requires adding more annotations too.
+		blockFromAnnot.ID = "annot_vol"
+		blkImgs = append(blkImgs, blockFromAnnot)
+	}
+
+	return blkImgs, nil
+}
+
+// TODO: Return an array instead of a single struct
+func (n noRootfs) getSharedDirs() (types.SharedfsParams, error) {
+	return types.SharedfsParams{}, nil
+}
+
+func (n noRootfs) preStart() error {
+	return nil
 }
 
 // newRootfsResult creates a RootfsParams with common defaults
@@ -187,53 +250,6 @@ func switchMonRootfs(res types.RootfsParams, bundle string) (types.RootfsParams,
 	return res, nil
 }
 
-// chooseRootfs determines the best rootfs configuration based on available options
-// Priority order:
-//  1. Initrd (if specified)
-//  2. Explicit block device annotation (if mounted at /)
-//  3. Container rootfs as block device (if MountRootfs=true and supported)
-//  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
-//  5. No rootfs
-func chooseRootfs(bundle string, cntrRootfs string, annot map[string]string,
-	unikernel types.Unikernel, vmm types.VMM, vfsdPath string) (types.RootfsParams, error) {
-
-	selector := &rootfsSelector{
-		bundle:     bundle,
-		cntrRootfs: cntrRootfs,
-		annot:      annot,
-		unikernel:  unikernel,
-		vmm:        vmm,
-		vfsdPath:   vfsdPath,
-	}
-
-	// Priority 1: Initrd
-	result, ok := selector.tryInitrd()
-	if ok {
-		return result, nil
-	}
-
-	// Priority 2: Explicit block annotation
-	result, ok = selector.tryExplicitBlock()
-	if ok {
-		return result, nil
-	}
-
-	// Priority 3 & 4: Container rootfs (block or shared-fs)
-	result, ok = selector.tryContainerRootfs()
-	if ok {
-		return switchMonRootfs(result, bundle)
-	}
-
-	if selector.shouldMountContainerRootfs() {
-		return types.RootfsParams{}, fmt.Errorf("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
-	}
-
-	uniklog.Info("no rootfs configured for guest")
-	result.MonRootfs = cntrRootfs
-	return result, nil
-
-}
-
 // pivotRootfs changes rootfs with pivot
 // It should be called with CWD being the new rootfs
 func pivotRootfs(newRoot string) error {
@@ -274,7 +290,7 @@ func pivotRootfs(newRoot string) error {
 	// We no longer need the old rootfs
 	err = os.RemoveAll("old_root")
 	if err != nil {
-		return fmt.Errorf("failed to remobe old_root: %w", err)
+		return fmt.Errorf("failed to remove old_root: %w", err)
 	}
 
 	return nil
@@ -310,6 +326,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 	return nil
 }
 
+// nolint:gocyclo
 // prepareMonRootfs prepares the rootfs where the monitor will execute. It
 // essentially sets up the devices (KVM, snapshotter block device) that are required
 // for the guest execution and any other files (e.g. binaries).
@@ -445,16 +462,16 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 
 	// Create /dev/console file
 	consolePath := filepath.Join(monRootfs, "/dev/console")
-	consoleFile, err := os.Create(consolePath)
-	if err != nil && !os.IsExist(err) {
+	consoleFile, err := os.OpenFile(consolePath, os.O_CREATE|os.O_WRONLY, 0o666)
+	if err != nil {
 		return fmt.Errorf("failed to create /dev/console: %w", err)
 	}
+	defer consoleFile.Close()
+
 	// Ensure correct permissions
 	if err := consoleFile.Chmod(0o666); err != nil {
-		consoleFile.Close()
 		return fmt.Errorf("failed to chmod /dev/console: %w", err)
 	}
-	consoleFile.Close()
 
 	return nil
 }

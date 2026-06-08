@@ -14,11 +14,7 @@
 
 package urunce2etesting
 
-func nerdctlTestCases(kvmGroup ...int64) []containerTestArgs {
-	var group int64
-	if len(kvmGroup) > 0 {
-		group = kvmGroup[0]
-	}
+func nerdctlTestCases() []containerTestArgs {
 	return []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/hello-hvt-rumprun:latest",
@@ -141,7 +137,7 @@ func nerdctlTestCases(kvmGroup ...int64) []containerTestArgs {
 			Seccomp:        true,
 			UID:            65534,
 			GID:            65534,
-			Groups:         []int64{group},
+			Groups:         []int64{},
 			Memory:         "",
 			Cli:            "",
 			Volumes:        []containerVolume{},
@@ -411,6 +407,54 @@ func nerdctlTestCases(kvmGroup ...int64) []containerTestArgs {
 			Skippable:      false,
 			ExpectOut:      "",
 			TestFunc:       blockMountTest,
+		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/busybox-cloud-hypervisor-linux-raw:latest",
+			Name:           "CloudHypervisor-linux-ping",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "512M",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
+		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/busybox-cloud-hypervisor-linux-raw:latest",
+			Name:           "CloudHypervisor-linux-seccomp",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "512M",
+			Cli:            "/bin/busybox tail -f /dev/null",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       seccompTest,
+		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest",
+			Name:           "CloudHypervisor-linux-nginx",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "512M",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
 		},
 	}
 }
@@ -689,14 +733,27 @@ func ctrTestCases() []containerTestArgs {
 			ExpectOut:      "UID: 0 GID: 42 WD: /test_dir URUNC: urunc",
 			TestFunc:       matchTest,
 		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/hello-world-qemu-hermit-initrd:latest",
+			Name:           "Qemu-hermit-hello-world",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			ExpectOut:      "Hello, world!",
+			TestFunc:       matchTest,
+		},
 	}
 }
 
-func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
-	var group int64
-	if len(kvmGroup) > 0 {
-		group = kvmGroup[0]
-	}
+func crictlTestCases() []containerTestArgs {
 	return []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
@@ -897,7 +954,7 @@ func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
 			Seccomp:        true,
 			UID:            65534,
 			GID:            65534,
-			Groups:         []int64{group},
+			Groups:         []int64{},
 			Memory:         "",
 			Cli:            "",
 			Volumes:        []containerVolume{},
@@ -909,11 +966,7 @@ func crictlTestCases(kvmGroup ...int64) []containerTestArgs {
 	}
 }
 
-func dockerTestCases(kvmGroup ...int64) []containerTestArgs {
-	var group int64
-	if len(kvmGroup) > 0 {
-		group = kvmGroup[0]
-	}
+func dockerTestCases() []containerTestArgs {
 	return []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/net-spt-mirage:latest",
@@ -1066,7 +1119,7 @@ func dockerTestCases(kvmGroup ...int64) []containerTestArgs {
 			Seccomp:        true,
 			UID:            65534,
 			GID:            65534,
-			Groups:         []int64{group},
+			Groups:         []int64{},
 			Memory:         "",
 			Cli:            "",
 			Volumes:        []containerVolume{},

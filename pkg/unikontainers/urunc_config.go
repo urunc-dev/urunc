@@ -80,10 +80,11 @@ func defaultTimestampsConfig() UruncTimestamps {
 
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
-		"qemu":        {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"hvt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"spt":         {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"firecracker": {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"qemu":             {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"hvt":              {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"spt":              {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"firecracker":      {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"cloud-hypervisor": {DefaultMemoryMB: 256, DefaultVCPUs: 1},
 	}
 }
 
@@ -105,7 +106,7 @@ func defaultUruncConfig() *UruncConfig {
 // LoadUruncConfig loads the urunc configuration from the specified path.
 // If the file does not exist or is malformed, it returns the default configuration.
 func LoadUruncConfig(path string) (*UruncConfig, error) {
-	cfg := &UruncConfig{}
+	cfg := defaultUruncConfig()
 	_, err := toml.DecodeFile(path, cfg)
 	if err == nil {
 		return cfg, nil
@@ -125,6 +126,7 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"default_vcpus"] = strconv.FormatUint(uint64(hvCfg.DefaultVCPUs), 10)
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
 		cfgMap[prefix+"data_path"] = hvCfg.DataPath
+		cfgMap[prefix+"vhost"] = strconv.FormatBool(hvCfg.Vhost)
 	}
 	for eb, ebCfg := range p.ExtraBins {
 		prefix := "urunc_config.extra_binaries." + eb + "."
@@ -171,6 +173,13 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			hvCfg.BinaryPath = val
 		case "data_path":
 			hvCfg.DataPath = val
+		case "vhost":
+			boolVal, err := strconv.ParseBool(val)
+			if err != nil {
+				uniklog.Warnf("Invalid vhost value '%s' for monitor '%s': %v. Using default (false).", val, hv, err)
+			} else {
+				hvCfg.Vhost = boolVal
+			}
 		}
 		cfg.Monitors[hv] = hvCfg
 	}

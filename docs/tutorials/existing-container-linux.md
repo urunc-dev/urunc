@@ -11,7 +11,7 @@ With this goal in mind, this guide walks through the steps required to take an
 existing container image and execute it on top of `urunc` as a Linux virtual
 machine (VM).
 
-Overall, we need to do the followings:
+Overall, we need to do the following:
 
 1. Build or reuse a Linux kernel.
 2. (Optional but recommended) Build or fetch an init process.
@@ -75,9 +75,9 @@ designed specifically for `urunc`. It performs the following actions:
    As a result, Linux kernel will fail to set the gateway.
 2. Groups multi-word arguments correctly.
 3. Mounts `/proc` and `/sys`.
-3. Reads and sets the environment variables for the application execution
-3. Reads and sets the uid,gid and working directory for the application execution
-3. Acts as a reaper, cleaning up zombie processes.
+4. Reads and sets the environment variables for the application execution
+5. Reads and sets the uid,gid and working directory for the application execution
+6. Acts as a reaper, cleaning up zombie processes.
 
 To pass the necessary information to
 [urunit](https://github.com/nubificus/urunit), `urunc` uses a configuration
@@ -141,7 +141,7 @@ The simplest way to boot an existing container with a Linux kernel on `urunc`
 is to reuse the container’s rootfs. This is possible either through shared-fs
 between the host and the Linux VM or by using devmapper as the snapshotter. In
 the latter case containerd's devmapper snapshotter will create a snapshot of
-the container;s image in the form of a block image and `urunc` can then
+the container's image in the form of a block image and `urunc` can then
 directly attach this block image to the VM.
 
 To set up devmapper as a snapshotter please refer to the [installation
@@ -250,7 +250,7 @@ and we should be able to ping it:
 ping -c 3 172.17.0.2
 ```
 
-ALternatively, if we want to use devmapper as the snapshotter, we can use
+Alternatively, if we want to use devmapper as the snapshotter, we can use
 [nerdctl](https://github.com/containerd/nerdctl), which integrates seamlessly
 with containerd and supports devmapper out of the box.
 

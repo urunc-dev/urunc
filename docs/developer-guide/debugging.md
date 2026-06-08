@@ -42,7 +42,7 @@ cargo install cntr
 
 2. **Get the container ID:**
 
-    ```bash
+    ```console
     $ sudo docker ps -a
     CONTAINER ID   IMAGE                                             COMMAND       CREATED         STATUS         PORTS     NAMES
     56b93fbd7332   harbor.nbfc.io/nubificus/urunc/dbg/ubuntu:dltme   "/bin/bash"   3 seconds ago   Up 3 seconds             urunc-debug
@@ -58,7 +58,7 @@ You now have an interactive shell with access to debugging tools!
 
 ### Output:
 
-```bash
+```console
 $ sudo cntr attach 56b93fbd7332
 root@host:/var/lib/cntr#
 

@@ -17,6 +17,7 @@ image building and deployment.
 Install [Docker](/quickstart/#install-docker), Go >= 1.21, and `ko`:
 
 ### Install Go 1.21  
+
 ```bash
 sudo mkdir /usr/local/go1.21
 wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
@@ -126,7 +127,7 @@ kubectl get ksvc -A -o wide
 curl -v -H "Host: hellocontainerc.default.127.0.0.1.nip.io" http://<INGRESS_IP>
 ```
 
-Now, let's create a `urunc`-compatible function. Create a [service](https://github.com/nubificus/app-httpreply/blob/fb0ec5c7f5e6b1fedbc589cdc96477c472fef2ca/service.yaml), based on Unikraft's [httreply example](https://github.com/nubificus/app-httpreply/tree/feat_generic): 
+Now, let's create a `urunc`-compatible function. Create a [service](https://github.com/nubificus/app-httpreply/blob/fb0ec5c7f5e6b1fedbc589cdc96477c472fef2ca/service.yaml), based on Unikraft's [httpreply example](https://github.com/nubificus/app-httpreply/tree/feat_generic): 
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/nubificus/app-httpreply/refs/heads/feat_generic/service.yaml

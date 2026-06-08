@@ -13,6 +13,7 @@ Debugf
 Devmapper
 Dockerfiles
 EUID
+Exec
 Execve
 GOARCH
 GOFLAGS
@@ -87,6 +88,7 @@ TUNTAP
 Timestamping
 Tmpfs
 Tuntap
+TTRPC
 UNBINDABLE
 URUNC
 Unikernel
@@ -97,6 +99,7 @@ Unikraft
 Unikraft's
 Urunc
 Urunc's
+VMM
 VNET
 Vcpu
 Virt
@@ -125,8 +128,11 @@ clis
 cmainas
 cmdline
 cntr
+containerdshim
 containerd
 containerd's
+containersapi
+contentapi
 cpio
 creack
 crictl
@@ -146,8 +152,10 @@ downscript
 dpkg
 elevateprivileges
 elfloader
+encoded
 endmacro
 epoll
+errdefs
 etest
 etesting
 etfs
@@ -175,6 +183,8 @@ httpreply
 iface
 ifaces
 ifname
+imagesapi
+imagespec
 initpipe
 initrds
 inlinehilite
@@ -196,6 +206,7 @@ kwds
 lazytime
 lenag
 lenpg
+leasesapi
 levarage
 libc
 libcontainer
@@ -256,6 +267,7 @@ pluginid
 posixacl
 practises
 prctl
+prebuild
 privs
 prlimit
 pwait
@@ -284,6 +296,7 @@ rumprun
 runbindable
 runp
 runtimeclasses
+runtimespec
 sandboxing
 scontroller
 seabios
@@ -293,8 +306,10 @@ setgroup
 settime
 sgid
 sharedfs
+snapshotsapi
 sigaction
 sigreturn
+sigstr
 sirupsen
 socker
 stretchr
@@ -303,6 +318,7 @@ subtest
 superfences
 sworker
 symfollow
+syscall
 syscalls
 systemcalls
 tgkill
@@ -313,7 +329,9 @@ tmpl
 tomlq
 traefik
 triger
+ttrpc
 twemoji
+typesapi
 uidmap
 ukernel
 ukvmif
@@ -325,6 +343,7 @@ unikontainer
 unikontainers
 unikraft
 urandom
+userns
 urfave
 urunc
 urunc's
@@ -349,6 +368,7 @@ DEFROUTE
 blockfile
 thinpool
 vcpus
+cpus
 Virtiofs
 virtiofs
 virtiofsd
@@ -391,3 +411,12 @@ Liaskovitis
 Mallikopoulou
 Medfouni
 Khitem
+unreviewed
+Ayush
+gocyclo
+gomega
+Logr
+onsi
+ESRCH
+Prafful
+praffq

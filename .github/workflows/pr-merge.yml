@@ -4,6 +4,8 @@ on:
   pull_request_target:
     types:
       - closed
+    branches:
+      - 'main-pr*'
 
 permissions:
   contents: read
@@ -11,47 +13,46 @@ permissions:
 jobs:
   add-trailers-and-merge:
     if: |
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.base.ref, 'main-pr')
+      github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
         with:
           egress-policy: audit
 
-      - name: Set up Git
-        run: |
-          git config --global user.name "urunc-bot[bot]"
-          git config --global user.email "urunc-bot[bot]@users.noreply.github.com"
+      - name: Exit if PR is not rebaseable
+        if: ${{ github.event.pull_request.rebaseable != null && github.event.pull_request.rebaseable == false }}
+        run: exit 1
 
       - name: Check out repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.base.ref }}
 
       - name: Generate urunc-bot token
         id: generate-token
-        uses: actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e # v2.0.6
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
         with:
           app-id: ${{ vars.URUNC_BOT_APP_ID }}
           private-key: ${{ secrets.URUNC_BOT_PRIVATE_KEY }}
 
       - name: Append git trailers
-        uses: nubificus/git-trailers@18fd322f3fbfd505b4de728974a4ac1f32f758a7 # feat_auto_merge
+        uses: nubificus/git-trailers@1d1595aacfd9239ae69d773cb895606daa17e538
         with:
-          user_info: .github/contributors.yaml
+          token: ${{ steps.generate-token.outputs.token }}
+          user-info: .github/contributors.yaml
 
       - name: Create a Pull Request from PR_BRANCH to main and merge it
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          PR_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: |
           PR_BRANCH=${{ github.event.pull_request.base.ref }}
-      
+
           # Create the pull request
           PR_URL=$(gh pr create \
             --head "$PR_BRANCH" \

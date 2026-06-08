@@ -98,7 +98,7 @@ values.
 #### Supported monitors and their respective subsection names
 
 - [QEMU/KVM](./hypervisor-support#qemu) - `qemu`
-- [Firecrakcer](./hypervisor-support#firecracker) - `firecracker`
+- [Firecracker](./hypervisor-support#firecracker) - `firecracker`
 - [Solo5-hvt](./hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
 - [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
 
@@ -114,7 +114,7 @@ Each monitor subsection supports the following options:
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 
 Since Qemu is the only currently supported monitor which requires extra data to
-boot a VM, `urunc` wll first check `/usr/local/share` and then `/usr/share` for
+boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
 Qemu's data files.
 
 **Example:**

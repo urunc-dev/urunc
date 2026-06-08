@@ -76,23 +76,15 @@ func (c *UnikernelConfig) validate() error {
 
 // GetUnikernelConfig tries to get the Unikernel config from the bundle annotations.
 // If that fails, it gets the Unikernel config from the urunc.json file inside the rootfs.
-// FIXME: custom annotations are unreachable, we need to investigate why to skip adding the urunc.json file
-// For more details, see: https://github.com/urunc-dev/urunc/issues/12
-// GetUnikernelConfig tries to get a valid Unikernel config from the bundle annotations.
-// If the annotations do not provide a valid config, it falls back to the urunc.json file.
 func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, error) {
-
 	conf := getConfigFromSpec(spec)
-
-	err := conf.validate()
-	if err == nil {
-
-		if err := conf.decode(); err != nil {
-			return nil, err
-		}
+	if err := conf.validate(); err == nil {
+		// TODO: in case of urunc executed without shim, the annotations would remain encoded
 		return conf, nil
 	}
 
+	// Failed to fetch urunc annotations from spec, fallback to urunc.json
+	uniklog.Info("failed to fetch urunc annotations from spec, fallback to urunc.json")
 	rootFSDir := spec.Root.Path
 	var jsonFilePath string
 	if filepath.IsAbs(rootFSDir) {

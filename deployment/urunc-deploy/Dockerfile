@@ -38,7 +38,7 @@ WORKDIR /artifacts
 RUN cp /app/tenders/hvt/solo5-hvt /artifacts/ && \
     cp /app/tenders/spt/solo5-spt /artifacts/
 
-FROM golang:1.24.6-alpine3.21@sha256:50f8a10a46c0c26b5b816a80314f1999196c44c3e3571f41026b061339c29db6 AS urunc-builder
+FROM golang:1.25.4-alpine3.21@sha256:3289aac2aac769e031d644313d094dbda745f28af81cd7a94137e73eefd58b33 AS urunc-builder
 RUN apk update && \
     apk add --no-cache git make build-base linux-headers
 WORKDIR /app
@@ -95,6 +95,7 @@ COPY --from=intermediate /urunc-artifacts /urunc-artifacts
 COPY --from=intermediate /usr/bin/jq /usr/bin/jq
 COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
 COPY scripts/install.sh /urunc-artifacts/scripts/install.sh
+COPY config.toml /deployment/config.toml
 RUN apk update && \
     apk add --no-cache bash curl py3-pip && \
     pip install --no-cache-dir --break-system-packages yq==3.2.3 && \

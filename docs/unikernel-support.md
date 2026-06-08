@@ -77,7 +77,7 @@ libraries that provide networking, storage and concurrency support that work
 under Unix during development, but become operating system drivers when being
 compiled for production deployment. We can easily set up and build
 [MirageOS](https://github.com/mirage/mirage) unikernels with `mirage`, which can
-be installed throgu the [Opam](https://opam.ocaml.org/) source package manager.
+be installed through the [Opam](https://opam.ocaml.org/) source package manager.
 The framework is fully event-driven, with no support for preemptive threading.
 
 [MirageOS](https://github.com/mirage/mirage) is characterized from the extremely
@@ -314,7 +314,7 @@ Focusing on the single-application notion of using the
 both [Qemu](https://qemu.org) and
 [Firecracker](https://github.com/firecracker-microvm/firecracker). For network,
 `urunc` will make use of virtio-net either through PCI or MMIO, depending on
-the monitor. In the case of storage, `urunc` can use initrd, virtio-block ,9pfs
+the monitor. In the case of storage, `urunc` can use initrd, virtio-block, 9pfs
 or Virtiofs. In particular, `urunc` takes advantage of the extensive filesystem
 support of [Linux](https://github.com/torvalds/linux) and can directly mount
 containerd's snapshot directly to a [Linux](https://github.com/torvalds/linux)
@@ -324,7 +324,7 @@ more information on setting up devmapper, please take a look on our
 
 For more information on packaging applications and executing them on top of
 [Linux](https://github.com/torvalds/linux) with `urunc` take a look at our
-[running existing containers tutorial.](../tutorials/exisitng-containers-linux)
+[running existing containers tutorial.](../tutorials/existing-container-linux)
 
 An example of a Nginx alpine image on top of [Qemu](https://qemu.org) and
 [Linux](https://github.com/torvalds/linux) with 'urunc' and devmapper as a
@@ -340,6 +340,45 @@ An example of a Redis alpine image transformed to a block file on top of
 
 ```bash
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-firecracker-linux-block:latest
+```
+
+## Hermit
+
+[Hermit](https://hermit-os.org/) is a unikernel designed for
+high-performance and cloud/HPC workloads.
+Its a Rust re-write of the Hermit-Core unikernel in order to leverage the
+memory/thread-safety guarantees provided by the Rust ownership model.
+
+Hermit provides support for multiple compiled languages like Rust, C, C++, Go and Fotran. Hermit applications are compiled
+into a unikernel image that includes both the application and the operating system.
+When the unikernel boots, the application starts execution immediately.
+
+Hermit provides support for multithreading, networking, and basic system
+interfaces. It is particularly well-suited for cloud and microservice
+environments where lightweight isolation is required.
+
+### VMMs and other sandbox monitors
+
+Hermit runs on top of the [QEMU](https://www.qemu.org/) virtual machine monitor.
+It supports standard virtualization interfaces such as virtio devices for networking.
+
+When executed with [QEMU](https://www.qemu.org/), Hermit can access the network through
+a `virtio-net` device. Hermit supports both `virtio-fs` and `initrd` as storage options with the respective configuration at build time.
+
+### Hermit and `urunc`
+
+In the case of Hermit, `urunc` provides support for running unikernels on
+top of QEMU. If the container is configured with network access, `urunc` will
+attach a `virtio-net` device to enable networking for the unikernel. Hermit in `urunc` only supports `initrd` for storage.
+
+For more information on packaging
+[Hermit](https://hermit-os.org/) unikernels for `urunc` take
+a look at our [packaging](../package/) page.
+
+An example of running a Hermit unikernel with `urunc`:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/hello-world-qemu-hermit-initrd:latest
 ```
 
 ## Future unikernels and frameworks:

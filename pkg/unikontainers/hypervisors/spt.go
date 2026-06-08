@@ -17,9 +17,9 @@ package hypervisors
 import (
 	"os/exec"
 	"strings"
-	"syscall"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -30,6 +30,10 @@ const (
 type SPT struct {
 	binaryPath string
 	binary     string
+}
+
+func (s *SPT) Signal(pid int, signal unix.Signal) error {
+	return unix.Kill(pid, signal)
 }
 
 // Stop kills the spt process
@@ -60,7 +64,7 @@ func (s *SPT) Ok() error {
 	return nil
 }
 
-func (s *SPT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
+func (s *SPT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	sptMem := BytesToStringMB(args.MemSizeB)
 	cmdString := s.binaryPath + " --mem=" + sptMem
 	if args.Net.TapDev != "" {
@@ -76,6 +80,10 @@ func (s *SPT) Execve(args types.ExecArgs, ukernel types.Unikernel) error {
 	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
 	cmdString += " " + args.UnikernelPath + " " + args.Command
 	cmdArgs := strings.Split(cmdString, " ")
-	vmmLog.WithField("spt command", cmdString).Debug("Ready to execve spt")
-	return syscall.Exec(s.binaryPath, cmdArgs, args.Environment) //nolint: gosec
+	return cmdArgs, nil
+}
+
+// PreExec performs pre-execution setup. SPT has no special pre-exec requirements.
+func (s *SPT) PreExec(_ types.ExecArgs) error {
+	return nil
 }

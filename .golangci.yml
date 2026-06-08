@@ -1,17 +1,70 @@
+version: "2"
+
 linters:
+  default: none
   enable:
-  - errcheck
-  - gofmt
-  - goimports
-  - gosec
-  - gocritic
-  - misspell
-  - revive
-  - unused
-
+    - decorder
+    - dupword
+    - dupl
+    - errname
+    - gocritic
+    - gosec
+    - gocyclo
+    - ineffassign
+    - makezero
+    - misspell
+    - revive
+    - unused
+    - usestdlibvars
+  settings:
+    govet:
+      enable:
+        - nilness
+        - unusedwrite
+    staticcheck:
+      checks:
+        - all
+    revive:
+      confidence: 0.6
+      rules:
+        - name: error-strings
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go|tests/e2e/(nerdctl|docker|ctr)\.go
+        linters:
+          - dupl
+      - path: tests/e2e/.*_test\.go
+        text: "dot-imports"
+        linters:
+          - revive
+      - path: _test\.go
+        text: "error-strings"
+        linters:
+          - revive
+      - path: tests/e2e/
+        text: "error-strings"
+        linters:
+          - revive
+    paths:
+      - docs$
+      - dist$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - docs$
+      - dist$
+      - examples$
 issues:
-  uniq-by-line: false
-
-run:
-  issues-exit-code: 1
-  timeout: 5m
+  max-issues-per-linter: 0
+  max-same-issues: 0

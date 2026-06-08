@@ -86,7 +86,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "log",
 				Value: "",
-				Usage: "set the log file to write runc logs to (default is '/dev/stderr')",
+				Usage: "set the log file to write urunc logs to (default is '/dev/stderr')",
 			},
 			&cli.StringFlag{
 				Name:  "log-format",
@@ -113,11 +113,24 @@ func main() {
 			deleteCommand,
 			killCommand,
 			runCommand,
+			psCommand,
 			// specCommand,
 			startCommand,
 			// stateCommand,
 		},
 		Before: func(_ context.Context, cmd *cli.Command) (context.Context, error) {
+			if !cmd.IsSet("root") {
+				xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
+				if xdgRuntimeDir != "" && ShouldHonorXDGRuntimeDir() {
+					root := xdgRuntimeDir + "/urunc"
+					if err := prepareXDGRuntimeDir(root); err != nil {
+						return nil, err
+					}
+					if err := cmd.Set("root", root); err != nil {
+						return nil, err
+					}
+				}
+			}
 			if err := reviseRootDir(cmd); err != nil {
 				return nil, err
 			}

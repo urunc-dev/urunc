@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/moby/sys/userns"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
 	"github.com/urunc-dev/urunc/pkg/unikontainers"
@@ -129,4 +130,33 @@ func fatalWithCode(err error, ret int) {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	os.Exit(ret)
+}
+
+// ShouldHonorXDGRuntimeDir reports whether the runtime should use XDG_RUNTIME_DIR
+// for the default root directory (e.g. /run/user/UID/urunc instead of /run/urunc).
+// It returns true for non-root processes and for root inside a user namespace
+// when not running as the "root" user (e.g. rootless Podman).
+func ShouldHonorXDGRuntimeDir() bool {
+	if os.Geteuid() != 0 {
+		return true
+	}
+	if !userns.RunningInUserNS() {
+		// euid == 0 in the initial ns (real root): use /run/urunc for backward compatibility.
+		return false
+	}
+	// euid == 0 inside a user namespace (rootless): honor XDG_RUNTIME_DIR unless USER=root.
+	u, ok := os.LookupEnv("USER")
+	return !ok || u != "root"
+}
+
+// prepareXDGRuntimeDir prepares the XDG_RUNTIME_DIR directory according to the XDG specification.
+// It creates the directory with proper permissions and sets the sticky bit to prevent auto-pruning.
+func prepareXDGRuntimeDir(root string) error {
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return fmt.Errorf("the path in $XDG_RUNTIME_DIR must be writable by the user: %w", err)
+	}
+	if err := os.Chmod(root, os.FileMode(0o700)|os.ModeSticky); err != nil {
+		return fmt.Errorf("you should check permission of the path in $XDG_RUNTIME_DIR: %w", err)
+	}
+	return nil
 }

@@ -183,7 +183,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		consoleSocket := cmd.String("console-socket")
 		conn, err := net.Dial("unix", consoleSocket)
 		if err != nil {
-			err = fmt.Errorf("failed to dial console socker: %w", err)
+			err = fmt.Errorf("failed to dial console socket: %w", err)
 			return err
 		}
 		defer conn.Close()
@@ -252,9 +252,10 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 
 	// Retrieve reexec cmd's pid and write to file and state
 	containerPid := reexecPid
+	pidFilePath := cmd.String("pid-file")
 	metrics.Capture(m.TS06)
 
-	err = unikontainer.Create(containerPid)
+	err = unikontainer.Create(containerPid, pidFilePath)
 	if err != nil {
 		return err
 	}
@@ -332,7 +333,7 @@ func handleNsenterRet(initSock *os.File, reexec *exec.Cmd) (int, error) {
 	}
 	if !status.Success() {
 		_ = reexec.Wait()
-		return -1, fmt.Errorf("nsenter unsuccessful exit: %w", err)
+		return -1, fmt.Errorf("nsenter unsuccessful exit: %d", status.ExitCode())
 	}
 
 	return pid.Stage2Pid, nil
@@ -420,7 +421,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	// setup goes well and the socket was not cleaned up correctly,
 	// we execve the monitor and we rely on Go's close-on-exec feature in all file
 	// descriptors. THerefore, we might want to rethink this in future and not rely
-	// on Go, but this requires quite a a lot of changes.
+	// on Go, but this requires quite a lot of changes.
 	if awaitErr != nil {
 		awaitErr = fmt.Errorf("error waiting START message: %w", awaitErr)
 		err = errors.Join(awaitErr, cleanErr)

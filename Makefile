@@ -51,7 +51,7 @@ GO_FLAGS       := GOOS=linux
 CGO            := CGO_ENABLED=1
 NOCGO          := CGO_ENABLED=0
 TEST_FLAGS     := "-count=1"
-TEST_OPTS      += -timeout 15m
+TEST_OPTS      += -timeout 20m
 BUILD_TAGS     ?= netgo osusergo
 
 # Linking variables
@@ -72,6 +72,8 @@ URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/types/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/initrd/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/network/*.go)
 SHIM_SRC       := $(wildcard $(CURDIR)/cmd/containerd-shim-urunc-v2/*.go)
+SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/*.go)
+SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/containerd/*.go)
 
 #? CNTR_TOOL Tool to run the linter container (default: docker)
 CNTR_TOOL ?= docker
@@ -80,7 +82,7 @@ CNTR_OPTS ?= run --rm -it
 # Linking variables
 LINT_CNTR_OPTS ?= $(CNTR_OPTS) -v $(CURDIR):/app -w /app
 #? LINT_CNTR_IMG The linter image to use (default: golangci/golangci-lint:v1.53.3)
-LINT_CNTR_IMG  ?= golangci/golangci-lint:v1.64
+LINT_CNTR_IMG  ?= golangci/golangci-lint:v2.7
 LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
 
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)
@@ -231,7 +233,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics
+unittest: test_unikontainers test_metrics test_network test_hypervisors test_unikernels
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -249,60 +251,78 @@ test_metrics:
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./internal/metrics -v
 	@echo " "
 
+## test_network Run unit tests for network package
+test_network:
+	@echo "Unit testing in pkg/network"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/network -v
+	@echo " "
+
+## test_hypervisors Run unit tests for hypervisors package
+test_hypervisors:
+	@echo "Unit testing in hypervisors"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/hypervisors -v
+	@echo " "
+
+## test_unikernels Run unit tests for unikernels package
+test_unikernels:
+	@echo "Unit testing in unikernels"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/unikernels -v
+	@echo " "
+
 ## test_nerdctl Run all end-to-end tests with nerdctl
 .PHONY: test_nerdctl
 test_nerdctl:
 	@echo "Testing nerdctl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestNerdctl -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Nerdctl"
 	@echo " "
 
 ## test_ctr Run all end-to-end tests with ctr
 .PHONY: test_ctr
 test_ctr:
 	@echo "Testing ctr"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestCtr -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Ctr"
 	@echo " "
 
 ## test_crictl Run all end-to-end tests with crictl
 .PHONY: test_crictl
 test_crictl:
 	@echo "Testing crictl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestCrictl -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Crictl"
 	@echo " "
 
 ## test_docker Run all end-to-end tests with docker
 .PHONY: test_docker
 test_docker:
 	@echo "Testing docker"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestDocker -v
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Docker"
 	@echo " "
 
 ## test_nerdctl_[pattern] Run all end-to-end tests with nerdctl that match pattern
 .PHONY: test_nerdctl_%
 test_nerdctl_%:
 	@echo "Testing nerdctl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestNerdctl/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Nerdctl.*$*"
 	@echo " "
 
 ## test_ctr_[pattern] Run all end-to-end tests with ctr that match pattern
 .PHONY: test_ctr_%
 test_ctr_%:
 	@echo "Testing ctr"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestCtr/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Ctr.*$*"
 	@echo " "
 
 ## test_crictl_[pattern] Run all end-to-end tests with crictl that match pattern
 .PHONY: test_crictl_%
 test_crictl_%:
 	@echo "Testing crictl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestCrictl/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Crictl.*$*"
 	@echo " "
 
 ## test_docker_[pattern] Run all end-to-end tests with docker that match pattern
 .PHONY: test_docker_%
 test_docker_%:
 	@echo "Testing docker"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v -run "TestDocker/$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Docker.*$*"
 	@echo " "
 
 ## help Show this help message

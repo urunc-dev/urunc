@@ -190,7 +190,7 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	switch l.Monitor {
 	case "qemu":
 		extraCliArgs := types.MonitorCliArgs{
-			OtherArgs: " -no-reboot -serial stdio -nodefaults",
+			OtherArgs: " -no-reboot -nodefaults",
 		}
 		if l.InitrdConf && l.RootFsType != "initrd" {
 			extraCliArgs.ExtraInitrd = urunitConfPath

@@ -73,7 +73,7 @@ func (r *Rumprun) CommandString() (string, error) {
 	}
 	cmdJSON, err := json.Marshal(cmd)
 	if err != nil {
-		return "", fmt.Errorf("Could not Marshal cmdline: %v", err)
+		return "", fmt.Errorf("could not marshal cmdline: %v", err)
 	}
 	cmdJSONString = string(cmdJSON)
 	for i, eVar := range r.Envs {
@@ -82,7 +82,7 @@ func (r *Rumprun) CommandString() (string, error) {
 		}
 		oneVarJSON, err := json.Marshal(eVar)
 		if err != nil {
-			return "", fmt.Errorf("Could not Marshal environment variable: %v", err)
+			return "", fmt.Errorf("could not marshal environment variable: %v", err)
 		}
 		if i != 0 {
 			envJSONString += ","

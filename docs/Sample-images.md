@@ -50,3 +50,4 @@ We plan to create and maintain multi-platform images soon, as well as enrich thi
 - harbor.nbfc.io/nubificus/urunc/whoami-firecracker-linux-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/busybox-firecracker-linux-raw:latest
+- harbor.nbfc.io/nubificus/urunc/hello-world-qemu-hermit-initrd:latest

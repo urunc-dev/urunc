@@ -45,6 +45,38 @@ type testTool interface {
 	inspectPAndGet(string) (string, error)
 }
 
+type testMethod func(tool testTool) error
+
+type containerVolume struct {
+	Source string
+	Dest   string
+}
+
+type containerTestArgs struct {
+	Name           string
+	Image          string
+	Devmapper      bool
+	Seccomp        bool
+	UID            int
+	GID            int
+	Groups         []int64
+	Memory         string
+	Cli            string
+	Volumes        []containerVolume
+	StaticNet      bool
+	SideContainers []string
+	Skippable      bool
+	TestFunc       testMethod
+	ExpectOut      string
+}
+
+const (
+	testCtr     = "TestCtr"
+	testCrictl  = "TestCrictl"
+	testDocker  = "TestDocker"
+	testNerdctl = "TestNerdctl"
+)
+
 var errToolDoesNotSupport = errors.New("Operation not support")
 
 func commonNewContainerCmd(a containerTestArgs) string {
@@ -224,7 +256,15 @@ func findValOfKey(searchArea string, key string) (string, error) {
 		return "", err
 	}
 	match := r.FindString(searchArea)
+	if match == "" {
+		return "", fmt.Errorf("key %s not found in search area", key)
+	}
+
 	keyValMatch := strings.Split(match, ":")
+	if len(keyValMatch) < 2 {
+		return "", fmt.Errorf("invalid format for key %s: %s", key, match)
+	}
+
 	val := strings.ReplaceAll(keyValMatch[1], "\"", "")
 	return strings.TrimSpace(val), nil
 }

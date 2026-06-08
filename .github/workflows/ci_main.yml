@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ github.sha }}
-      go_version: "1.24.6"
+      go_version: "1.25.4"
 
   upload:
     name: Upload

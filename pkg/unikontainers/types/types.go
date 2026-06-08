@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//revive:disable:var-naming
 package types
+
+import "golang.org/x/sys/unix"
 
 type Unikernel interface {
 	Init(UnikernelParams) error
@@ -25,8 +28,16 @@ type Unikernel interface {
 }
 
 type VMM interface {
-	Execve(args ExecArgs, ukernel Unikernel) error
+	// BuildExecCmd builds and validates the VMM command arguments without executing.
+	// This is used to verify the command can be built before reporting container as started.
+	// The returned slice contains the command path as the first element followed by arguments.
+	BuildExecCmd(args ExecArgs, ukernel Unikernel) ([]string, error)
+	// PreExec performs any monitor-specific setup that must happen after BuildExecCmd
+	// succeeds but before syscall.Exec is called. For example, HVT applies seccomp
+	// filters here. Most monitors can return nil (no-op).
+	PreExec(args ExecArgs) error
 	Stop(int) error
+	Signal(int, unix.Signal) error
 	Path() string
 	UsesKVM() bool
 	SupportsSharedfs(string) bool
@@ -39,6 +50,7 @@ type NetDevParams struct {
 	Gateway string // The veth device gateway
 	MAC     string // The MAC address of the guest network device
 	TapDev  string // The tap device name
+	MTU     int    // The MTU value of the tap device
 }
 
 type BlockDevParams struct {
@@ -123,4 +135,5 @@ type MonitorConfig struct {
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
 	BinaryPath      string `toml:"path,omitempty"`      // Optional path to the hypervisor binary
 	DataPath        string `toml:"data_path,omitempty"` // Optional path to the hypervisor data files (e.g. qemu bios stuff)
+	Vhost           bool   `toml:"vhost,omitempty"`     // Optional: enable vhost for network performance optimization
 }
