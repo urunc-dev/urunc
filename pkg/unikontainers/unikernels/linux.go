@@ -60,6 +60,9 @@ func IsIPInSubnet(ln LinuxNet) bool {
 	ip := net.ParseIP(ln.Address)
 	gw := net.ParseIP(ln.Gateway)
 	mask := net.IPMask(net.ParseIP(ln.Mask).To4())
+	if ip == nil || gw == nil || mask == nil {
+		return false
+	}
 	subnet := gw.Mask(mask)
 
 	return ip.Mask(mask).Equal(subnet)
