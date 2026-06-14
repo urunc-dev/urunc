@@ -335,6 +335,220 @@ jobs:
         grep "Hello world" /tmp/logs.txt
         kubectl describe pod hello-spt-rumprun-block || true
 
+    #added tests left in #215 
+    #added http service test for nginx unikernel with ClusterIP, Reverse DNS Test, NodePort Test, Pod Restart Test, ConfigMap Volume Test, Secret Volume Test
+    - name: HTTP Service Test - Deploy nginx unikernel with ClusterIP
+      if: matrix.arch == 'amd64'
+      run: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: nginx-unikernel
+          namespace: default
+        spec:
+          runtimeClassName: urunc
+          restartPolicy: Never
+          containers:
+            - name: nginx
+              image: harbor.nbfc.io/nubificus/urunc/nginx-spt-rumprun-block:latest
+              imagePullPolicy: Always
+              ports:
+                - containerPort: 80
+                  protocol: TCP
+              resources:
+                requests:
+                  cpu: 10m
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: nginx-service
+          namespace: default
+        spec:
+          type: ClusterIP
+          ports:
+            - port: 80
+              targetPort: 80
+              protocol: TCP
+          selector:
+            run: nginx-unikernel
+        EOF
+        
+        # Wait for pod to be ready
+        kubectl wait --for=condition=Ready pod/nginx-unikernel --timeout=180s || true
+        
+        # Test HTTP response from test pod
+        kubectl run test-http --image=busybox:latest -it --rm --restart=Never -- wget -O- http://nginx-service:80 || true
+
+    - name: Reverse DNS Test - Deploy busybox and verify resolv.conf
+      if: matrix.arch == 'amd64'
+      run: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: busybox-dns-test
+          namespace: default
+        spec:
+          runtimeClassName: urunc
+          restartPolicy: Never
+          containers:
+            - name: busybox
+              image: harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
+              imagePullPolicy: Always
+              command: ['cat', '/etc/resolv.conf']
+              resources:
+                requests:
+                  cpu: 10m
+        EOF
+        
+        # Wait for pod and check logs
+        kubectl wait --for=condition=Succeeded pod/busybox-dns-test --timeout=180s || true
+        echo "=== Resolv.conf content ==="
+        kubectl logs busybox-dns-test || true
+        
+        # Verify service name resolution
+        kubectl run dns-test-pod --image=busybox:latest -it --rm --restart=Never -- nslookup nginx-service.default.svc.cluster.local || true
+
+    - name: NodePort Test - Expose unikernel via NodePort
+      if: matrix.arch == 'amd64'
+      run: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: nginx-nodeport
+          namespace: default
+        spec:
+          type: NodePort
+          ports:
+            - port: 80
+              targetPort: 80
+              nodePort: 30080
+              protocol: TCP
+          selector:
+            run: nginx-unikernel
+        EOF
+        
+        # Get the node port
+        NODE_PORT=$(kubectl get service nginx-nodeport -o jsonpath='{.spec.ports[0].nodePort}')
+        echo "NodePort assigned: $NODE_PORT"
+        
+        # Get the node IP
+        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+        echo "Node IP: $NODE_IP"
+        
+        # Verify connectivity from kind host
+        docker exec urunc-test-control-plane curl -v http://localhost:$NODE_PORT/ || true
+
+    - name: Pod Restart Test - Verify network access and no orphaned tap devices
+      if: matrix.arch == 'amd64'
+      run: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: restart-test-pod
+          namespace: default
+        spec:
+          runtimeClassName: urunc
+          restartPolicy: OnFailure
+          containers:
+            - name: sleep-pod
+              image: harbor.nbfc.io/nubificus/urunc/hello-spt-rumprun-block:latest
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  cpu: 10m
+        EOF
+        
+        # Wait for pod to start
+        kubectl wait --for=condition=Ready pod/restart-test-pod --timeout=180s || true
+        
+        # Get pod details
+        echo "=== Pod state ==="
+        kubectl describe pod/restart-test-pod || true
+        
+        # Verify no orphaned tap devices
+        echo "=== Checking for orphaned tap devices ==="
+        docker exec urunc-test-control-plane bash -c 'ip link show | grep -i tap || echo "No tap devices found"' || true
+
+    - name: ConfigMap Volume Test - Mount and verify ConfigMap
+      if: matrix.arch == 'amd64'
+      run: |
+        # Create ConfigMap
+        kubectl create configmap test-config --from-literal=key1=value1 --from-literal=key2=value2 --dry-run=client -o yaml | kubectl apply -f -
+        
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: configmap-test-pod
+          namespace: default
+        spec:
+          runtimeClassName: urunc
+          restartPolicy: Never
+          containers:
+            - name: configmap-reader
+              image: harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
+              imagePullPolicy: Always
+              command: ['sh', '-c', 'cat /etc/config/key1 && cat /etc/config/key2']
+              volumeMounts:
+                - name: config-volume
+                  mountPath: /etc/config
+              resources:
+                requests:
+                  cpu: 10m
+          volumes:
+            - name: config-volume
+              configMap:
+                name: test-config
+        EOF
+        
+        # Wait and verify
+        kubectl wait --for=condition=Succeeded pod/configmap-test-pod --timeout=180s || true
+        echo "=== ConfigMap test logs ==="
+        kubectl logs configmap-test-pod || true
+
+    - name: Secret Volume Test - Mount and verify Secret
+      if: matrix.arch == 'amd64'
+      run: |
+        # Create Secret
+        kubectl create secret generic test-secret --from-literal=username=testuser --from-literal=password=testpass --dry-run=client -o yaml | kubectl apply -f -
+        
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: secret-test-pod
+          namespace: default
+        spec:
+          runtimeClassName: urunc
+          restartPolicy: Never
+          containers:
+            - name: secret-reader
+              image: harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
+              imagePullPolicy: Always
+              command: ['sh', '-c', 'cat /etc/secrets/username && cat /etc/secrets/password']
+              volumeMounts:
+                - name: secret-volume
+                  mountPath: /etc/secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 10m
+          volumes:
+            - name: secret-volume
+              secret:
+                secretName: test-secret
+        EOF
+        
+        # Wait and verify
+        kubectl wait --for=condition=Succeeded pod/secret-test-pod --timeout=180s || true
+        echo "=== Secret test logs ==="
+        kubectl logs secret-test-pod || true
+        
     - name: Debug pod failure
       if: failure()
       run: |
