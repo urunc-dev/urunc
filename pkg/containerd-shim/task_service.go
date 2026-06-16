@@ -55,13 +55,21 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 
 	// ChooseRootfs after inner task Create so bundle rootfs is mounted;
 	// params are persisted in bundle config.json for runtime Exec.
+	//
+	// This is only a pre-computation/optimization: the runtime Exec recomputes
+	// ChooseRootfs when the annotation is absent. Therefore a failure here must
+	// not abort Create, otherwise we would report Create as failed while the
+	// inner task service has already created the task and spawned the container
+	// init, orphaning a running process and leaking resources. Instead, we log
+	// and continue, deferring any genuine rootfs error to the runtime, where it
+	// surfaces during start with proper, containerd-tracked cleanup.
 	if err := chooseGuestRootfs(r); err != nil {
 		if errors.Is(err, errGuestRootfsChoiceSkipped) {
 			log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
-			return resp, nil
+		} else {
+			log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs; runtime will recompute at Exec")
 		}
-		log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
-		return nil, err
+		return resp, nil
 	}
 
 	return resp, nil
