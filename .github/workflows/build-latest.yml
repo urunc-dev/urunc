@@ -110,7 +110,7 @@ jobs:
  
       - name: Build and push urunc-deploy-${{ matrix.arch}}
         id: build-and-push
-        uses: docker/build-push-action@789f68658055d3ca993799b232b5c46dfe3f114d # master
+        uses: docker/build-push-action@ff26911fd365b0233252dfbd8eede1c0e9ef9a51 # master
         with:
           context: ./deployment/urunc-deploy
           tags: ${{ steps.meta.outputs.tags }}
