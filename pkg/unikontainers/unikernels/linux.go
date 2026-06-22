@@ -170,12 +170,8 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 		}
 	case "firecracker":
 		for _, aBlock := range l.Blk {
-			id := aBlock.ID
-			if l.Monitor == "firecracker" {
-				id = "FC" + aBlock.ID
-			}
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
-				ID:   id,
+				ID:   "FC" + aBlock.ID,
 				Path: aBlock.Source,
 			})
 		}
