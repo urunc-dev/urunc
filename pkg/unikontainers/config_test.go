@@ -180,12 +180,12 @@ func TestGetConfigFromJSON(t *testing.T) {
 func TestDecode(t *testing.T) {
 	t.Run("decode success", func(t *testing.T) {
 		t.Parallel()
-		// Prepare the encoded values
-		encodedCmd := base64.StdEncoding.EncodeToString([]byte("testCmd"))
-		encodedHypervisor := base64.StdEncoding.EncodeToString([]byte("testHypervisor"))
-		encodedType := base64.StdEncoding.EncodeToString([]byte("testType"))
-		encodedBinary := base64.StdEncoding.EncodeToString([]byte("testBinary"))
-		encodedInitrd := base64.StdEncoding.EncodeToString([]byte("testInitrd"))
+		// Prepare the encoded values with b64: prefix
+		encodedCmd := "b64:" + base64.StdEncoding.EncodeToString([]byte("testCmd"))
+		encodedHypervisor := "b64:" + base64.StdEncoding.EncodeToString([]byte("testHypervisor"))
+		encodedType := "b64:" + base64.StdEncoding.EncodeToString([]byte("testType"))
+		encodedBinary := "b64:" + base64.StdEncoding.EncodeToString([]byte("testBinary"))
+		encodedInitrd := "b64:" + base64.StdEncoding.EncodeToString([]byte("testInitrd"))
 
 		config := &UnikernelConfig{
 			UnikernelCmd:    encodedCmd,
@@ -207,10 +207,37 @@ func TestDecode(t *testing.T) {
 		assert.Equal(t, "testInitrd", config.Initrd)
 	})
 
-	t.Run("decode invalid base64", func(t *testing.T) {
+	t.Run("decode legacy raw base64 fallback", func(t *testing.T) {
 		t.Parallel()
-		// Prepare invalid base64 values
-		invalidBase64 := "invalid-base64"
+		// Prepare the encoded values without a prefix to simulate old bunny versions
+		encodedCmd := base64.StdEncoding.EncodeToString([]byte("legacyCmd"))
+		encodedHypervisor := base64.StdEncoding.EncodeToString([]byte("legacyHypervisor"))
+		encodedType := base64.StdEncoding.EncodeToString([]byte("legacyType"))
+		encodedBinary := base64.StdEncoding.EncodeToString([]byte("legacyBinary"))
+		encodedInitrd := base64.StdEncoding.EncodeToString([]byte("legacyInitrd"))
+
+		config := &UnikernelConfig{
+			UnikernelCmd:    encodedCmd,
+			Hypervisor:      encodedHypervisor,
+			UnikernelType:   encodedType,
+			UnikernelBinary: encodedBinary,
+			Initrd:          encodedInitrd,
+		}
+
+		err := config.decode()
+
+		assert.NoError(t, err)
+		assert.Equal(t, "legacyCmd", config.UnikernelCmd)
+		assert.Equal(t, "legacyHypervisor", config.Hypervisor)
+		assert.Equal(t, "legacyType", config.UnikernelType)
+		assert.Equal(t, "legacyBinary", config.UnikernelBinary)
+		assert.Equal(t, "legacyInitrd", config.Initrd)
+	})
+
+	t.Run("decode plaintext fallback", func(t *testing.T) {
+		t.Parallel()
+		// Prepare plaintext values that are invalid base64
+		invalidBase64 := "invalid-base64!"
 
 		config := &UnikernelConfig{
 			UnikernelCmd:    invalidBase64,
@@ -219,10 +246,34 @@ func TestDecode(t *testing.T) {
 			UnikernelBinary: invalidBase64,
 			Initrd:          invalidBase64,
 		}
+		// Call the decode method and expect no error
+		err := config.decode()
+
+		// Assert that no error occurred and original strings are kept
+		assert.NoError(t, err)
+		assert.Equal(t, invalidBase64, config.UnikernelCmd)
+		assert.Equal(t, invalidBase64, config.Hypervisor)
+		assert.Equal(t, invalidBase64, config.UnikernelType)
+		assert.Equal(t, invalidBase64, config.UnikernelBinary)
+		assert.Equal(t, invalidBase64, config.Initrd)
+	})
+
+	t.Run("decode invalid prefixed base64", func(t *testing.T) {
+		t.Parallel()
+		// Prepare invalid base64 values with the valid prefix
+		invalidPrefixedBase64 := "b64:invalid-base64!"
+
+		config := &UnikernelConfig{
+			UnikernelCmd:    invalidPrefixedBase64,
+			Hypervisor:      invalidPrefixedBase64,
+			UnikernelType:   invalidPrefixedBase64,
+			UnikernelBinary: invalidPrefixedBase64,
+			Initrd:          invalidPrefixedBase64,
+		}
 		// Call the decode method and expect an error
 		err := config.decode()
 
-		// Assert that an error occurred
+		// Assert that an error occurred because the strict prefix was present but data was invalid
 		assert.Error(t, err)
 	})
 }

@@ -22,6 +22,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
@@ -120,15 +122,15 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	uniklog.WithFields(logrus.Fields{
-		"unikernelType":    tryDecode(unikernelType),
-		"unikernelVersion": tryDecode(unikernelVersion),
-		"unikernelCmd":     tryDecode(unikernelCmd),
-		"unikernelBinary":  tryDecode(unikernelBinary),
-		"hypervisor":       tryDecode(hypervisor),
-		"initrd":           tryDecode(initrd),
-		"block":            tryDecode(block),
-		"blkMntPoint":      tryDecode(blkMntPoint),
-		"mountRootfs":      tryDecode(MountRootfs),
+		"unikernelType":    logConfigValue(unikernelType),
+		"unikernelVersion": logConfigValue(unikernelVersion),
+		"unikernelCmd":     logConfigValue(unikernelCmd),
+		"unikernelBinary":  logConfigValue(unikernelBinary),
+		"hypervisor":       logConfigValue(hypervisor),
+		"initrd":           logConfigValue(initrd),
+		"block":            logConfigValue(block),
+		"blkMntPoint":      logConfigValue(blkMntPoint),
+		"mountRootfs":      logConfigValue(MountRootfs),
 	}).WithField("source", "spec").Debug("urunc annotations")
 
 	return &UnikernelConfig{
@@ -171,85 +173,86 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		return nil, err
 	}
 	uniklog.WithFields(logrus.Fields{
-		"unikernelType":    tryDecode(conf.UnikernelType),
-		"unikernelVersion": tryDecode(conf.UnikernelVersion),
-		"unikernelCmd":     tryDecode(conf.UnikernelCmd),
-		"unikernelBinary":  tryDecode(conf.UnikernelBinary),
-		"hypervisor":       tryDecode(conf.Hypervisor),
-		"initrd":           tryDecode(conf.Initrd),
-		"block":            tryDecode(conf.Block),
-		"blkMntPoint":      tryDecode(conf.BlkMntPoint),
-		"mountRootfs":      tryDecode(conf.MountRootfs),
+		"unikernelType":    logConfigValue(conf.UnikernelType),
+		"unikernelVersion": logConfigValue(conf.UnikernelVersion),
+		"unikernelCmd":     logConfigValue(conf.UnikernelCmd),
+		"unikernelBinary":  logConfigValue(conf.UnikernelBinary),
+		"hypervisor":       logConfigValue(conf.Hypervisor),
+		"initrd":           logConfigValue(conf.Initrd),
+		"block":            logConfigValue(conf.Block),
+		"blkMntPoint":      logConfigValue(conf.BlkMntPoint),
+		"mountRootfs":      logConfigValue(conf.MountRootfs),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
 }
 
-func tryDecode(s string) string {
-	decoded, err := base64.StdEncoding.DecodeString(s)
+func logConfigValue(s string) string {
+	decoded, err := decodeConfigValue(s)
 	if err != nil {
 		uniklog.WithError(err).Errorf("Failed to decode string: %s", s)
 		return s
 	}
-	return string(decoded)
+	return decoded
 }
 
-// decode decodes the base64 encoded values of the Unikernel config
+func decodeConfigValue(s string) (string, error) {
+	if s == "" {
+		return s, nil
+	}
+	
+	// 1. Primary path: Strict prefix checking
+	if strings.HasPrefix(s, "b64:") {
+		encodedStr := strings.TrimPrefix(s, "b64:")
+		decoded, err := base64.StdEncoding.DecodeString(encodedStr)
+		if err != nil {
+			return "", fmt.Errorf("invalid base64 encoding for prefixed string: %w", err)
+		}
+		return string(decoded), nil
+	}
+
+	// 2. Legacy fallback for old bunny versions emitting raw base64.
+	// WARNING: This carries a documented risk of silent data corruption if a short
+	// plaintext config label happens to be valid base64 and decodes to valid UTF-8.
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err == nil && utf8.Valid(decoded) {
+		return string(decoded), nil
+	}
+
+	// 3. No prefix and not valid raw base64, return exactly as plaintext
+	return s, nil
+}
+
+// decode decodes the base64 encoded values of the Unikernel config, safely falling back to plaintext
 func (c *UnikernelConfig) decode() error {
-	decoded, err := base64.StdEncoding.DecodeString(c.UnikernelCmd)
-	if err != nil {
-		return fmt.Errorf("failed to decode UnikernelCmd: %v", err)
+	var err error
+	if c.UnikernelCmd, err = decodeConfigValue(c.UnikernelCmd); err != nil {
+		return err
 	}
-	c.UnikernelCmd = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.Hypervisor)
-	if err != nil {
-		return fmt.Errorf("failed to decode Hypervisor: %v", err)
+	if c.Hypervisor, err = decodeConfigValue(c.Hypervisor); err != nil {
+		return err
 	}
-	c.Hypervisor = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.UnikernelType)
-	if err != nil {
-		return fmt.Errorf("failed to decode UnikernelType: %v", err)
+	if c.UnikernelType, err = decodeConfigValue(c.UnikernelType); err != nil {
+		return err
 	}
-	c.UnikernelType = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.UnikernelVersion)
-	if err != nil {
-		return fmt.Errorf("failed to decode UnikernelVersion: %v", err)
+	if c.UnikernelVersion, err = decodeConfigValue(c.UnikernelVersion); err != nil {
+		return err
 	}
-	c.UnikernelVersion = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.UnikernelBinary)
-	if err != nil {
-		return fmt.Errorf("failed to decode UnikernelBinary: %v", err)
+	if c.UnikernelBinary, err = decodeConfigValue(c.UnikernelBinary); err != nil {
+		return err
 	}
-	c.UnikernelBinary = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.Initrd)
-	if err != nil {
-		return fmt.Errorf("failed to decode Initrd: %v", err)
+	if c.Initrd, err = decodeConfigValue(c.Initrd); err != nil {
+		return err
 	}
-	c.Initrd = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.Block)
-	if err != nil {
-		return fmt.Errorf("failed to decode Block: %v", err)
+	if c.Block, err = decodeConfigValue(c.Block); err != nil {
+		return err
 	}
-	c.Block = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.BlkMntPoint)
-	if err != nil {
-		return fmt.Errorf("failed to decode BlockMntPoint: %v", err)
+	if c.BlkMntPoint, err = decodeConfigValue(c.BlkMntPoint); err != nil {
+		return err
 	}
-	c.BlkMntPoint = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.MountRootfs)
-	if err != nil {
-		return fmt.Errorf("failed to decode mountRootfs: %v", err)
+	if c.MountRootfs, err = decodeConfigValue(c.MountRootfs); err != nil {
+		return err
 	}
-	c.MountRootfs = string(decoded)
-
 	return nil
 }
 
