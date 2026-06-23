@@ -23,6 +23,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 )
 
 var deleteCommand = &cli.Command{
@@ -58,8 +59,8 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				containerID := cmd.Args().First()
-				if containerID == "" {
-					return ErrEmptyContainerID
+				if err = unikontainers.ValidateID(containerID); err != nil {
+					return err
 				}
 				rootDir := cmd.String("root")
 				containerDir := filepath.Join(rootDir, containerID)

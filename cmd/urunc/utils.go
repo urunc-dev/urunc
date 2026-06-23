@@ -36,8 +36,6 @@ const (
 	maxArgs          // Checks for a maximum number of arguments.
 )
 
-var ErrEmptyContainerID = errors.New("container ID can not be empty")
-
 // checkArgs checks the number of arguments provided in the command-line context
 // against the expected number, based on the specified checkType.
 func checkArgs(cmd *cli.Command, expected, checkType int) error {
@@ -69,8 +67,8 @@ func checkArgs(cmd *cli.Command, expected, checkType int) error {
 
 func getUnikontainer(cmd *cli.Command) (*unikontainers.Unikontainer, error) {
 	containerID := cmd.Args().First()
-	if containerID == "" {
-		return nil, ErrEmptyContainerID
+	if err := unikontainers.ValidateID(containerID); err != nil {
+		return nil, err
 	}
 
 	// We have already made sure in main.go that root is not nil

@@ -51,6 +51,7 @@ var uniklog = logrus.WithField("subsystem", "unikontainers")
 var ErrQueueProxy = errors.New("this a queue proxy container")
 var ErrNotUnikernel = errors.New("this is not a unikernel container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
+var ErrInvalidContainerID = errors.New("invalid container ID")
 
 // Unikontainer holds the data necessary to create, manage and delete unikernel containers
 type Unikontainer struct {
@@ -63,8 +64,30 @@ type Unikontainer struct {
 	Conn     *net.UnixConn
 }
 
+// ValidateID checks containerID against the allowed character set,
+func ValidateID(id string) error {
+	if id == "" {
+		return ErrInvalidContainerID
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '_', c == '+', c == '-', c == '.':
+		default:
+			return fmt.Errorf("%w: invalid character %q in id %q", ErrInvalidContainerID, c, id)
+		}
+	}
+	return nil
+}
+
 // New parses the bundle and creates a new Unikontainer object
 func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig) (*Unikontainer, error) {
+	if err := ValidateID(containerID); err != nil {
+		return nil, err
+	}
 	spec, err := loadSpec(bundlePath)
 	if err != nil {
 		return nil, err
@@ -113,6 +136,9 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 
 // Get retrieves unikernel data from disk to create a Unikontainer object
 func Get(containerID string, rootDir string) (*Unikontainer, error) {
+	if err := ValidateID(containerID); err != nil {
+		return nil, err
+	}
 	u := &Unikontainer{}
 	containerDir := filepath.Join(rootDir, containerID)
 	stateFilePath := filepath.Join(containerDir, stateFilename)
