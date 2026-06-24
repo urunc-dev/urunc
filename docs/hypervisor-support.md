@@ -66,6 +66,7 @@ Supported unikernel frameworks with `urunc`:
 - [Mewz](../unikernel-support#mewz)
 - [Linux](../unikernel-support#linux)
 - [Hermit](../unikernel-support#hermit)
+- [includeOS](../unikernel-support#IncludeOS)
 
 An example unikernel:
 
