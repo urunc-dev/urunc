@@ -18,6 +18,7 @@ const (
 	StaticNetworkTapIP       = "172.16.1.1"
 	StaticNetworkUnikernelIP = "172.16.1.2"
 	// TODO: Experiment with DynamicNetworkTapIP starting from 172.16.X.1
-	DynamicNetworkTapIP  = "172.16.X.2"
-	QueueProxyRedirectIP = "172.16.1.2"
+	DynamicNetworkTapIP    = "172.16.X.2"
+	QueueProxyRedirectIP   = "172.16.1.2"
+	LocalhostDNSResolverIP = "192.168.100.100"
 )

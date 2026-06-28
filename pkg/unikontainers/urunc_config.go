@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -144,6 +145,12 @@ const (
 	defaultMonitorVCPUs    uint = 1
 )
 
+func defaultNetworkConfig() UruncNetwork {
+	return UruncNetwork{
+		DNSResolverIP: constants.LocalhostDNSResolverIP,
+	}
+}
+
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
 		"qemu":                {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
@@ -240,6 +247,9 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 		ExtraBins: defaultExtraBinConfig(),
 	}
 
+	if val, ok := cfgMap["urunc_config.network.dns_resolver_ip"]; ok && val != "" {
+		cfg.Network.DNSResolverIP = val
+	}
 	for key, val := range cfgMap {
 		if !strings.HasPrefix(key, "urunc_config.monitors.") {
 			continue
