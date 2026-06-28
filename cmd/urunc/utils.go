@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 
 	"github.com/moby/sys/userns"
@@ -37,6 +38,7 @@ const (
 )
 
 var ErrEmptyContainerID = errors.New("container ID can not be empty")
+var ErrInvalidID = errors.New("invalid container id format")
 
 // checkArgs checks the number of arguments provided in the command-line context
 // against the expected number, based on the specified checkType.
@@ -69,8 +71,8 @@ func checkArgs(cmd *cli.Command, expected, checkType int) error {
 
 func getUnikontainer(cmd *cli.Command) (*unikontainers.Unikontainer, error) {
 	containerID := cmd.Args().First()
-	if containerID == "" {
-		return nil, ErrEmptyContainerID
+	if err := validateID(containerID); err != nil {
+		return nil, err
 	}
 
 	// We have already made sure in main.go that root is not nil
@@ -158,5 +160,55 @@ func prepareXDGRuntimeDir(root string) error {
 	if err := os.Chmod(root, os.FileMode(0o700)|os.ModeSticky); err != nil {
 		return fmt.Errorf("you should check permission of the path in $XDG_RUNTIME_DIR: %w", err)
 	}
+	return nil
+}
+
+// validateID validates the given ID string against the allowed characters.
+// source ref: https://github.com/opencontainers/runc/blob/main/libcontainer/factory_linux.go#L192
+// commit: https://github.com/opencontainers/runc/commit/b44da4c05f4972e19bb16a91aec2e3a0e089b516
+
+// validateID checks if the supplied container ID is valid, returning
+// the ErrInvalidID in case it is not.
+//
+// The format of valid ID was never formally defined, instead the code
+// was modified to allow or disallow specific characters.
+//
+// Currently, a valid ID is a non-empty string consisting only of
+// the following characters:
+// - uppercase (A-Z) and lowercase (a-z) Latin letters;
+// - digits (0-9);
+// - underscore (_);
+// - plus sign (+);
+// - minus sign (-);
+// - period (.).
+//
+// In addition, IDs that can't be used to represent a file name
+// (such as . or ..) are rejected.
+func validateID(id string) error {
+	if len(id) < 1 {
+		return ErrEmptyContainerID
+	}
+
+	// Allowed characters: 0-9 A-Z a-z _ + - .
+	for i := range len(id) {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '_':
+		case c == '+':
+		case c == '-':
+		case c == '.':
+		default:
+			return ErrInvalidID
+		}
+
+	}
+
+	if string(os.PathSeparator)+id != filepath.Clean(string(os.PathSeparator)+id) {
+		return ErrInvalidID
+	}
+
 	return nil
 }
