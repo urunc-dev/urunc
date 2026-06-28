@@ -119,7 +119,9 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path:
+        - .    
   - pymdownx.superfences:
       custom_fences:
         # exclude '$' from copying
