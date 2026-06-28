@@ -90,8 +90,7 @@ var createCommand = &cli.Command{
 func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
 	err = nil
 	containerID := cmd.Args().First()
-	if containerID == "" {
-		err = fmt.Errorf("container id cannot be empty")
+	if err = validateID(containerID); err != nil {
 		return err
 	}
 	metrics.SetLoggerContainerID(containerID)
