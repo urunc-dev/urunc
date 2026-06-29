@@ -151,20 +151,68 @@ func (u *Unikontainer) InitialSetup() error {
 		return err
 	}
 
-	// Ensure the container's rootfs has the correct propagation flag
-	// so if we unmount it later, it gets unmounted from other mount peer
-	// groups too. We do that regardless of the type of the container's
-	// rootfs (e.g. block-based, overlay) abd this is ok, because we later
-	// cut off all propagation from reexec.
-	// TODO: Move this to the shim, when we finally make it.
-	err = unix.Mount("", rootfsDir, "", unix.MS_SHARED|unix.MS_REC, "")
-	if err != nil && !errors.Is(err, unix.EINVAL) {
-		// An EINVAL error is fine, because it means that the
-		// rootfs is not really a mountpoint. This could be the case when
-		// using urunc directly from its cli and the rootfs is a normal
-		// directory
-		uniklog.Errorf("could not set propagation flag as shared for container's rootfs: %v", err)
+	unikernelPath := u.State.Annotations[annotBinary]
+	initrdPath := u.State.Annotations[annotInitrd]
+	unikernelType := u.State.Annotations[annotType]
+	unikernel, err := unikernels.New(unikernelType)
+	if err != nil {
 		return err
+	}
+
+	// handle guest's rootfs.
+	// There are four options:
+	// 1. No rootfs for guest
+	// 2. Use initrd or a block image inside the container's rootfs
+	// 3. Use the devmapper snapshot as a block device for the guest's rootfs
+	// 4. Use 9pfs to share the container's rootfs as the guest's rootfs
+	// By default, urunc will not set any rootfs for the guest. However,
+	// if the respective annotation is set then, depending on the guest
+	// (supports block or 9pfs), it will use the supported option. In case
+	// both ae supported, then the block option will be used by default.
+	var rootfsParams types.RootfsParams
+
+	// Read the rootfs choice written by the shim.
+	if rootfsParamsJSON := u.Spec.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
+		if err := json.Unmarshal([]byte(rootfsParamsJSON), &rootfsParams); err != nil {
+			return fmt.Errorf("could not decode guest rootfs params: %w", err)
+		}
+	}
+
+	if rootfsParams.MonRootfs == "" {
+		rootfsParams, err = ChooseRootfs(bundleDir, rootfsDir, u.State.Annotations, u.UruncCfg)
+		if err != nil {
+			uniklog.Errorf("could not choose guest rootfs: %v", err)
+			return err
+		}
+		encoded, err := json.Marshal(rootfsParams)
+		if err != nil {
+			return err
+		}
+		u.State.Annotations[annotRootfsParams] = string(encoded)
+	}
+	uniklog.WithFields(logrus.Fields{
+		"rootfs_type": rootfsParams.Type,
+		"rootfs_path": rootfsParams.Path,
+		"mon_rootfs":  rootfsParams.MonRootfs,
+		"mountedPath": rootfsParams.MountedPath,
+	}).Debug("guest rootfs params")
+
+	if rootfsParams.Type == "block" {
+		rfsBuilder := blockRootfs{
+			mounts:        u.Spec.Mounts,
+			monRootfs:     rootfsParams.MonRootfs,
+			mountedPath:   rootfsParams.MountedPath,
+			path:          rootfsParams.Path,
+			kernelPath:    unikernelPath,
+			initrdPath:    initrdPath,
+			uruncJSONPath: uruncJSONFilename,
+			guestType:     unikernelType,
+			guest:         unikernel,
+		}
+		err := rfsBuilder.preSetup()
+		if err != nil {
+			return fmt.Errorf("pre setup step for rootfs failed: %w", err)
+		}
 	}
 
 	u.State.Status = specs.StateCreating
@@ -433,19 +481,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	var rootfsParams types.RootfsParams
 
 	// Read the rootfs choice written by the shim.
-	if rootfsParamsJSON := u.Spec.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
+	if rootfsParamsJSON := u.State.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
 		if err := json.Unmarshal([]byte(rootfsParamsJSON), &rootfsParams); err != nil {
 			return fmt.Errorf("could not decode guest rootfs params: %w", err)
 		}
 	}
 
-	// If there is no shim choice, the runtime chooses rootfs here.
 	if rootfsParams.MonRootfs == "" {
-		rootfsParams, err = ChooseRootfs(u.State.Bundle, u.Spec.Root.Path, u.State.Annotations, u.UruncCfg)
-		if err != nil {
-			uniklog.Errorf("could not choose guest rootfs: %v", err)
-			return err
-		}
+		uniklog.Errorf("missing annotations from selected rootfs")
+		return fmt.Errorf("missing metadata for rootfs preparation")
 	}
 	uniklog.WithFields(logrus.Fields{
 		"rootfs_type": rootfsParams.Type,
@@ -502,11 +546,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	if err = os.MkdirAll(rootfsParams.MonRootfs, 0o755); err != nil {
 		return fmt.Errorf("failed to create monitor rootfs directory %s: %w", rootfsParams.MonRootfs, err)
-	}
-
-	err = rfsBuilder.preSetup()
-	if err != nil {
-		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
 	// Prepare Monitor rootfs
