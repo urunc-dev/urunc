@@ -120,15 +120,15 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	uniklog.WithFields(logrus.Fields{
-		"unikernelType":    tryDecode(unikernelType),
-		"unikernelVersion": tryDecode(unikernelVersion),
-		"unikernelCmd":     tryDecode(unikernelCmd),
-		"unikernelBinary":  tryDecode(unikernelBinary),
-		"hypervisor":       tryDecode(hypervisor),
-		"initrd":           tryDecode(initrd),
-		"block":            tryDecode(block),
-		"blkMntPoint":      tryDecode(blkMntPoint),
-		"mountRootfs":      tryDecode(MountRootfs),
+		"unikernelType":    unikernelType,
+		"unikernelVersion": unikernelVersion,
+		"unikernelCmd":     unikernelCmd,
+		"unikernelBinary":  unikernelBinary,
+		"hypervisor":       hypervisor,
+		"initrd":           initrd,
+		"block":            block,
+		"blkMntPoint":      blkMntPoint,
+		"mountRootfs":      MountRootfs,
 	}).WithField("source", "spec").Debug("urunc annotations")
 
 	return &UnikernelConfig{
