@@ -26,9 +26,11 @@ VMM before attacking the host. To further limit the exposure of
 the host kernel to the VMM, 'urunc' uses seccomp filters for each
 supported VMM. In particular, in the case of:
 - Firecracker, 'urunc' does not have to do anything more, since Firecracker by
-  default makes uses seccomp filters.
+  default makes use of seccomp filters.
 - Qemu, 'urunc' makes use of Qemu's sandbox command line options to activate
   all possible seccomp filters in Qemu.
+- Cloud-Hypervisor, 'urunc' makes use of the `--seccomp true` command line
+  options to enable Cloud-Hypervisor's seccomp filters.
 - Solo5-hvt, 'urunc' applies the seccomp filters before executing
   'Solo5-hvt'.
 - Solo5-spt, 'urunc' can not do anything since solo5-spt makes use of seccomp by

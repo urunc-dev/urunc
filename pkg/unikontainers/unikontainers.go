@@ -31,7 +31,6 @@ import (
 
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 	"github.com/vishvananda/netlink/nl"
@@ -69,6 +68,10 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 	spec, err := loadSpec(bundlePath)
 	if err != nil {
 		return nil, err
+	}
+
+	if spec == nil || spec.Linux == nil {
+		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
 	}
 
 	containerName := spec.Annotations["io.kubernetes.cri.container-name"]
@@ -126,6 +129,9 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	if err != nil {
 		return nil, err
 	}
+	if spec == nil || spec.Linux == nil {
+		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
+	}
 	u.BaseDir = containerDir
 	u.RootDir = rootDir
 	u.Spec = spec
@@ -137,9 +143,33 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 // creates the Unikernel base directory and
 // saves the state.json file with the current Unikernel state
 func (u *Unikontainer) InitialSetup() error {
+	bundleDir := filepath.Clean(u.State.Bundle)
+	rootfsDir := filepath.Clean(u.Spec.Root.Path)
+	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
+	if err != nil {
+		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
+		return err
+	}
+
+	// Ensure the container's rootfs has the correct propagation flag
+	// so if we unmount it later, it gets unmounted from other mount peer
+	// groups too. We do that regardless of the type of the container's
+	// rootfs (e.g. block-based, overlay) abd this is ok, because we later
+	// cut off all propagation from reexec.
+	// TODO: Move this to the shim, when we finally make it.
+	err = unix.Mount("", rootfsDir, "", unix.MS_SHARED|unix.MS_REC, "")
+	if err != nil && !errors.Is(err, unix.EINVAL) {
+		// An EINVAL error is fine, because it means that the
+		// rootfs is not really a mountpoint. This could be the case when
+		// using urunc directly from its cli and the rootfs is a normal
+		// directory
+		uniklog.Errorf("could not set propagation flag as shared for container's rootfs: %v", err)
+		return err
+	}
+
 	u.State.Status = specs.StateCreating
 	// FIXME: should we really create this base dir
-	err := os.MkdirAll(u.BaseDir, 0o755)
+	err = os.MkdirAll(u.BaseDir, 0o755)
 	if err != nil {
 		return err
 	}
@@ -199,6 +229,77 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 	}
 
 	return netArgs, nil
+}
+
+// chooseRootfs determines the best rootfs configuration based on available options
+// Priority order:
+//  1. Initrd (if specified)
+//  2. Explicit block device annotation (if mounted at /)
+//  3. Container rootfs as block device (if MountRootfs=true and supported)
+//  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
+//  5. No rootfs
+func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncConfig) (types.RootfsParams, error) {
+	bundleDir := filepath.Clean(bundle)
+	rootfsDir := filepath.Clean(specRoot)
+	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
+	if err != nil {
+		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
+		return types.RootfsParams{}, err
+	}
+
+	if cfg == nil {
+		return types.RootfsParams{}, fmt.Errorf("urunc config is required for guest rootfs selection")
+	}
+
+	unikernelType := annot[annotType]
+	unikernel, err := unikernels.New(unikernelType)
+	if err != nil {
+		return types.RootfsParams{}, err
+	}
+
+	vmmType := annot[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), cfg.Monitors)
+	if err != nil {
+		return types.RootfsParams{}, err
+	}
+
+	virtiofsdConfig := cfg.ExtraBins["virtiofsd"]
+
+	selector := &rootfsSelector{
+		bundle:     bundleDir,
+		cntrRootfs: rootfsDir,
+		annot:      annot,
+		unikernel:  unikernel,
+		vmm:        vmm,
+		vfsdPath:   virtiofsdConfig.Path,
+	}
+
+	// Priority 1: Initrd
+	result, ok := selector.tryInitrd()
+	if ok {
+		return result, nil
+	}
+
+	// Priority 2: Explicit block annotation
+	result, ok = selector.tryExplicitBlock()
+	if ok {
+		return result, nil
+	}
+
+	// Priority 3 & 4: Container rootfs (block or shared-fs)
+	result, ok = selector.tryContainerRootfs()
+	if ok {
+		return switchMonRootfs(result, bundleDir)
+	}
+
+	if selector.shouldMountContainerRootfs() {
+		return types.RootfsParams{}, fmt.Errorf("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
+	}
+
+	uniklog.Info("no rootfs configured for guest")
+	result.MonRootfs = rootfsDir
+
+	return result, nil
 }
 
 // nolint:gocyclo
@@ -267,7 +368,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// ExecArgs
 	// If memory limit is set in spec, use it instead of the config default value
-	if u.Spec.Linux.Resources.Memory != nil {
+	if u.Spec.Linux.Resources != nil && u.Spec.Linux.Resources.Memory != nil {
 		if u.Spec.Linux.Resources.Memory.Limit != nil {
 			if *u.Spec.Linux.Resources.Memory.Limit > 0 {
 				vmmArgs.MemSizeB = uint64(*u.Spec.Linux.Resources.Memory.Limit) // nolint:gosec
@@ -329,10 +430,83 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
 	// both ae supported, then the block option will be used by default.
-	rootfsParams, err := chooseRootfs(bundleDir, rootfsDir, u.State.Annotations, unikernel, vmm, virtiofsdConfig.Path)
+	var rootfsParams types.RootfsParams
+
+	// Read the rootfs choice written by the shim.
+	if rootfsParamsJSON := u.Spec.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
+		if err := json.Unmarshal([]byte(rootfsParamsJSON), &rootfsParams); err != nil {
+			return fmt.Errorf("could not decode guest rootfs params: %w", err)
+		}
+	}
+
+	// If there is no shim choice, the runtime chooses rootfs here.
+	if rootfsParams.MonRootfs == "" {
+		rootfsParams, err = ChooseRootfs(u.State.Bundle, u.Spec.Root.Path, u.State.Annotations, u.UruncCfg)
+		if err != nil {
+			uniklog.Errorf("could not choose guest rootfs: %v", err)
+			return err
+		}
+	}
+	uniklog.WithFields(logrus.Fields{
+		"rootfs_type": rootfsParams.Type,
+		"rootfs_path": rootfsParams.Path,
+		"mon_rootfs":  rootfsParams.MonRootfs,
+	}).Debug("guest rootfs params")
+
+	// TODO: Add support for using both an existing
+	// block based snapshot of the container's rootfs
+	// and an auxiliary block image placed in the container's image
+	// Currently if a block Image is present in the container's image, then
+	// we will just use this image.
+	var rfsBuilder rootfsBuilder
+	switch rootfsParams.Type {
+	case "block":
+		rfsBuilder = blockRootfs{
+			mounts:        u.Spec.Mounts,
+			monRootfs:     rootfsParams.MonRootfs,
+			mountedPath:   rootfsParams.MountedPath,
+			path:          rootfsParams.Path,
+			kernelPath:    unikernelPath,
+			initrdPath:    initrdPath,
+			uruncJSONPath: uruncJSONFilename,
+			guestType:     unikernelType,
+			guest:         unikernel,
+		}
+	case "initrd":
+		rfsBuilder = initrdRootfs{
+			mounts:             u.Spec.Mounts,
+			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
+			monRootfs:          rootfsParams.MonRootfs,
+		}
+	case "virtiofs", "9pfs":
+		rfsBuilder = sharedfsRootfs{
+			mounts:      u.Spec.Mounts,
+			monRootfs:   rootfsParams.MonRootfs,
+			mountedPath: rootfsParams.MountedPath,
+			sfsType:     rootfsParams.Type,
+			vfsdConfig:  virtiofsdConfig,
+			sharedPath:  containerRootfsMountPath,
+			memory:      vmmArgs.MemSizeB,
+		}
+		// Update the paths of the files we need to pass in the monitor process.
+		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
+		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
+	default:
+		uniklog.Debug("No rootfs for guest")
+		rfsBuilder = noRootfs{
+			monRootfs:            rootfsParams.MonRootfs,
+			annotBlockPath:       u.State.Annotations[annotBlock],
+			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
+		}
+	}
+
+	if err = os.MkdirAll(rootfsParams.MonRootfs, 0o755); err != nil {
+		return fmt.Errorf("failed to create monitor rootfs directory %s: %w", rootfsParams.MonRootfs, err)
+	}
+
+	err = rfsBuilder.preSetup()
 	if err != nil {
-		uniklog.Errorf("could not choose guest rootfs: %v", err)
-		return err
+		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
 	// Prepare Monitor rootfs
@@ -349,65 +523,26 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
-	// TODO: Add support for using both an existing
-	// block based snapshot of the container's rootfs
-	// and an auxiliary block image placed in the container's image
-	// Currently if a block Image is present in the container's image, then
-	// we will just use this image.
-	blockArgs := []types.BlockDevParams{}
-	sharedfsArgs := types.SharedfsParams{}
-	tmpfsSize := "65536k"
-	switch rootfsParams.Type {
-	case "block":
-		blockArgs, err = handleBlockBasedRootfs(rootfsParams, unikernel, unikernelType, unikernelPath, uruncJSONFilename, initrdPath, u.Spec.Mounts)
-		if err != nil {
-			uniklog.Errorf("could not setup block based rootfs: %v", err)
-			return err
-		}
-	case "initrd":
-		initrdHostFullPath := filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path)
-		err = initrd.CopyFileMountsToInitrd(initrdHostFullPath, u.Spec.Mounts)
-		if err != nil {
-			uniklog.Errorf("could not update guest's initrd: %v", err)
-			return err
-		}
-	case "virtiofs":
-		tmpfsSize = chooseTmpfsSize(vmmArgs.MemSizeB)
-		fallthrough
-	case "9pfs":
-		err = setupSharedfsBasedRootfs(rootfsParams, virtiofsdConfig.Path, u.Spec.Mounts)
-		if err != nil {
-			return err
-		}
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
-		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-		sharedfsArgs.Path = containerRootfsMountPath
-		sharedfsArgs.Type = rootfsParams.Type
-	default:
-		uniklog.Debug("No rootfs for guest")
+
+	err = rfsBuilder.postSetup()
+	if err != nil {
+		return fmt.Errorf("post setup step for block based rootfs failed: %w", err)
 	}
+
+	blockArgs, err := rfsBuilder.getBlockDevs()
+	if err != nil {
+		return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
+	}
+
+	sharedfsArgs, err := rfsBuilder.getSharedDirs()
+	if err != nil {
+		uniklog.Errorf("failed to get directories to share with sandbox: %v", err)
+		return err
+	}
+
 	unikernelParams.Rootfs = rootfsParams
 
-	err = createTmpfs(rootfsParams.MonRootfs, "/tmp",
-		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
-		"1777", tmpfsSize)
-	if err != nil {
-		return err
-	}
 	metrics.Capture(m.TS17)
-
-	blockFromAnnot, err := handleExplicitBlockImage(u.State.Annotations[annotBlock],
-		u.State.Annotations[annotBlockMntPoint])
-	if err != nil {
-		return err
-	}
-	if blockFromAnnot.Source != "" && blockFromAnnot.MountPoint != "/" {
-		// TODO: Add proper support for multiple block Images from the container's
-		// image. This requires adding more annotations too.
-		blockFromAnnot.ID = "annot_vol"
-		blockArgs = append(blockArgs, blockFromAnnot)
-	}
 
 	// unikernelParams
 	unikernelParams.Block = blockArgs
@@ -418,7 +553,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// vAccel setup
 	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
 	if err != nil {
-		uniklog.Debugf("vAccel config: %v", err)
+		if !errors.Is(err, ErrVAccelDisabled) {
+			uniklog.Warnf("vAccel misconfiguration: %v", err)
+		}
 	}
 
 	if vAccelType == "vsock" && err == nil {
@@ -490,13 +627,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	// virtiofs
-	if rootfsParams.Type == "virtiofs" {
-		// Start the virtiofsd process
-		err = spawnVirtiofsd(virtiofsdConfig, containerRootfsMountPath)
-		if err != nil {
-			return err
-		}
+	err = rfsBuilder.preStart()
+	if err != nil {
+		return err
 	}
 
 	uniklog.Debug("calling vmm execve")
@@ -555,6 +688,17 @@ func setupUser(user specs.User) error {
 	}
 
 	return nil
+}
+
+// Signal sends a specified signal to container's init.
+func (u *Unikontainer) Signal(signal unix.Signal) error {
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
+	if err != nil {
+		return err
+	}
+
+	return vmm.Signal(u.State.Pid, signal)
 }
 
 // Kill stops the VMM process, first by asking the VMM struct to stop
@@ -990,20 +1134,20 @@ func (u *Unikontainer) FormatNsenterInfo() (rdr io.Reader, retErr error) {
 		})
 	}
 
-	var nsStringBuilder strings.Builder
+	var nsBuf bytes.Buffer
 	if writePaths {
 		for i := 0; i < numNS; i++ {
 			if nsPaths[i] != "" {
-				if nsStringBuilder.Len() > 0 {
-					nsStringBuilder.WriteString(",")
+				if nsBuf.Len() > 0 {
+					nsBuf.WriteString(",")
 				}
-				nsStringBuilder.WriteString(nsPaths[i])
+				nsBuf.WriteString(nsPaths[i])
 			}
 		}
 
 		r.AddData(&bytemsg{
 			Type:  nsPathsAttr,
-			Value: []byte(nsStringBuilder.String()),
+			Value: nsBuf.Bytes(),
 		})
 
 	}

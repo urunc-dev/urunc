@@ -276,7 +276,7 @@ Define the `urunc` RuntimeClass for Kubernetes.
    You should see Unikraft logs indicating NGINX startup without errors.
 
    Output: 
-   ```
+   ```console
    [    1.118355] Info: [libukcpio] <cpio.c @  233> Extracting /./nginx/logs/error.log (0 bytes)
    [    1.150129] Info: [libukcpio] <cpio.c @  286> Creating directory /./nginx/html
    [    1.178385] Info: [libukcpio] <cpio.c @  233> Extracting /./nginx/html/index.html (180 bytes)
@@ -305,6 +305,6 @@ Confirm that the `nginx-urunc` Pod uses the `urunc` runtime.
    kubectl describe pod <pod-name>
    ```
    Look for:
-   ```
+   ```console
    Runtime Class Name:  urunc
    ```

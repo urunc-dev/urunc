@@ -179,6 +179,13 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 				Path: aBlock.Source,
 			})
 		}
+	case "cloud-hypervisor":
+		for _, aBlock := range l.Blk {
+			blkArgs = append(blkArgs, types.MonitorBlockArgs{
+				ID:   aBlock.ID,
+				Path: aBlock.Source,
+			})
+		}
 	default:
 		return nil
 	}

@@ -32,7 +32,7 @@ urunc_libexec_dir="${urunc_install_dir}/libexec"
 urunc_config_dir="/etc/urunc"
 urunc_config_file="${urunc_config_dir}/config.toml"
 
-HYPERVISORS="${HYPERVISORS:-"firecracker qemu solo5-hvt solo5-spt"}"
+HYPERVISORS="${HYPERVISORS:-"firecracker cloud-hypervisor qemu solo5-hvt solo5-spt"}"
 IFS=' ' read -a hypervisors <<< "$HYPERVISORS"
 
 function host_systemctl() {
@@ -77,6 +77,10 @@ function install_artifacts() {
         firecracker)
             echo "Installing firecracker"
             install_artifact /urunc-artifacts/hypervisors/firecracker /host${urunc_bin_dir}/firecracker
+            ;;
+        cloud-hypervisor)
+            echo "Installing cloud-hypervisor"
+            install_artifact /urunc-artifacts/hypervisors/cloud-hypervisor /host${urunc_bin_dir}/cloud-hypervisor
             ;;
         solo5-spt)
             echo "Installing solo5-spt"

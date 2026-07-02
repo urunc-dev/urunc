@@ -456,6 +456,22 @@ func nerdctlTestCases() []containerTestArgs {
 			Skippable:      false,
 			TestFunc:       pingTest,
 		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest",
+			Name:           "CloudHypervisor-linux-nginx-devmapper",
+			Devmapper:      true,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "512M",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       pingTest,
+		},
 	}
 }
 

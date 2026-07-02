@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -73,6 +74,10 @@ type FirecrackerConfig struct {
 	Drives  []FirecrackerDrive    `json:"drives"`
 	NetIfs  []FirecrackerNet      `json:"network-interfaces,omitempty"`
 	VSock   FirecrackerVSockDev   `json:"vsock,omitempty"`
+}
+
+func (fc *Firecracker) Signal(pid int, signal unix.Signal) error {
+	return unix.Kill(pid, signal)
 }
 
 func (fc *Firecracker) Stop(pid int) error {

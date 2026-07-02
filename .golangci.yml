@@ -24,6 +24,10 @@ linters:
     staticcheck:
       checks:
         - all
+    revive:
+      confidence: 0.6
+      rules:
+        - name: error-strings
   exclusions:
     generated: lax
     presets:
@@ -37,6 +41,14 @@ linters:
           - dupl
       - path: tests/e2e/.*_test\.go
         text: "dot-imports"
+        linters:
+          - revive
+      - path: _test\.go
+        text: "error-strings"
+        linters:
+          - revive
+      - path: tests/e2e/
+        text: "error-strings"
         linters:
           - revive
     paths:

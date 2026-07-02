@@ -106,7 +106,7 @@ func defaultUruncConfig() *UruncConfig {
 // LoadUruncConfig loads the urunc configuration from the specified path.
 // If the file does not exist or is malformed, it returns the default configuration.
 func LoadUruncConfig(path string) (*UruncConfig, error) {
-	cfg := &UruncConfig{}
+	cfg := defaultUruncConfig()
 	_, err := toml.DecodeFile(path, cfg)
 	if err == nil {
 		return cfg, nil

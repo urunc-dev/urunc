@@ -26,6 +26,7 @@ with virtiofsd. Specifically:
 - [solo5-{hvt|spt}](https://github.com/Solo5/solo5)
 - [qemu](https://www.qemu.org/)
 - [firecracker](https://github.com/firecracker-microvm/firecracker)
+- [Cloud-Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
 - [virtiofsd](https://virtio-fs.gitlab.io/)
 
 **3. Installation and configuration of `urunc`**
@@ -216,7 +217,7 @@ sudo systemctl restart containerd
 
 Verify that the devmapper snapshotter is properly configured with:
 
-```bash
+```console
 $ sudo ctr plugin ls | grep devmapper
 io.containerd.snapshotter.v1              devmapper                linux/amd64    ok
 ```
@@ -275,7 +276,7 @@ sudo systemctl restart containerd
 
 Verify that the blockfile snapshotter is properly configured with:
 
-```bash
+```console
 $ sudo ctr plugin ls | grep blockfile
    io.containerd.snapshotter.v1           blockfile               linux/amd64    ok
 ```
@@ -314,20 +315,24 @@ in the [respective section of the repository's README
 file](https://github.com/urunc-dev/monitors-build?tab=readme-ov-file#how-to-use).
 
 As an example, the following commands use the
-[`FC-v1.7.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e`
-release](https://github.com/urunc-dev/monitors-build/releases/tag/FC-v1.7.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e)
+[`FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e`
+release](https://github.com/urunc-dev/monitors-build/releases/tag/FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e)
 which contains the following monitors and tools in the specified versions:
 
 - Firecracker v1.7.0
+- Cloud Hypervisor v50.0
 - Solo5 v0.9.3
 - Virtiofsd v1.13.0
 - Qemu v10.1.1
 
 To download and install the monitors in `/tmp`:
 ```
-wget https://github.com/urunc-dev/monitors-build/releases/download/FC-v1.7.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e/release-amd64-FC-v1.7.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e.tar.gz
-sudo tar Cxzvf /opt release-amd64-FC-v1.7.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e.tar.gz
-rm -f release-amd64-FC-v1.7.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e.tar.gz
+ARCH="$(dpkg --print-architecture)"
+VERSION="FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e"
+release_url="https://github.com/urunc-dev/monitors-build/releases/download"
+wget ${release_url}/${VERSION}/release-${ARCH}-${VERSION}.tar.gz
+sudo tar Cxzvf /opt release-${ARCH}-${VERSION}.tar.gz
+rm release-${ARCH}-${VERSION}.tar.gz
 ```
 
 After downloading all the binaries, we need to instruct `urunc` about the
@@ -348,6 +353,9 @@ data_path = "/opt/urunc/share/qemu"
 
 [monitors.firecracker]
 path = "/opt/urunc/bin/firecracker"
+
+[monitors.cloud-hypervisor]
+path = "/opt/urunc/bin/cloud-hypervisor"
 
 [monitors.hvt]
 path = "/opt/urunc/bin/solo5-hvt"
@@ -403,6 +411,25 @@ curl -L ${release_url}/download/${VERSION}/firecracker-${VERSION}-${ARCH}.tgz | 
 # Rename the binary to "firecracker"
 sudo mv release-${VERSION}-${ARCH}/firecracker-${VERSION}-${ARCH} /usr/local/bin/firecracker
 rm -fr release-${VERSION}-${ARCH}
+```
+
+### Cloud-Hypervisor
+
+[Cloud-Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
+provides releases with statically-built binaries. To get a specific version
+(e.g. "v[[ versions.clh ]]":
+
+```bash
+ARCH="$(uname -m)"
+VERSION="v50.0"
+release_url="https://github.com/cloud-hypervisor/cloud-hypervisor/releases"
+if [ "$ARCH" = "x86_64" ]; then
+  curl -L ${release_url}/download/${VERSION}/cloud-hypervisor-static -o cloud-hypervisor
+else
+  curl -L ${release_url}/download/${VERSION}/cloud-hypervisor-static-${ARCH} -o cloud-hypervisor
+fi
+chmod +x cloud-hypervisor
+sudo mv cloud-hypervisor /usr/local/bin/
 ```
 
 ### Virtiofsd

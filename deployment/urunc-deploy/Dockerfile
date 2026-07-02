@@ -38,7 +38,7 @@ WORKDIR /artifacts
 RUN cp /app/tenders/hvt/solo5-hvt /artifacts/ && \
     cp /app/tenders/spt/solo5-spt /artifacts/
 
-FROM golang:1.25.4-alpine3.21@sha256:3289aac2aac769e031d644313d094dbda745f28af81cd7a94137e73eefd58b33 AS urunc-builder
+FROM golang:1.26.4-alpine3.24@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS urunc-builder
 RUN apk update && \
     apk add --no-cache git make build-base linux-headers
 WORKDIR /app
@@ -60,6 +60,18 @@ RUN ARCH=$(uname -m) && \
 WORKDIR /artifacts
 RUN cp /firecracker .
 
+FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac6da80685 AS cloud-hypervisor-builder
+RUN apk update && apk add --no-cache curl tar
+RUN ARCH=$(uname -m) && \
+    VERSION="v50.0" && \
+    RELEASE_URL="https://github.com/cloud-hypervisor/cloud-hypervisor/releases" && \
+    if [ "${ARCH}" = "x86_64" ]; then BIN=cloud-hypervisor-static; fi && \
+    if [ "${ARCH}" = "aarch64" ]; then BIN=cloud-hypervisor-static-aarch64; fi && \
+    curl -L -o cloud-hypervisor ${RELEASE_URL}/download/${VERSION}/${BIN} && \
+    chmod +x cloud-hypervisor
+WORKDIR /artifacts
+RUN cp /cloud-hypervisor .
+
 FROM quay.io/kata-containers/kata-deploy:3.15.0@sha256:fbab8bdbe910b52cf9396261f887f894cd3e71f86abe68ec11595ab7628b4a10 AS qemu-builder
 WORKDIR /artifacts
 RUN ARCH=$(uname -m) && \
@@ -73,6 +85,7 @@ COPY --from=qemu-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/share/kata-qemu/qemu /urunc-artifacts/opt/kata/share/kata-qemu/qemu
 COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/libexec/virtiofsd /urunc-artifacts/libexec/virtiofsd
 COPY --from=firecracker-builder /artifacts /urunc-artifacts/hypervisors
+COPY --from=cloud-hypervisor-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=urunc-builder /artifacts/dist /urunc-artifacts
 
 RUN apk update && \

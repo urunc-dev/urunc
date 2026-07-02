@@ -113,6 +113,7 @@ func main() {
 			deleteCommand,
 			killCommand,
 			runCommand,
+			psCommand,
 			// specCommand,
 			startCommand,
 			// stateCommand,
@@ -139,7 +140,10 @@ func main() {
 			if err != nil {
 				return nil, err
 			}
-			metrics = m.NewZerologMetrics(cfg.Timestamps.Enabled, cfg.Timestamps.Destination, "")
+			metrics, err = m.NewZerologMetrics(cfg.Timestamps.Enabled, cfg.Timestamps.Destination, "")
+			if err != nil {
+				logrus.Warnf("Metrics will be disabled: %v", err)
+			}
 			return nil, nil
 		},
 	}

@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestZerologMetricsMetadata(t *testing.T) {
@@ -35,20 +37,25 @@ func TestZerologMetricsMetadata(t *testing.T) {
 
 	line := buf.String()
 	var m map[string]any
-	if err := json.Unmarshal([]byte(line), &m); err != nil {
-		t.Fatalf("failed to parse log: %v", err)
-	}
+	err := json.Unmarshal([]byte(line), &m)
+	require.NoError(t, err, "failed to parse log output")
 
-	if got := m["containerID"]; got != "container00" {
-		t.Errorf("containerID = %v, want container00", got)
-	}
-	if got := m["timestampID"]; got != "TS00" {
-		t.Errorf("timestampID = %v, want TS00", got)
-	}
-	if got := m["timestampName"]; got != "CR.invoked" {
-		t.Errorf("timestampName = %v, want CR.invoked", got)
-	}
-	if got := int(m["timestampOrder"].(float64)); got != 0 {
-		t.Errorf("timestampOrder = %v, want 0", got)
-	}
+	assert.Equal(t, "container00", m["containerID"], "containerID mismatch")
+	assert.Equal(t, "TS00", m["timestampID"], "timestampID mismatch")
+	assert.Equal(t, "CR.invoked", m["timestampName"], "timestampName mismatch")
+	assert.Equal(t, float64(0), m["timestampOrder"], "timestampOrder mismatch")
+}
+
+func TestZerologMetricsInvalidFileDoesNotPanic(t *testing.T) {
+	// Provide a path to a directory that definitely does not exist
+	invalidPath := "/does/not/exist/timestamps.log"
+
+	// Create the metrics writer with timestamps enabled but an invalid path
+	writer, err := NewZerologMetrics(true, invalidPath, "container-test")
+
+	require.Error(t, err, "expected an error for invalid file path")
+	require.NotNil(t, writer, "expected non-nil writer (fallback to mockWriter), got nil")
+
+	_, isMock := writer.(*mockWriter)
+	assert.True(t, isMock, "expected writer to be *mockWriter on file open failure")
 }

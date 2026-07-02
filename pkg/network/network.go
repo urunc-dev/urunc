@@ -128,7 +128,7 @@ func getInterfaceInfo(iface string) (Interface, error) {
 	}
 	IfMAC := ief.HardwareAddr.String()
 	if IfMAC == "" {
-		return Interface{}, fmt.Errorf("failed to get MAC address of %q", ief)
+		return Interface{}, fmt.Errorf("failed to get MAC address of %v", ief)
 	}
 
 	addrs, err := ief.Addrs()

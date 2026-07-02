@@ -311,8 +311,9 @@ emulated devices etc.).
 
 Focusing on the single-application notion of using the
 [Linux](https://github.com/torvalds/linux) kernel, `urunc` provides support for
-both [Qemu](https://qemu.org) and
-[Firecracker](https://github.com/firecracker-microvm/firecracker). For network,
+both [Qemu](https://qemu.org),
+[Firecracker](https://github.com/firecracker-microvm/firecracker) and
+[Cloud-Hypervisor](https://www.cloudhypervisor.org/). For network,
 `urunc` will make use of virtio-net either through PCI or MMIO, depending on
 the monitor. In the case of storage, `urunc` can use initrd, virtio-block, 9pfs
 or Virtiofs. In particular, `urunc` takes advantage of the extensive filesystem
@@ -340,6 +341,14 @@ An example of a Redis alpine image transformed to a block file on top of
 
 ```bash
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-firecracker-linux-block:latest
+```
+
+An example of a Nginx alpine image on top of
+[Cloud-Hypervisor](https://www.cloudhypervisor.org/) and
+[Linux](https://github.com/torvalds/linux) with 'urunc':
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest
 ```
 
 ## Hermit

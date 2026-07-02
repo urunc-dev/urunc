@@ -28,7 +28,7 @@ classify /usr/share/vaccel/images/example.jpg 1
 ```
 
 ### Expected output
-```bash
+```console
 2025.12.11-15:02:16.45 - <info> vAccel 0.7.1-51-499fc2f7
 2025.12.11-15:02:16.50 - <info> Registered plugin rpc 0.2.1-10-3d4d748c
 Initialized session with id: 1
@@ -41,7 +41,7 @@ export VACCEL_LOG_LEVEL=4
 classify /usr/share/vaccel/images/example.jpg 1
 ```
 The expected output is:
-```bash
+```console
 2025.12.11-15:03:04.72 - <debug> Initializing vAccel
 2025.12.11-15:03:04.72 - <info> vAccel 0.7.1-51-499fc2f7
 2025.12.11-15:03:04.72 - <debug> Config:

@@ -30,6 +30,7 @@ We plan to create and maintain multi-platform images soon, as well as enrich thi
 - harbor.nbfc.io/nubificus/urunc/nginx-firecracker-unikraft-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux-block:latest
+- harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/hello-server-qemu-mewz:latest
 - harbor.nbfc.io/nubificus/urunc/httpreply-firecracker-unikraft:latest
 - harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest
@@ -50,4 +51,5 @@ We plan to create and maintain multi-platform images soon, as well as enrich thi
 - harbor.nbfc.io/nubificus/urunc/whoami-firecracker-linux-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/busybox-firecracker-linux-raw:latest
+- harbor.nbfc.io/nubificus/urunc/busybox-cloud-hypervisor-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/hello-world-qemu-hermit-initrd:latest

@@ -72,6 +72,8 @@ URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/types/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/initrd/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/network/*.go)
 SHIM_SRC       := $(wildcard $(CURDIR)/cmd/containerd-shim-urunc-v2/*.go)
+SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/*.go)
+SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/containerd/*.go)
 
 #? CNTR_TOOL Tool to run the linter container (default: docker)
 CNTR_TOOL ?= docker
@@ -80,7 +82,7 @@ CNTR_OPTS ?= run --rm -it
 # Linking variables
 LINT_CNTR_OPTS ?= $(CNTR_OPTS) -v $(CURDIR):/app -w /app
 #? LINT_CNTR_IMG The linter image to use (default: golangci/golangci-lint:v1.53.3)
-LINT_CNTR_IMG  ?= golangci/golangci-lint:v2.7
+LINT_CNTR_IMG  ?= golangci/golangci-lint:v2.9
 LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
 
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)
@@ -231,7 +233,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics test_network test_hypervisors
+unittest: test_unikontainers test_metrics test_network test_hypervisors test_unikernels
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -259,6 +261,12 @@ test_network:
 test_hypervisors:
 	@echo "Unit testing in hypervisors"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/hypervisors -v
+	@echo " "
+
+## test_unikernels Run unit tests for unikernels package
+test_unikernels:
+	@echo "Unit testing in unikernels"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/unikernels -v
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl

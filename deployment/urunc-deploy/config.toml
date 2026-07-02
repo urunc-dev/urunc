@@ -18,6 +18,11 @@ default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/firecracker"
 
+[monitors.cloud-hypervisor]
+default_memory_mb = 256
+default_vcpus = 1
+path = "/opt/urunc/bin/cloud-hypervisor"
+
 [monitors.spt]
 default_memory_mb = 256
 default_vcpus = 1

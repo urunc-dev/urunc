@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -69,9 +68,9 @@ func BytesToStringMB(argMem uint64) string {
 
 func killProcess(pid int) error {
 	const timeout = 2 * time.Second
-	err := syscall.Kill(pid, unix.SIGKILL)
+	err := unix.Kill(pid, unix.SIGKILL)
 	if err != nil {
-		if errors.Is(err, syscall.ESRCH) {
+		if errors.Is(err, unix.ESRCH) {
 			// Process already dead, nothing to do
 			return nil
 		}
@@ -79,8 +78,8 @@ func killProcess(pid int) error {
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		if err := syscall.Kill(pid, 0); err != nil {
-			if errors.Is(err, syscall.ESRCH) {
+		if err := unix.Kill(pid, 0); err != nil {
+			if errors.Is(err, unix.ESRCH) {
 				// process is dead
 				break
 			}

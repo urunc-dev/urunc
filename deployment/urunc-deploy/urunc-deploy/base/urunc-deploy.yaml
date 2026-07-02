@@ -45,7 +45,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: HYPERVISORS
-              value: "firecracker qemu solo5-hvt solo5-spt"
+              value: "firecracker cloud-hypervisor qemu solo5-hvt solo5-spt"
             - name: DEBUG
               value: "false"
           securityContext:

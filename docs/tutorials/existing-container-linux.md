@@ -23,8 +23,10 @@ Overall, we need to do the following:
 The main requirement for running existing containers on top of `urunc` is a
 Linux kernel. From `urunc`'s side there are no specific kernel configuration
 options required, but since Linux will run on virtual machine monitors like
-[Qemu](https://qemu.org) or
-[Firecracker](https://github.com/firecracker-microvm/firecracker), the kernel
+[Qemu](https://qemu.org),
+[Firecracker](https://github.com/firecracker-microvm/firecracker), or
+[Cloud-Hypervisor](https://www.cloudhypervisor.org/),
+the kernel
 should be configured with the necessary drivers (e.g., virtio devices).
 
 To simplify this, you can find
@@ -39,6 +41,8 @@ Alternatively, prebuilt kernels are available via the following container images
 
 - `harbor.nbfc.io/nubificus/urunc/linux-kernel-qemu:v6.14`
 - `harbor.nbfc.io/nubificus/urunc/linux-kernel-firecracker:v6.14`
+
+> NOTE: For cloud-hypervisor users can use the Linux kernel image of Firecracker.
 
 Each image contains the Linux kernel binary at `/kernel`.
 
