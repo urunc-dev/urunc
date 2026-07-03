@@ -162,5 +162,3 @@ func readBlob(ctx context.Context, namespace string, contentClient contentapi.Co
 
 	return raw, nil
 }
-
-

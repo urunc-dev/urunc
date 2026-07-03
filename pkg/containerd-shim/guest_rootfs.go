@@ -18,9 +18,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers"
+	"path/filepath"
 )
 
 const annotRootfsParams = "com.urunc.internal.rootfs.params"

@@ -39,10 +39,7 @@ type taskService struct {
 }
 
 func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) (*taskAPI.CreateTaskResponse, error) {
-	spec, mode, err := readSpec(r.Bundle)
-	if err != nil {
-		return nil, err
-	}
+	spec, mode, specErr := readSpec(r.Bundle)
 
 	session, err := containerdShim.OpenSession(ctx, s.containerdAddress, r.ID)
 	if err != nil {
@@ -53,12 +50,16 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 				log.G(ctx).WithError(err).Warn("urunc(shim): failed to close containerd session")
 			}
 		}()
-		changed, err := containerdShim.InjectUruncAnnotations(ctx, session, spec)
-		if err != nil {
-			log.G(ctx).WithError(err).Warn("urunc(shim): failed to inject annotations to spec")
-		} else if changed {
-			if err := writeSpec(r.Bundle, spec, mode); err != nil {
-				log.G(ctx).WithError(err).Warn("urunc(shim): failed to write injected annotations to spec")
+		if specErr != nil {
+			log.G(ctx).WithError(specErr).Warn("urunc(shim): failed to inject annotations to spec")
+		} else {
+			changed, err := containerdShim.InjectUruncAnnotations(ctx, session, spec)
+			if err != nil {
+				log.G(ctx).WithError(err).Warn("urunc(shim): failed to inject annotations to spec")
+			} else if changed {
+				if err := writeSpec(r.Bundle, spec, mode); err != nil {
+					log.G(ctx).WithError(err).Warn("urunc(shim): failed to inject annotations to spec")
+				}
 			}
 		}
 	}
@@ -70,6 +71,12 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 
 	// ChooseRootfs after inner task Create so bundle rootfs is mounted;
 	// params are persisted in bundle config.json for runtime Exec.
+	if specErr != nil {
+		err := fmt.Errorf("%w: %w", errGuestRootfsChoiceSkipped, specErr)
+		log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
+		return resp, nil
+	}
+
 	changed, err := chooseGuestRootfs(r.Bundle, spec)
 	if err != nil {
 		if errors.Is(err, errGuestRootfsChoiceSkipped) {
@@ -81,7 +88,7 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 	}
 	if changed {
 		if err := writeSpec(r.Bundle, spec, mode); err != nil {
-			log.G(ctx).WithError(err).Warn("urunc(shim): failed to write guest rootfs to spec")
+			log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
 			return nil, err
 		}
 	}
