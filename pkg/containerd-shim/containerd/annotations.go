@@ -19,8 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 
 	contentapi "github.com/containerd/containerd/api/services/content/v1"
@@ -73,20 +71,33 @@ func newAnnotationFetcher(ctx context.Context, session *Session) (*annotationFet
 	return fetcher, nil
 }
 
-func InjectUruncAnnotations(ctx context.Context, session *Session, bundlePath string) error {
+func InjectUruncAnnotations(ctx context.Context, session *Session, spec *runtimespec.Spec) (bool, error) {
 	fetcher, err := newAnnotationFetcher(ctx, session)
 	if err != nil {
-		return fmt.Errorf("create annotation fetcher: %w", err)
+		return false, fmt.Errorf("create annotation fetcher: %w", err)
 	}
 	annotations, err := fetcher.fetchUruncAnnotations(ctx)
 	if err != nil {
-		return fmt.Errorf("fetch urunc annotations: %w", err)
+		return false, fmt.Errorf("fetch urunc annotations: %w", err)
 	}
 	if len(annotations) == 0 {
-		return nil
+		return false, nil
 	}
 
-	return patchConfigJSON(bundlePath, annotations)
+	if spec.Annotations == nil {
+		spec.Annotations = make(map[string]string)
+	}
+
+	changed := false
+	for k, v := range annotations {
+		if _, exists := spec.Annotations[k]; exists {
+			continue
+		}
+		spec.Annotations[k] = v
+		changed = true
+	}
+
+	return changed, nil
 }
 
 func (f *annotationFetcher) fetchUruncAnnotations(ctx context.Context) (map[string]string, error) {
@@ -152,84 +163,4 @@ func readBlob(ctx context.Context, namespace string, contentClient contentapi.Co
 	return raw, nil
 }
 
-// patchConfigJSON injects missing annotations into the OCI runtime spec
-// stored in the bundle's config.json.
-//
-// Existing annotations in config.json are preserved. Only annotation keys that
-// are not already present in the runtime spec are added.
-func patchConfigJSON(bundlePath string, annotations map[string]string) error {
-	configPath := filepath.Join(bundlePath, "config.json")
 
-	fi, err := os.Stat(configPath)
-	if err != nil {
-		return fmt.Errorf("stat config.json: %w", err)
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("read config.json: %w", err)
-	}
-
-	var spec runtimespec.Spec
-	if err := json.Unmarshal(data, &spec); err != nil {
-		return fmt.Errorf("unmarshal spec: %w", err)
-	}
-
-	if spec.Annotations == nil {
-		spec.Annotations = make(map[string]string)
-	}
-
-	for k, v := range annotations {
-		if _, exists := spec.Annotations[k]; exists {
-			continue
-		}
-		spec.Annotations[k] = v
-	}
-
-	patched, err := json.MarshalIndent(spec, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal spec: %w", err)
-	}
-
-	if err := atomicWriteFile(configPath, patched, fi.Mode()); err != nil {
-		return fmt.Errorf("write config.json atomically: %w", err)
-	}
-	return nil
-}
-
-func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
-	tmpDir := filepath.Dir(path)
-
-	f, err := os.CreateTemp(tmpDir, "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-
-	tmpName := f.Name()
-	defer os.Remove(tmpName)
-
-	if err := f.Chmod(mode); err != nil {
-		_ = f.Close()
-		return err
-	}
-
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return err
-	}
-
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return err
-	}
-
-	if err := f.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmpName, path); err != nil {
-		return err
-	}
-
-	return nil
-}
