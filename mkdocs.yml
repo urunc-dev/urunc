@@ -37,6 +37,7 @@ nav:
       - API Reference: https://pkg.go.dev/github.com/urunc-dev/urunc/pkg/unikontainers
   - Tutorials:
       - tutorials/*.md
+  - Talks & Publications: talks-and-publications.md
 
 theme:
   name: material
