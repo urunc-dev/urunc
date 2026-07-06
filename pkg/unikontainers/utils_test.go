@@ -298,3 +298,66 @@ func TestLoadSpec(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
 	})
 }
+
+func TestResolveAgainstBase(t *testing.T) {
+	relBase := "relbase"
+	relBaseAbs, err := filepath.Abs(relBase)
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name string
+		base string
+		path string
+		want string
+	}{
+		{
+			name: "absolute path is returned unchanged",
+			base: "/var/lib/urunc",
+			path: "/absolute/rootfs",
+			want: "/absolute/rootfs",
+		},
+		{
+			name: "relative path is joined with absolute base",
+			base: "/var/lib/urunc",
+			path: "rootfs/image",
+			want: "/var/lib/urunc/rootfs/image",
+		},
+		{
+			name: "relative path is joined with relative base",
+			base: relBase,
+			path: "rootfs/image",
+			want: filepath.Join(relBaseAbs, "rootfs", "image"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveAgainstBase(tt.base, tt.path)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got, "resolveAgainstBase returned an unexpected path")
+		})
+	}
+}
+
+func TestResolveAgainstBaseError(t *testing.T) {
+	// Removing the working directory makes os.Getwd fail, which is the only way
+	// resolveAgainstBase errors. This mutates the process cwd, so no t.Parallel.
+	origWD, err := os.Getwd()
+	assert.NoError(t, err)
+	defer func() {
+		assert.NoError(t, os.Chdir(origWD))
+	}()
+
+	tmpDir, err := os.MkdirTemp("", "urunc-resolve-test")
+	assert.NoError(t, err)
+
+	err = os.Chdir(tmpDir)
+	assert.NoError(t, err)
+
+	err = os.RemoveAll(tmpDir)
+	assert.NoError(t, err)
+
+	_, err = resolveAgainstBase("relative/base", "relative/path")
+	assert.Error(t, err, "expected an error when the working directory cannot be resolved")
+}
