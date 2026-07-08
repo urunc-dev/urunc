@@ -17,8 +17,10 @@ package hypervisors
 import (
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -85,6 +87,13 @@ func killProcess(pid int) error {
 			}
 			return fmt.Errorf("error checking if process with pid %d is alive: %w", pid, err)
 		}
+		// unix.Kill(pid, 0) also succeeds for a zombie (defunct) process: the
+		// VMM has terminated but has not yet been reaped by its parent (the
+		// containerd shim). Such a process is effectively dead, so treat it as
+		// gone instead of blocking here for the full timeout.
+		if isZombie(pid) {
+			break
+		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timeout waiting for pid %d to die", pid)
 		}
@@ -92,4 +101,29 @@ func killProcess(pid int) error {
 	}
 
 	return nil
+}
+
+// isZombie reports whether the process with the given pid is in the zombie
+// (defunct) state, i.e. it has terminated but has not yet been reaped by its
+// parent. If the process' stat file cannot be read (e.g. it has already been
+// reaped), the process is considered gone.
+func isZombie(pid int) bool {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return true
+	}
+	return statIsZombie(data)
+}
+
+// statIsZombie reports whether the contents of a /proc/<pid>/stat file describe
+// a process in the zombie ("Z") state. The state is the third field, but the
+// second field (comm) is wrapped in parentheses and may itself contain spaces
+// or ')', so the state is read as the first non-space byte after the final ')'.
+func statIsZombie(stat []byte) bool {
+	s := string(stat)
+	i := strings.LastIndexByte(s, ')')
+	if i < 0 || i+2 >= len(s) {
+		return false
+	}
+	return s[i+2] == 'Z'
 }

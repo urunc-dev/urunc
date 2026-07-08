@@ -71,3 +71,29 @@ func TestBytesToMB(t *testing.T) {
 		})
 	}
 }
+
+func TestStatIsZombie(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		stat     string
+		expected bool
+	}{
+		{"zombie process", "1234 (firecracker) Z 1 1234 1234 0 -1 4194560 0 0", true},
+		{"running process", "1234 (firecracker) R 1 1234 1234 0 -1 4194560 0 0", false},
+		{"sleeping process", "1234 (qemu-system-x86) S 1 1234 1234 0 -1 4194560", false},
+		// The comm field may contain spaces and ')', which must not break parsing.
+		{"comm with parens and spaces, zombie", "42 (weird ) name) Z 1 42 42 0", true},
+		{"comm with parens and spaces, running", "42 (weird ) name) R 1 42 42 0", false},
+		{"malformed without closing paren", "1234 firecracker Z", false},
+		{"empty", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expected, statIsZombie([]byte(tc.stat)))
+		})
+	}
+}
