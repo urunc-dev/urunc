@@ -298,3 +298,52 @@ func TestLoadSpec(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
 	})
 }
+
+func TestLimitedBufferCapsOutput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("under limit keeps everything", func(t *testing.T) {
+		t.Parallel()
+		b := &limitedBuffer{maxBytes: 100}
+		n, err := b.Write([]byte("hello"))
+		assert.NoError(t, err)
+		assert.Equal(t, 5, n)
+		assert.Equal(t, "hello", b.String())
+		assert.False(t, b.truncated)
+	})
+
+	t.Run("exact limit is not truncated", func(t *testing.T) {
+		t.Parallel()
+		b := &limitedBuffer{maxBytes: 3}
+		_, err := b.Write([]byte("abc"))
+		assert.NoError(t, err)
+		assert.Equal(t, "abc", b.String())
+		assert.False(t, b.truncated)
+	})
+
+	t.Run("single oversized write is capped but reports full length", func(t *testing.T) {
+		t.Parallel()
+		b := &limitedBuffer{maxBytes: 4}
+		payload := []byte("abcdefghij") // 10 bytes
+		n, err := b.Write(payload)
+		assert.NoError(t, err)
+		// Must report the full slice as written, else exec's io.Copy fails with
+		// ErrShortWrite and the hook is treated as broken.
+		assert.Equal(t, len(payload), n)
+		assert.Equal(t, 4, b.buf.Len())
+		assert.True(t, b.truncated)
+		assert.Equal(t, "abcd... [output truncated]", b.String())
+	})
+
+	t.Run("many writes stay bounded at the cap", func(t *testing.T) {
+		t.Parallel()
+		b := &limitedBuffer{maxBytes: 5}
+		for i := 0; i < 1000; i++ {
+			n, err := b.Write([]byte("xxxxxxxxxx")) // 10 bytes each
+			assert.NoError(t, err)
+			assert.Equal(t, 10, n)
+		}
+		assert.Equal(t, 5, b.buf.Len())
+		assert.True(t, b.truncated)
+	})
+}

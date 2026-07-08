@@ -303,8 +303,46 @@ func rmMultipleDirs(prefixPath string, dirs []string) error {
 	return nil
 }
 
+// maxHookOutput caps how much stdout/stderr urunc retains from an OCI hook.
+// The captured output is only used to build error messages, so a modest cap is
+// plenty while preventing a hook that streams unbounded data from exhausting
+// memory (see #797).
+const maxHookOutput = 1 << 20 // 1 MiB per stream
+
+// limitedBuffer is an io.Writer that retains at most maxBytes bytes and discards
+// anything beyond that. It always reports the full slice as written so the
+// writing process is never blocked or killed with a short-write/EPIPE error.
+type limitedBuffer struct {
+	buf       bytes.Buffer
+	maxBytes  int
+	truncated bool
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if remaining := b.maxBytes - b.buf.Len(); remaining > 0 {
+		if len(p) > remaining {
+			b.buf.Write(p[:remaining])
+			b.truncated = true
+		} else {
+			b.buf.Write(p)
+		}
+	} else if len(p) > 0 {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+// String returns the captured output, appending a marker when it was truncated.
+func (b *limitedBuffer) String() string {
+	if b.truncated {
+		return b.buf.String() + "... [output truncated]"
+	}
+	return b.buf.String()
+}
+
 func executeHook(hook specs.Hook, state []byte) error {
-	var stdout, stderr bytes.Buffer
+	stdout := &limitedBuffer{maxBytes: maxHookOutput}
+	stderr := &limitedBuffer{maxBytes: maxHookOutput}
 	var cancel context.CancelFunc
 	ctx := context.Background()
 
@@ -327,8 +365,8 @@ func executeHook(hook specs.Hook, state []byte) error {
 	cmd := exec.CommandContext(ctx, hook.Path, args...) // nolint:gosec
 	cmd.Env = hook.Env
 	cmd.Stdin = bytes.NewReader(state)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	err := cmd.Run()
 	if err != nil {
