@@ -18,6 +18,9 @@ where `/some/path/config.toml` is the configuration file to use and `/usr/local/
 The configuration file uses the [TOML](https://toml.io/) format and is organized into several sections:
 
 ```toml
+[runtime]
+libcontainer = false
+
 [log]
 level = "info"
 syslog = false
@@ -50,6 +53,29 @@ options = "--sandbox none"
 ```
 
 ## Configuration Sections
+
+### Runtime
+
+The `[runtime]` section controls runtime-wide behavior.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `libcontainer` | boolean | `false` | Use libcontainer to set up the monitor's execution environment |
+
+> **⚠️ Experimental:** the use of `libcontainer` to prepare the monitor execution
+> environment is under active development. It is off by default.
+
+The value is resolved when the container is created and recorded in the
+container's `state.json`, so `start`, `kill` and `delete` keep using the mode
+the container was created with even if the configuration file changes in
+between.
+
+**Example:**
+
+```toml
+[runtime]
+libcontainer = false
+```
 
 ### Log Configuration
 
@@ -164,6 +190,8 @@ Specifically for `virtiofsd` the default values are the following:
 
 - `path`: `/usr/libexec/virtiofsd`
 - `options`: `--cache always --sandbox none`
+
+> **NOTE**: Currently, in the case of libcontainer the option `--sandbox` should be set to none, due to missing capabilities inside the monitor's execution environment.
 
 **Example:**
 

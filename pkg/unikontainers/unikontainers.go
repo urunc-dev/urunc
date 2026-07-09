@@ -90,6 +90,8 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 		return nil, ErrNotUnikernel
 	}
 
+	uniklog.Debugf("libcontainer runtime enabled: %t", cfg.Runtime.Libcontainer)
+
 	confMap := config.Map()
 
 	maps.Copy(confMap, cfg.Map())
@@ -136,6 +138,7 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	u.RootDir = rootDir
 	u.Spec = spec
 	u.UruncCfg = UruncConfigFromMap(state.Annotations)
+	uniklog.Debugf("libcontainer runtime enabled: %t", u.UruncCfg.Runtime.Libcontainer)
 	return u, nil
 }
 

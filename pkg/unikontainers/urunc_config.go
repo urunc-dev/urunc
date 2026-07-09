@@ -49,11 +49,40 @@ type UruncTimestamps struct {
 	Destination string `toml:"destination"` // Used to specify a file for timestamps
 }
 
+// UruncRuntime holds runtime-wide behavior options.
+type UruncRuntime struct {
+	// Libcontainer selects whether the monitor's execution environment
+	// is set up through runc's libcontainer instead of urunc's own implementation.
+	Libcontainer bool `toml:"libcontainer"`
+}
+
+// libcontainerKey is the state.json annotation with the runtime setting
+// for libcontainer.
+const libcontainerKey = "urunc_config.runtime.libcontainer"
+
 type UruncConfig struct {
 	Log        UruncLog                        `toml:"log"`
 	Timestamps UruncTimestamps                 `toml:"timestamps"`
+	Runtime    UruncRuntime                    `toml:"runtime"`
 	Monitors   map[string]types.MonitorConfig  `toml:"monitors"`
 	ExtraBins  map[string]types.ExtraBinConfig `toml:"extra_binaries"`
+}
+
+// runtimeFromMap rebuilds the runtime options from the state.json annotations.
+// A missing or malformed value falls back to the default (libcontainer off).
+func runtimeFromMap(cfgMap map[string]string) UruncRuntime {
+	rt := defaultRuntimeConfig()
+	val, ok := cfgMap[libcontainerKey]
+	if !ok {
+		return rt
+	}
+	choice, err := strconv.ParseBool(val)
+	if err != nil {
+		uniklog.Warnf("Invalid libcontainer value %q. Using default (false).", val)
+		return rt
+	}
+	rt.Libcontainer = choice
+	return rt
 }
 
 // this struct is used to parse only the log and timestamp section of the urunc config file
@@ -93,6 +122,12 @@ func defaultTimestampsConfig() UruncTimestamps {
 	}
 }
 
+func defaultRuntimeConfig() UruncRuntime {
+	return UruncRuntime{
+		Libcontainer: false,
+	}
+}
+
 const (
 	defaultMonitorMemoryMB uint = 256
 	defaultMonitorVCPUs    uint = 1
@@ -118,6 +153,7 @@ func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
 		Log:        defaultLogConfig(),
 		Timestamps: defaultTimestampsConfig(),
+		Runtime:    defaultRuntimeConfig(),
 		Monitors:   defaultMonitorsConfig(),
 		ExtraBins:  defaultExtraBinConfig(),
 	}
@@ -153,6 +189,7 @@ func (p *UruncConfig) Map() map[string]string {
 	// them to this map. this map will be used to save the rest of the urunc config to state.json
 	cfgMap := make(map[string]string)
 
+	cfgMap[libcontainerKey] = strconv.FormatBool(p.Runtime.Libcontainer)
 	for hv, hvCfg := range p.Monitors {
 		prefix := "urunc_config.monitors." + hv + "."
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
@@ -173,6 +210,7 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 	// since log and timestamps are loaded at the start of urunc, we will not be reading
 	// them from this map. this map will be used to parse the rest of the urunc config from state.json
 	cfg := &UruncConfig{
+		Runtime:   runtimeFromMap(cfgMap),
 		Monitors:  defaultMonitorsConfig(),
 		ExtraBins: defaultExtraBinConfig(),
 	}
