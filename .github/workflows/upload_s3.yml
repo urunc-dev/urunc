@@ -85,7 +85,7 @@ jobs:
         path: ./
 
     - name: Upload urunc to S3
-      uses: cloudkernels/minio-upload@5fc9bf7a244cfafb453c6b10c8c3730a68bff0db
+      uses: cloudkernels/minio-upload@fce268686576f31a8ad0cdecedba954b58e87aee
       with:
         url: https://s3.nbfc.io
         access-key: ${{ secrets.AWS_ACCESS_KEY }}
@@ -95,7 +95,7 @@ jobs:
         policy: 1
 
     - name: Upload containerd-shim-urunc-v2 to S3
-      uses: cloudkernels/minio-upload@5fc9bf7a244cfafb453c6b10c8c3730a68bff0db
+      uses: cloudkernels/minio-upload@fce268686576f31a8ad0cdecedba954b58e87aee
       with:
         url: https://s3.nbfc.io
         access-key: ${{ secrets.AWS_ACCESS_KEY }}
