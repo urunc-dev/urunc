@@ -16,7 +16,6 @@ package containerdshim
 
 import (
 	"context"
-	"errors"
 
 	taskAPI "github.com/containerd/containerd/api/runtime/task/v2"
 	"github.com/containerd/log"
@@ -53,16 +52,18 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 		return resp, err
 	}
 
+	// TODO: #816 - Restore rootfs choice here once shim integration is complete.
+	// For now, rootfs is selected during urunc create (InitialSetup phase).
 	// ChooseRootfs after inner task Create so bundle rootfs is mounted;
 	// params are persisted in bundle config.json for runtime Exec.
-	if err := chooseGuestRootfs(r); err != nil {
-		if errors.Is(err, errGuestRootfsChoiceSkipped) {
-			log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
-			return resp, nil
-		}
-		log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
-		return nil, err
-	}
+	// if err := chooseGuestRootfs(r); err != nil {
+	// 	if errors.Is(err, errGuestRootfsChoiceSkipped) {
+	// 		log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
+	// 		return resp, nil
+	// 	}
+	// 	log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
+	// 	return nil, err
+	// }
 
 	return resp, nil
 }
