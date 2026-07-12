@@ -306,11 +306,21 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(m.TS15)
 
+	// Reload annotations written by the shim after Create.
+	spec, err := loadSpec(u.State.Bundle)
+	if err != nil {
+		return fmt.Errorf("reload bundle spec: %w", err)
+	}
+	if spec == nil || spec.Linux == nil {
+		return fmt.Errorf("invalid OCI spec: linux section is required")
+	}
+	u.Spec = spec
+
 	// container Paths
 	// Make sure paths are clean
 	bundleDir := filepath.Clean(u.State.Bundle)
 	rootfsDir := filepath.Clean(u.Spec.Root.Path)
-	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
+	rootfsDir, err = resolveAgainstBase(bundleDir, rootfsDir)
 	if err != nil {
 		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
 		return err
@@ -461,16 +471,21 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	var rfsBuilder rootfsBuilder
 	switch rootfsParams.Type {
 	case "block":
+		view, err := LoadRootfsViewState(bundleDir)
+		if err != nil {
+			return fmt.Errorf("could not load guest rootfs view: %w", err)
+		}
 		rfsBuilder = blockRootfs{
-			mounts:        u.Spec.Mounts,
-			monRootfs:     rootfsParams.MonRootfs,
-			mountedPath:   rootfsParams.MountedPath,
-			path:          rootfsParams.Path,
-			kernelPath:    unikernelPath,
-			initrdPath:    initrdPath,
-			uruncJSONPath: uruncJSONFilename,
-			guestType:     unikernelType,
-			guest:         unikernel,
+			mounts:          u.Spec.Mounts,
+			monRootfs:       rootfsParams.MonRootfs,
+			mountedPath:     rootfsParams.MountedPath,
+			path:            rootfsParams.Path,
+			kernelPath:      unikernelPath,
+			initrdPath:      initrdPath,
+			uruncJSONPath:   uruncJSONFilename,
+			guestType:       unikernelType,
+			guest:           unikernel,
+			rootfsViewState: view,
 		}
 	case "initrd":
 		rfsBuilder = initrdRootfs{

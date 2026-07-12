@@ -34,9 +34,15 @@ type UruncTimestamps struct {
 	Destination string `toml:"destination"` // Used to specify a file for timestamps
 }
 
+// UruncRootfsView configures shim-side per-container rootfs views (devmapper/blockfile).
+type UruncRootfsView struct {
+	Enabled bool `toml:"enabled"`
+}
+
 type UruncConfig struct {
 	Log        UruncLog                        `toml:"log"`
 	Timestamps UruncTimestamps                 `toml:"timestamps"`
+	RootfsView UruncRootfsView                 `toml:"rootfs_view"`
 	Monitors   map[string]types.MonitorConfig  `toml:"monitors"`
 	ExtraBins  map[string]types.ExtraBinConfig `toml:"extra_binaries"`
 }
@@ -94,10 +100,15 @@ func defaultExtraBinConfig() map[string]types.ExtraBinConfig {
 	}
 }
 
+func defaultRootfsViewConfig() UruncRootfsView {
+	return UruncRootfsView{Enabled: false}
+}
+
 func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
 		Log:        defaultLogConfig(),
 		Timestamps: defaultTimestampsConfig(),
+		RootfsView: defaultRootfsViewConfig(),
 		Monitors:   defaultMonitorsConfig(),
 		ExtraBins:  defaultExtraBinConfig(),
 	}

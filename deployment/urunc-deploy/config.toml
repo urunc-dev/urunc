@@ -7,6 +7,9 @@ syslog = false
 [timestamps]
 enabled = false
 
+[rootfs_view]
+enabled = false
+
 [monitors.qemu]
 default_memory_mb = 256
 default_vcpus = 1

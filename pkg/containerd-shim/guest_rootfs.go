@@ -24,44 +24,38 @@ import (
 	taskAPI "github.com/containerd/containerd/api/runtime/task/v2"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
-
-const annotRootfsParams = "com.urunc.internal.rootfs.params"
 
 var errGuestRootfsChoiceSkipped = errors.New("guest rootfs choice skipped")
 
 // chooseGuestRootfs runs the same ChooseRootfs logic as runtime Exec after inner
-// task Create (#684) and records the result in annotRootfsParams so Exec knows
-// selection already happened.
-func chooseGuestRootfs(r *taskAPI.CreateTaskRequest) error {
+// task Create (#684). The caller persists the result in bundle config.json so
+// Exec can reuse the selection.
+func chooseGuestRootfs(r *taskAPI.CreateTaskRequest) (types.RootfsParams, error) {
 	configPath := filepath.Join(r.Bundle, "config.json")
-	info, err := os.Stat(configPath)
-	if err != nil {
-		return fmt.Errorf("stat config.json: %w", err)
-	}
-
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return fmt.Errorf("read config.json: %w", err)
+		return types.RootfsParams{}, fmt.Errorf("read config.json: %w", err)
 	}
 
 	var spec specs.Spec
 	if err := json.Unmarshal(data, &spec); err != nil {
-		return fmt.Errorf("unmarshal config.json: %w", err)
+		return types.RootfsParams{}, fmt.Errorf("unmarshal config.json: %w", err)
 	}
 	if spec.Root == nil {
-		return fmt.Errorf("invalid OCI spec: root section is required")
+		return types.RootfsParams{}, fmt.Errorf("invalid OCI spec: root section is required")
 	}
 
 	config, err := unikontainers.GetUnikernelConfig(filepath.Clean(r.Bundle), &spec)
 	if err != nil {
-		return fmt.Errorf("%w: %w", errGuestRootfsChoiceSkipped, err)
+		return types.RootfsParams{}, fmt.Errorf("%w: %w", errGuestRootfsChoiceSkipped, err)
 	}
 
 	annotations := config.Map()
 	uruncCfg, err := unikontainers.LoadUruncConfig(unikontainers.UruncConfigPath)
 	if err != nil && uruncCfg == nil {
-		return err
+		return types.RootfsParams{}, err
 	}
 
 	rootfsParams, err := unikontainers.ChooseRootfs(
@@ -71,22 +65,8 @@ func chooseGuestRootfs(r *taskAPI.CreateTaskRequest) error {
 		uruncCfg,
 	)
 	if err != nil {
-		return err
+		return types.RootfsParams{}, err
 	}
 
-	encoded, err := json.Marshal(rootfsParams)
-	if err != nil {
-		return err
-	}
-	if spec.Annotations == nil {
-		spec.Annotations = make(map[string]string)
-	}
-	spec.Annotations[annotRootfsParams] = string(encoded)
-
-	patched, err := json.MarshalIndent(spec, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config.json: %w", err)
-	}
-
-	return os.WriteFile(configPath, patched, info.Mode())
+	return rootfsParams, nil
 }

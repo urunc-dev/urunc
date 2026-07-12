@@ -38,6 +38,9 @@ default_vcpus = 1
 [extra_binaries.virtiofsd]
 path = "/usr/libexec/virtiofsd"
 options = "--sandbox none"
+
+[rootfs_view]
+enabled = false
 ```
 
 ## Configuration Sections
@@ -88,6 +91,34 @@ destination = "/tmp/urunc-timestamps.log"
 ```
 
 When enabled, `urunc` will log performance timestamps to help with debugging and optimization.
+
+### Rootfs View Configuration
+
+The `[rootfs_view]` section controls whether the urunc shim prepares a
+per-container containerd rootfs view at task Create (for `devmapper` /
+`blockfile` snapshotters). 
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `false` | Prepare rootfs views for container block rootfs after shim task Create |
+
+When `enabled = true`, the shim first lets the wrapped task service create the
+task so the bundle rootfs is mounted. It then runs `ChooseRootfs` and prepares a
+view only if **all** of the following hold:
+
+1. The container snapshotter is block-based (`devmapper` or `blockfile`).
+2. Shim `ChooseRootfs` selected **container block rootfs** (`type=block` with a
+   non-empty `MountedPath`).
+
+This matches the block-rootfs boot-artifact path: kernel/initrd are read from a
+read-only view instead of being copied out of the container rootfs before attach.
+
+**Example:**
+
+```toml
+[rootfs_view]
+enabled = true
+```
 
 ### Monitor Configuration
 
@@ -201,6 +232,9 @@ To create a configuration file, you can:
    [monitors.spt]
    default_memory_mb = 256
    default_vcpus = 1
+
+   [rootfs_view]
+   enabled = false
    EOF
    ```
 
@@ -244,6 +278,9 @@ default_vcpus = 1
 default_memory_mb = 256
 default_vcpus = 1
 # path is not set by default - urunc will search in PATH
+
+[rootfs_view]
+enabled = false
 ```
 
 ## Notes

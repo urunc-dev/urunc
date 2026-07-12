@@ -15,7 +15,10 @@
 //revive:disable:var-naming
 package types
 
-import "golang.org/x/sys/unix"
+import (
+	"github.com/containerd/containerd/mount"
+	"golang.org/x/sys/unix"
+)
 
 type Unikernel interface {
 	Init(UnikernelParams) error
@@ -70,6 +73,13 @@ type RootfsParams struct {
 	Path        string // The path in the host where rootfs resides
 	MountedPath string // The mountpoint in the host where the rootfs is mounted
 	MonRootfs   string // The rootfs for the monitor process
+}
+
+// RootfsViewState is passed from shim to runtime via bundle rootfs-view.json.
+type RootfsViewState struct {
+	Snapshotter string        `json:"snapshotter"`
+	Mountpoint  string        `json:"mountpoint,omitempty"`
+	Mounts      []mount.Mount `json:"mounts,omitempty"`
 }
 
 // Specific to Linux

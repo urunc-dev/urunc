@@ -36,15 +36,16 @@ const tmpfsSizeForBlockRootfs = "65536k"
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
 type blockRootfs struct {
-	mounts        []specs.Mount
-	monRootfs     string
-	mountedPath   string
-	path          string
-	kernelPath    string
-	initrdPath    string
-	uruncJSONPath string
-	guestType     string
-	guest         types.Unikernel
+	mounts          []specs.Mount
+	monRootfs       string
+	mountedPath     string
+	path            string
+	kernelPath      string
+	initrdPath      string
+	uruncJSONPath   string
+	guestType       string
+	guest           types.Unikernel
+	rootfsViewState *types.RootfsViewState
 }
 
 // getMountInfo determines whether the provided path is a mount point
@@ -122,8 +123,6 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 
 // extractUnikernelFromBlock moves unikernel binary, initrd and urunc.json
 // files from old rootfsPath to newRootfsPath
-// FIXME: This approach fills up /run with unikernel binaries, initrds and urunc.json
-// files for each unikernel we run
 func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string, uruncJSON string, initrd string) error {
 	currentUnikernelPath := filepath.Join(rootfsPath, unikernel)
 	targetUnikernelPath := filepath.Join(newRootfsPath, unikernel)
@@ -148,7 +147,6 @@ func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string,
 	if err != nil {
 		return fmt.Errorf("could not move %s to %s: %w", currentConfigPath, newRootfsPath, err)
 	}
-
 	return nil
 }
 
@@ -226,24 +224,36 @@ func getBlockVolumes(monRootfs string, mounts []specs.Mount, ukernel types.Unike
 }
 
 func (b blockRootfs) preSetup() error {
+	// Preserve main's propagation fix: consume boot artifacts and unmount the
+	// container rootfs before prepareRoot() makes the mount tree private/slave.
 	if b.mountedPath == "" {
 		return nil
 	}
 
-	err := copyMountfiles(b.mountedPath, b.mounts)
-	if err != nil {
+	useViewPath := b.rootfsViewState != nil
+	if useViewPath {
+		// Probe only; the real bind must happen after prepareRoot.
+		useView, err := probeRootfsViewBootArtifacts(b.rootfsViewState, b.kernelPath, b.initrdPath, b.uruncJSONPath)
+		if err != nil {
+			return err
+		}
+		if !useView {
+			useViewPath = false
+		}
+	}
+
+	if !useViewPath {
+		err := extractBootFiles(b.mountedPath, b.monRootfs, b.kernelPath, b.uruncJSONPath, b.initrdPath)
+		if err != nil {
+			return fmt.Errorf("failed to extract boot files from rootfs: %w", err)
+		}
+	}
+
+	if err := copyMountfiles(b.mountedPath, b.mounts); err != nil {
 		return fmt.Errorf("failed to copy files from mount list: %w", err)
 	}
 
-	// FIXME: This approach fills up /run with unikernel binaries and
-	// urunc.json files for each unikernel instance we run
-	err = extractBootFiles(b.mountedPath, b.monRootfs, b.kernelPath, b.uruncJSONPath, b.initrdPath)
-	if err != nil {
-		return fmt.Errorf("failed to extract boot files from rootfs: %w", err)
-	}
-
-	err = mount.Unmount(b.mountedPath)
-	if err != nil {
+	if err := mount.Unmount(b.mountedPath); err != nil {
 		return fmt.Errorf("failed to unmount rootfs: %w", err)
 	}
 
@@ -262,10 +272,22 @@ func (b blockRootfs) postSetup() error {
 		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
 		"1777", tmpfsSizeForBlockRootfs)
 	if err != nil {
-		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
+		return fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
 	}
 
-	return err
+	if b.rootfsViewState == nil {
+		return nil
+	}
+
+	// Rootfs-view boot artifact binds must be created after prepareRoot()
+	// has fixed the monitor rootfs propagation and self-bind. Keeping this in
+	// postSetup() makes the ordering explicit while keeping the block-rootfs
+	// specific setup inside the block rootfs implementation.
+	if err := prepareRootfsViewBootBinds(b.rootfsViewState, b.monRootfs, b.kernelPath, b.initrdPath, b.uruncJSONPath); err != nil {
+		return fmt.Errorf("boot artifact setup after prepareRoot failed: %w", err)
+	}
+
+	return nil
 }
 
 func (b blockRootfs) getBlockDevs() ([]types.BlockDevParams, error) {

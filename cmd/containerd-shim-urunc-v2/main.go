@@ -17,11 +17,11 @@ package main
 import (
 	"context"
 
-	"github.com/containerd/containerd/runtime/v2/runc/manager"
 	"github.com/containerd/containerd/runtime/v2/shim"
 	_ "github.com/urunc-dev/urunc/pkg/containerd-shim"
+	containerdshim "github.com/urunc-dev/urunc/pkg/containerd-shim"
 )
 
 func main() {
-	shim.RunManager(context.Background(), manager.NewShimManager("io.containerd.urunc.v2"))
+	shim.RunManager(context.Background(), containerdshim.NewShimManager("io.containerd.urunc.v2"))
 }

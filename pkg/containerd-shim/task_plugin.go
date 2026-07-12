@@ -15,6 +15,9 @@
 package containerdshim
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/containerd/containerd/pkg/shutdown"
 	"github.com/containerd/containerd/plugin"
 	runcTask "github.com/containerd/containerd/runtime/v2/runc/task"
@@ -45,9 +48,15 @@ func init() {
 				return nil, err
 			}
 
+			cwd, err := os.Getwd()
+			if err != nil {
+				return nil, err
+			}
+
 			return &taskService{
 				TaskService:       inner,
 				containerdAddress: ic.Address,
+				stateRoot:         filepath.Dir(filepath.Dir(cwd)),
 			}, nil
 		},
 	})

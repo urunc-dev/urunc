@@ -35,11 +35,12 @@ import (
 )
 
 const (
-	configFilename    = "config.json"
-	stateFilename     = "state.json"
-	initPidFilename   = "init.pid"
-	uruncJSONFilename = "urunc.json"
-	rootfsDirName     = "rootfs"
+	configFilename     = "config.json"
+	stateFilename      = "state.json"
+	rootfsViewFilename = "rootfs-view.json"
+	initPidFilename    = "init.pid"
+	uruncJSONFilename  = "urunc.json"
+	rootfsDirName      = "rootfs"
 )
 
 // copy sourceFile to targetDir

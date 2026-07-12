@@ -86,7 +86,7 @@ func InjectUruncAnnotations(ctx context.Context, session *Session, bundlePath st
 		return nil
 	}
 
-	return patchConfigJSON(bundlePath, annotations)
+	return PatchConfigJSON(bundlePath, annotations)
 }
 
 func (f *annotationFetcher) fetchUruncAnnotations(ctx context.Context) (map[string]string, error) {
@@ -152,12 +152,12 @@ func readBlob(ctx context.Context, namespace string, contentClient contentapi.Co
 	return raw, nil
 }
 
-// patchConfigJSON injects missing annotations into the OCI runtime spec
-// stored in the bundle's config.json.
+// PatchConfigJSON injects missing annotations into the OCI runtime spec stored in
+// the bundle's config.json.
 //
 // Existing annotations in config.json are preserved. Only annotation keys that
 // are not already present in the runtime spec are added.
-func patchConfigJSON(bundlePath string, annotations map[string]string) error {
+func PatchConfigJSON(bundlePath string, annotations map[string]string) error {
 	configPath := filepath.Join(bundlePath, "config.json")
 
 	fi, err := os.Stat(configPath)
