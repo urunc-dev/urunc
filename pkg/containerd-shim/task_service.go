@@ -48,6 +48,19 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 		}
 	}
 
+	// When the task is created from a checkpoint, the inner runc task
+	// service invokes `urunc restore`, which creates AND starts the
+	// container in one shot. The guest rootfs choice must therefore
+	// happen before forwarding; for regular creates it happens after,
+	// once the inner task Create has mounted the bundle rootfs.
+	isRestore := r.Checkpoint != ""
+	if isRestore {
+		if err := chooseGuestRootfs(r); err != nil && !errors.Is(err, errGuestRootfsChoiceSkipped) {
+			log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs for restore")
+			return nil, err
+		}
+	}
+
 	resp, err := s.TaskService.Create(ctx, r)
 	if err != nil {
 		return resp, err
@@ -55,13 +68,15 @@ func (s *taskService) Create(ctx context.Context, r *taskAPI.CreateTaskRequest) 
 
 	// ChooseRootfs after inner task Create so bundle rootfs is mounted;
 	// params are persisted in bundle config.json for runtime Exec.
-	if err := chooseGuestRootfs(r); err != nil {
-		if errors.Is(err, errGuestRootfsChoiceSkipped) {
-			log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
-			return resp, nil
+	if !isRestore {
+		if err := chooseGuestRootfs(r); err != nil {
+			if errors.Is(err, errGuestRootfsChoiceSkipped) {
+				log.G(ctx).WithError(err).Debug("urunc(shim): guest rootfs choice skipped")
+				return resp, nil
+			}
+			log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
+			return nil, err
 		}
-		log.G(ctx).WithError(err).Warn("urunc(shim): failed to choose guest rootfs")
-		return nil, err
 	}
 
 	return resp, nil
