@@ -410,6 +410,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(m.TS16)
 	withTUNTAP := netArgs.IP != ""
 
+	// Persist the network parameters (most importantly the tap device
+	// name) so that later checkpoint/restore invocations, which run in a
+	// different process, know how the VM is wired.
+	if err := u.saveNetInfo(netArgs); err != nil {
+		uniklog.Warnf("failed to persist network info: %v", err)
+	}
+
 	// UnikernelParams
 	unikernelParams.Net = netArgs
 
@@ -598,6 +605,28 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Command = unikernelCmd
 
+	// Restore path: if this container is being restored from a checkpoint,
+	// stage the snapshot files into the monitor rootfs while host paths
+	// are still resolvable (we have not pivoted yet) and remember the
+	// snapshotter to build the restore command later.
+	isRestore := u.RestorePath() != ""
+	var restoreSnapshotter hypervisors.Snapshotter
+	var restoreInNsDir string
+	if isRestore {
+		if vmmArgs.VAccelType != "" {
+			return fmt.Errorf("restore is not supported for containers with vAccel enabled")
+		}
+		_, restoreSnapshotter, err = u.vmmSnapshotter()
+		if err != nil {
+			return err
+		}
+		restoreInNsDir, err = u.stageRestore(restoreSnapshotter, rootfsParams.MonRootfs, netArgs)
+		if err != nil {
+			uniklog.WithError(err).Error("failed to stage checkpoint for restore")
+			return err
+		}
+	}
+
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	// We just want to check if a mount namespace was define din the list
@@ -637,7 +666,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Build the VMM command once and verify it can be constructed successfully.
 	// This ensures we don't report the container as started if command building fails.
-	execCmd, err := vmm.BuildExecCmd(vmmArgs, unikernel)
+	// On restore, the VMM is launched to resume from the staged snapshot
+	// instead of cold-booting the unikernel.
+	var execCmd []string
+	if isRestore {
+		execCmd, err = restoreSnapshotter.BuildRestoreCmd(vmmArgs, restoreInNsDir)
+	} else {
+		execCmd, err = vmm.BuildExecCmd(vmmArgs, unikernel)
+	}
 	if err != nil {
 		uniklog.WithError(err).Error("failed to build VMM command")
 		return err
