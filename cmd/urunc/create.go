@@ -75,7 +75,7 @@ var createCommand = &cli.Command{
 		}
 		if !cmd.Bool("reexec") {
 			uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.UruncConfigPath) // ignore the error and use default config
-			return createUnikontainer(cmd, uruncCfg)
+			return createUnikontainer(cmd, uruncCfg, "")
 		}
 
 		return reexecUnikontainer(cmd)
@@ -86,8 +86,10 @@ var createCommand = &cli.Command{
 // initializes it's base dir and state.json,
 // setups terminal if required and spawns reexec process,
 // waits for reexec process to notify, executes CreateRuntime hooks,
-// sends ACK to reexec process
-func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
+// sends ACK to reexec process.
+// A non-empty restorePath marks the container to be restored from the
+// checkpoint image in that directory instead of cold-booting the guest.
+func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig, restorePath string) (err error) {
 	err = nil
 	containerID := cmd.Args().First()
 	if containerID == "" {
@@ -122,6 +124,12 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		return err
 	}
 	metrics.Capture(m.TS01)
+
+	// Mark the container for restore before the state is first persisted,
+	// so the reexec process observes the annotation.
+	if restorePath != "" {
+		unikontainer.SetRestorePath(restorePath)
+	}
 
 	err = unikontainer.InitialSetup()
 	if err != nil {

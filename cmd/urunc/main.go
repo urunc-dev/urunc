@@ -109,9 +109,13 @@ func main() {
 			},
 		},
 		Commands: []*cli.Command{
+			checkpointCommand,
 			createCommand,
 			deleteCommand,
 			killCommand,
+			pauseCommand,
+			restoreCommand,
+			resumeCommand,
 			runCommand,
 			psCommand,
 			// specCommand,
