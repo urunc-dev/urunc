@@ -27,6 +27,7 @@ nav:
   - Installation: installation.md
   - Configuration: configuration.md
   - VMM/Sandbox Support: hypervisor-support.md
+  - Checkpoint/Restore: checkpoint-restore.md
   - Unikernel Support: unikernel-support.md
   - Building/Packaging unikernels:
       - package/*.md
