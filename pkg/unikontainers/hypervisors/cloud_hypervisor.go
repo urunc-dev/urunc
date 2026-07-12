@@ -15,7 +15,10 @@
 package hypervisors
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -68,7 +71,9 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 	chMem := BytesToStringMB(args.MemSizeB)
 
 	// Start building the command
-	exArgs := []string{ch.binaryPath}
+	// The API socket stays enabled so a running microVM can later be
+	// paused/resumed and snapshotted (checkpoint/restore).
+	exArgs := []string{ch.binaryPath, "--api-socket", InNsAPISockPath}
 
 	// Memory configuration
 	if args.Sharedfs.Type == "virtiofs" {
@@ -158,4 +163,103 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 // PreExec performs pre-execution setup. Cloud Hypervisor has no special pre-exec requirements.
 func (ch *CloudHypervisor) PreExec(_ types.ExecArgs) error {
 	return nil
+}
+
+// CHSnapshotConfigFile is the name of the VM configuration file inside a
+// Cloud Hypervisor snapshot directory. Cloud Hypervisor additionally writes
+// state.json and one or more memory-ranges files in the same directory.
+const CHSnapshotConfigFile string = "config.json"
+
+// SupportsSnapshot returns true as Cloud Hypervisor supports snapshot/restore
+// through its HTTP API.
+func (ch *CloudHypervisor) SupportsSnapshot() bool {
+	return true
+}
+
+// PauseVM pauses the vCPUs of a running Cloud Hypervisor microVM.
+func (ch *CloudHypervisor) PauseVM(sockPath string) error {
+	client := newVMMAPIClient(sockPath)
+	return client.request("PUT", "/api/v1/vm.pause", nil)
+}
+
+// ResumeVM resumes the vCPUs of a paused Cloud Hypervisor microVM.
+func (ch *CloudHypervisor) ResumeVM(sockPath string) error {
+	client := newVMMAPIClient(sockPath)
+	return client.request("PUT", "/api/v1/vm.resume", nil)
+}
+
+// SnapshotVM writes a full snapshot (config.json, state.json and memory
+// ranges) of a paused microVM into inNsDir, which Cloud Hypervisor resolves
+// inside its own mount namespace.
+func (ch *CloudHypervisor) SnapshotVM(sockPath string, inNsDir string) error {
+	client := newVMMAPIClient(sockPath)
+	body := map[string]string{
+		"destination_url": "file://" + inNsDir,
+	}
+	return client.request("PUT", "/api/v1/vm.snapshot", body)
+}
+
+// BuildRestoreCmd builds the argv to launch a fresh Cloud Hypervisor process
+// that restores the VM from the snapshot staged in inNsDir at process start.
+// The restored VM stays paused until FinishRestore resumes it.
+func (ch *CloudHypervisor) BuildRestoreCmd(args types.ExecArgs, inNsDir string) ([]string, error) {
+	exArgs := []string{
+		ch.binaryPath,
+		"--api-socket", InNsAPISockPath,
+		"--restore", "source_url=file://" + inNsDir,
+	}
+	if args.Seccomp {
+		exArgs = append(exArgs, "--seccomp", "true")
+	} else {
+		exArgs = append(exArgs, "--seccomp", "false")
+	}
+	return exArgs, nil
+}
+
+// PrepareRestore rewrites the tap device name in the staged snapshot's
+// config.json so the restored VM attaches to the freshly-created host tap
+// device. The guest-visible side of the device (MAC, IP) is frozen in the
+// snapshot and must not change.
+func (ch *CloudHypervisor) PrepareRestore(hostDir string, net NetOverride) error {
+	if net.TapDev == "" {
+		return nil
+	}
+
+	configPath := filepath.Join(hostDir, CHSnapshotConfigFile)
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read snapshot VM config %s: %w", configPath, err)
+	}
+
+	// Parse the VM config generically so we do not have to track the full
+	// Cloud Hypervisor VmConfig schema; only the tap name is rewritten.
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse snapshot VM config %s: %w", configPath, err)
+	}
+
+	netDevs, ok := config["net"].([]any)
+	if !ok || len(netDevs) == 0 {
+		// The snapshotted VM had no network device; nothing to rewrite.
+		return nil
+	}
+	for _, dev := range netDevs {
+		netDev, ok := dev.(map[string]any)
+		if !ok {
+			continue
+		}
+		netDev["tap"] = net.TapDev
+	}
+
+	patched, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal snapshot VM config: %w", err)
+	}
+	return os.WriteFile(configPath, patched, 0o644) //nolint: gosec
+}
+
+// FinishRestore resumes the restored microVM. The state load itself already
+// happened at process start through the --restore flag.
+func (ch *CloudHypervisor) FinishRestore(sockPath string, _ string, _ NetOverride) error {
+	return ch.ResumeVM(sockPath)
 }

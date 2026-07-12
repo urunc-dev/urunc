@@ -108,7 +108,9 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	// options in FC, since the string return value of the Monitor related
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
-	cmdString := fc.Path() + " --no-api --config-file "
+	// The API socket stays enabled so a running microVM can later be
+	// paused/resumed and snapshotted (checkpoint/restore).
+	cmdString := fc.Path() + " --api-sock " + InNsAPISockPath + " --config-file "
 	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
 	cmdString += JSONConfigFile
 	if !args.Seccomp {
@@ -207,4 +209,82 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 // PreExec performs pre-execution setup. Firecracker has no special pre-exec requirements.
 func (fc *Firecracker) PreExec(_ types.ExecArgs) error {
 	return nil
+}
+
+// Names of the files a Firecracker snapshot consists of.
+const (
+	FCSnapshotStateFile string = "vmstate"
+	FCSnapshotMemFile   string = "memory"
+)
+
+// SupportsSnapshot returns true as Firecracker supports snapshot/restore
+// through its HTTP API.
+func (fc *Firecracker) SupportsSnapshot() bool {
+	return true
+}
+
+// PauseVM pauses the vCPUs of a running Firecracker microVM.
+func (fc *Firecracker) PauseVM(sockPath string) error {
+	client := newVMMAPIClient(sockPath)
+	return client.request("PATCH", "/vm", map[string]string{"state": "Paused"})
+}
+
+// ResumeVM resumes the vCPUs of a paused Firecracker microVM.
+func (fc *Firecracker) ResumeVM(sockPath string) error {
+	client := newVMMAPIClient(sockPath)
+	return client.request("PATCH", "/vm", map[string]string{"state": "Resumed"})
+}
+
+// SnapshotVM writes a full snapshot (vmstate + guest memory) of a paused
+// microVM into inNsDir, which Firecracker resolves inside its own mount
+// namespace.
+func (fc *Firecracker) SnapshotVM(sockPath string, inNsDir string) error {
+	client := newVMMAPIClient(sockPath)
+	body := map[string]string{
+		"snapshot_type": "Full",
+		"snapshot_path": filepath.Join(inNsDir, FCSnapshotStateFile),
+		"mem_file_path": filepath.Join(inNsDir, FCSnapshotMemFile),
+	}
+	return client.request("PUT", "/snapshot/create", body)
+}
+
+// BuildRestoreCmd builds the argv to launch a fresh Firecracker process that
+// will later load the snapshot through the API (see FinishRestore). No boot
+// resources may be pre-configured, so no config file is passed.
+func (fc *Firecracker) BuildRestoreCmd(args types.ExecArgs, _ string) ([]string, error) {
+	exArgs := []string{fc.Path(), "--api-sock", InNsAPISockPath}
+	if !args.Seccomp {
+		exArgs = append(exArgs, "--no-seccomp")
+	}
+	return exArgs, nil
+}
+
+// PrepareRestore is a no-op for Firecracker: the new tap device name is
+// passed at load time through network_overrides (see FinishRestore).
+func (fc *Firecracker) PrepareRestore(_ string, _ NetOverride) error {
+	return nil
+}
+
+// FinishRestore loads the staged snapshot into a freshly-launched Firecracker
+// process and resumes the microVM. The frozen guest network device is
+// re-attached to the new host tap device via network_overrides.
+func (fc *Firecracker) FinishRestore(sockPath string, inNsDir string, net NetOverride) error {
+	client := newVMMAPIClient(sockPath)
+	body := map[string]any{
+		"snapshot_path": filepath.Join(inNsDir, FCSnapshotStateFile),
+		"mem_backend": map[string]string{
+			"backend_type": "File",
+			"backend_path": filepath.Join(inNsDir, FCSnapshotMemFile),
+		},
+		"resume_vm": true,
+	}
+	if net.TapDev != "" {
+		body["network_overrides"] = []map[string]string{
+			{
+				"iface_id":      net.IfaceID,
+				"host_dev_name": net.TapDev,
+			},
+		}
+	}
+	return client.request("PUT", "/snapshot/load", body)
 }
