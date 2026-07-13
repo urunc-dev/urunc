@@ -30,7 +30,6 @@ import (
 	m "github.com/urunc-dev/urunc/internal/metrics"
 	"github.com/urunc-dev/urunc/pkg/unikontainers"
 
-	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/urfave/cli/v3"
 )
 
