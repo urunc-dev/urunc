@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/moby/sys/userns"
 	"golang.org/x/sys/unix"
@@ -42,17 +43,16 @@ type mountFlagStruct struct {
 // In particular, it is used for the creation of /tmp and /dev.
 // This is necessary to create the required devices for the monitor execution,
 // such as KVM, null, urandom etc.
-func createTmpfs(monRootfs string, path string, flags uint64, mode string, size string) error {
+func createTmpfs(monRootfs string, path string, flags uintptr, data string) error {
 	dstPath := filepath.Join(monRootfs, path)
 	mountType := "tmpfs"
-	data := "mode=" + mode + ",size=" + size
 
 	err := os.MkdirAll(dstPath, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create %s dir: %w", path, err)
 	}
 
-	err = unix.Mount(mountType, dstPath, mountType, uintptr(flags), data)
+	err = unix.Mount(mountType, dstPath, mountType, flags, data)
 	if err != nil {
 		return fmt.Errorf("failed to mount %s tmpfs: %w", path, err)
 	}
@@ -63,7 +63,7 @@ func createTmpfs(monRootfs string, path string, flags uint64, mode string, size 
 		return fmt.Errorf("failed to create %s tmpfs: %w", path, err)
 	}
 
-	if mode == "1777" {
+	if strings.Contains(","+data+",", ",mode=1777,") {
 		// sonarcloud:go:S2612 -- This is a tmpfs mount point, sticky bit 1777 is required (like /tmp), controlled path, safe by design
 		err := os.Chmod(dstPath, 01777) // NOSONAR
 		if err != nil {
@@ -327,53 +327,113 @@ func prepareRoot(path string, rootfsPropagation string) error {
 	return unix.Mount(path, path, "bind", unix.MS_BIND|unix.MS_REC, "")
 }
 
-func mountVolumes(rootfsPath string, mounts []specs.Mount) error {
+func applyMounts(rootfsPath string, mounts []specs.Mount) error {
 	for _, m := range mounts {
-		// Skip non-bind mounts
-		// TODO handle other types of mounts too
-		if m.Type != "bind" {
-			continue
-		}
-		var mountFlags int
-		var mountClearedFlags int
-		var propFlag []int
-		mountFlags = 0
-		mountClearedFlags = 0
-		for _, o := range m.Options {
-			f, exists := mapMountFlag(o)
-			if exists {
-				if f.clear {
-					mountFlags &= ^f.flag
-					mountClearedFlags |= f.flag
-				} else {
-					mountFlags |= f.flag
-					mountClearedFlags &= ^f.flag
-				}
-				continue
-			}
-			fprop, err := mapRootfsPropagationFlag(o)
-			if err == nil {
-				propFlag = append(propFlag, fprop)
-			}
-			// Ignore unknown flags
-			// TODO: Handle unknown flags. These can be mount attribute flags
-			// or specific flags for a particular fs type.
-		}
-		err := fileFromHost(rootfsPath, m.Source, m.Destination, mountFlags, false)
-		if err != nil {
-			return err
-		}
-
-		dstPath := filepath.Join(rootfsPath, m.Destination)
-		for _, pFlag := range propFlag {
-			err = unix.Mount(dstPath, dstPath, "", uintptr(pFlag), "")
+		switch m.Type {
+		case "tmpfs":
+			// TODO: replace createTmpfs with a mount package (e.g.
+			// containerd's). For the time being keep the compatibility
+			// with createTmpfs.
+			flags, data := splitMountOptions(m.Options)
+			err := createTmpfs(rootfsPath, m.Destination, flags, data)
 			if err != nil {
-				return fmt.Errorf("failed to set propagation flag for %s: %w", m.Source, err)
+				return fmt.Errorf("failed to create tmpfs at %s: %w", m.Destination, err)
 			}
+		case "proc", "devpts":
+			err := applySpecialFsMount(rootfsPath, m)
+			if err != nil {
+				return fmt.Errorf("failed to create %s at %s: %w", m.Type, m.Destination, err)
+			}
+		case "bind":
+			err := applyBindMount(rootfsPath, m)
+			if err != nil {
+				return fmt.Errorf("failed to bind mount %s at %s: %w", m.Source, m.Destination, err)
+			}
+		default:
+			// Skip unknown mount types
+			// TODO handle other types of mounts too
+			continue
 		}
 	}
 
 	return nil
+}
+
+// applySpecialFsMount handles pseudo filesystem (e.g. proc, devpts) mounts
+func applySpecialFsMount(rootfsPath string, m specs.Mount) error {
+	dstPath := filepath.Join(rootfsPath, m.Destination)
+	err := os.MkdirAll(dstPath, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create %s dir: %w", m.Destination, err)
+	}
+
+	flags, data := splitMountOptions(m.Options)
+	err = unix.Mount(m.Source, dstPath, m.Type, flags, data)
+	if err != nil {
+		return fmt.Errorf("failed to mount %s: %w", m.Destination, err)
+	}
+
+	return nil
+}
+
+// applyBindMount handles the bind mounts for the monitor rootfs
+func applyBindMount(rootfsPath string, m specs.Mount) error {
+	var mountFlags int
+	var propFlag []int
+	for _, o := range m.Options {
+		f, exists := mapMountFlag(o)
+		if exists {
+			if f.clear {
+				mountFlags &= ^f.flag
+			} else {
+				mountFlags |= f.flag
+			}
+			continue
+		}
+		fprop, err := mapRootfsPropagationFlag(o)
+		if err == nil {
+			propFlag = append(propFlag, fprop)
+		}
+		// Ignore unknown flags
+		// TODO: Handle unknown flags. These can be mount attribute flags
+		// or specific flags for a particular fs type.
+	}
+	err := fileFromHost(rootfsPath, m.Source, m.Destination, mountFlags, false)
+	if err != nil {
+		return err
+	}
+
+	dstPath := filepath.Join(rootfsPath, m.Destination)
+	for _, pFlag := range propFlag {
+		err = unix.Mount(dstPath, dstPath, "", uintptr(pFlag), "")
+		if err != nil {
+			return fmt.Errorf("failed to set propagation flag for %s: %w", m.Source, err)
+		}
+	}
+
+	return nil
+}
+
+// splitMountOptions separates mount options into the corresponding mount flags
+// and the remaining options, which are returned as a comma-separated data
+// string to be passed to mount(2).
+func splitMountOptions(options []string) (uintptr, string) {
+	var flags int
+	var data []string
+	for _, o := range options {
+		f, exists := mapMountFlag(o)
+		if exists {
+			if f.clear {
+				flags &= ^f.flag
+			} else {
+				flags |= f.flag
+			}
+			continue
+		}
+		data = append(data, o)
+	}
+
+	return uintptr(flags), strings.Join(data, ",")
 }
 
 // mapMountFlag retrieves the mount flags of a mount entry

@@ -557,9 +557,25 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	monitorMounts, err := mountsForMonitor(vmm.Path(), u.UruncCfg.Monitors[vmmType].DataPath)
+	if err != nil {
+		return err
+	}
+
+	rootfsMounts, err := rfsBuilder.getMounts()
+	if err != nil {
+		return fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
+	}
+	rootfsMounts = append(monitorMounts, rootfsMounts...)
+
+	err = applyMounts(rootfsParams.MonRootfs, rootfsMounts)
+	if err != nil {
+		return fmt.Errorf("failed to apply rootfs mounts: %w", err)
+	}
+
 	// Setup the rootfs for the monitor execution, creating necessary
 	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), u.UruncCfg.Monitors[vmmType].DataPath, vmm.UsesKVM(), withTUNTAP)
+	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
 		return err
 	}

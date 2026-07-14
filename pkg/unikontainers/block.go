@@ -22,8 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/moby/sys/mount"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
@@ -258,14 +256,11 @@ func (b blockRootfs) postSetup() error {
 		}
 	}
 
-	err := createTmpfs(b.monRootfs, "/tmp",
-		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
-		"1777", tmpfsSizeForBlockRootfs)
-	if err != nil {
-		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
-	}
+	return nil
+}
 
-	return err
+func (b blockRootfs) getMounts() ([]specs.Mount, error) {
+	return []specs.Mount{tmpfsMount("/tmp", tmpfsSizeForBlockRootfs)}, nil
 }
 
 func (b blockRootfs) getBlockDevs() ([]types.BlockDevParams, error) {

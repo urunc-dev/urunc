@@ -19,8 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -44,35 +42,24 @@ func (s sharedfsRootfs) preSetup() error {
 }
 
 func (s sharedfsRootfs) postSetup() error {
-	// Mount the container's rootfs inside the monitor rootfs
-	err := fileFromHost(s.monRootfs, s.mountedPath, containerRootfsMountPath, unix.MS_BIND|unix.MS_PRIVATE, false)
-	if err != nil {
-		return fmt.Errorf("failed to mount container's rootfs in monitor rootfs; %w", err)
-	}
+	return nil
+}
 
-	newCntrRootfs := filepath.Join(s.monRootfs, containerRootfsMountPath)
-	err = mountVolumes(newCntrRootfs, s.mounts)
-	if err != nil {
-		return fmt.Errorf("failed to mount volumes in container's rootfs; %w", err)
-	}
+func (s sharedfsRootfs) getMounts() ([]specs.Mount, error) {
+	// Mount the container's rootfs inside the monitor rootfs and then the
+	// container's volumes on top of it.
+	mounts := []specs.Mount{bindMount(s.mountedPath, containerRootfsMountPath)}
 
 	if s.sfsType == "virtiofs" {
 		// Get the virtiofsd binary from host in monRootfs
-		err = fileFromHost(s.monRootfs, s.vfsdConfig.Path, "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return fmt.Errorf("could not bind mount %s: %w", s.vfsdConfig.Path, err)
-		}
+		mounts = append(mounts, bindMount(s.vfsdConfig.Path, s.vfsdConfig.Path))
 	}
 
 	tmpfsSize := chooseTmpfsSize(s.sfsType, s.memory)
-	err = createTmpfs(s.monRootfs, "/tmp",
-		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
-		"1777", tmpfsSize)
-	if err != nil {
-		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
-	}
+	mounts = append(mounts, tmpfsMount("/tmp", tmpfsSize))
+	mounts = append(mounts, filterBindMounts(s.mounts)...)
 
-	return err
+	return mounts, nil
 }
 
 func (s sharedfsRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
@@ -133,4 +120,26 @@ func adjustPathsForSharedfs(path string) string {
 	}
 
 	return path
+}
+
+// filterBindMounts filters the mounts form the container's spec keeping only the
+// bind mounts and adjusts the Destination path to the mountpoint of the
+// container's rootfs inside the monitor rootfs.
+func filterBindMounts(mounts []specs.Mount) []specs.Mount {
+	var result []specs.Mount
+	for _, m := range mounts {
+		// Skip non-bind mounts
+		// TODO handle other types of mounts too
+		if m.Type != "bind" {
+			continue
+		}
+		result = append(result, specs.Mount{
+			Type:        "bind",
+			Source:      m.Source,
+			Destination: filepath.Join(containerRootfsMountPath, m.Destination),
+			Options:     m.Options,
+		})
+	}
+
+	return result
 }

@@ -17,8 +17,6 @@ package unikontainers
 import (
 	"fmt"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -43,14 +41,11 @@ func (i initrdRootfs) postSetup() error {
 		return fmt.Errorf("failed to update guest's initrd: %w", err)
 	}
 
-	err = createTmpfs(i.monRootfs, "/tmp",
-		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
-		"1777", tmpfsSizeForInitrdRootfs)
-	if err != nil {
-		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
-	}
+	return nil
+}
 
-	return err
+func (i initrdRootfs) getMounts() ([]specs.Mount, error) {
+	return []specs.Mount{tmpfsMount("/tmp", tmpfsSizeForInitrdRootfs)}, nil
 }
 
 func (i initrdRootfs) getBlockDevs() ([]types.BlockDevParams, error) {

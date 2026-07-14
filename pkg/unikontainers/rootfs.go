@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -35,9 +36,36 @@ const annotRootfsParams = "com.urunc.internal.rootfs.params"
 type rootfsBuilder interface {
 	preSetup() error
 	postSetup() error
+	getMounts() ([]specs.Mount, error)
 	getBlockDevs() ([]types.BlockDevParams, error)
 	getSharedDirs() (types.SharedfsParams, error)
 	preStart() error
+}
+
+// tmpfsMount creates a mount for a tmpfs in the form of "/tmp" at target
+func tmpfsMount(target string, size string) specs.Mount {
+	return specs.Mount{
+		Type:        "tmpfs",
+		Source:      "tmpfs",
+		Destination: target,
+		Options: []string{
+			"nosuid",
+			"noexec",
+			"strictatime",
+			"mode=1777",
+			"size=" + size,
+		},
+	}
+}
+
+// bindMount builds a private, non-recursive bind mount of source at target
+func bindMount(source string, target string) specs.Mount {
+	return specs.Mount{
+		Type:        "bind",
+		Source:      source,
+		Destination: target,
+		Options:     []string{"bind", "private"},
+	}
 }
 
 // rootfsSelector encapsulates the context for rootfs selection
@@ -61,14 +89,11 @@ func (n noRootfs) preSetup() error {
 }
 
 func (n noRootfs) postSetup() error {
-	err := createTmpfs(n.monRootfs, "/tmp",
-		unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_STRICTATIME,
-		"1777", tmpfsSizeForNoRootfs)
-	if err != nil {
-		err = fmt.Errorf("failed to create tmpfs for monitor's execution environment: %w", err)
-	}
+	return nil
+}
 
-	return err
+func (n noRootfs) getMounts() ([]specs.Mount, error) {
+	return []specs.Mount{tmpfsMount("/tmp", tmpfsSizeForNoRootfs)}, nil
 }
 
 func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
@@ -326,94 +351,11 @@ func changeRoot(rootfsDir string, pivot bool) error {
 	return nil
 }
 
-// nolint:gocyclo
 // prepareMonRootfs prepares the rootfs where the monitor will execute. It
 // essentially sets up the devices (KVM, snapshotter block device) that are required
-// for the guest execution and any other files (e.g. binaries).
-func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath string, needsKVM bool, needsTAP bool) error {
-	err := fileFromHost(monRootfs, monitorPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
-	if err != nil {
-		return err
-	}
-
-	// TODO: Remove these when we switch to static binaries
-	monitorName := filepath.Base(monitorPath)
-	if monitorName != "firecracker" {
-		err = fileFromHost(monRootfs, "/lib", "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return err
-		}
-
-		err = fileFromHost(monRootfs, "/lib64", "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			// If the file does not exist, just ignore it
-			if !os.IsNotExist(err) {
-				return err
-			}
-		}
-
-		err = fileFromHost(monRootfs, "/usr/lib", "", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return err
-		}
-	}
-
-	// TODO: Remove these when we switch to static binaries
-	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
-		var qDataPath string
-		var sBiosPath string
-		var err error
-		if monitorDataPath == "" {
-			qDataPath, err = findQemuDataDir("qemu")
-		} else {
-			qDataPath = filepath.Join(monitorDataPath, "qemu")
-			err = nil
-		}
-		if err != nil {
-			return err
-		}
-
-		err = fileFromHost(monRootfs, qDataPath, "/usr/share/qemu", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			return err
-		}
-
-		if monitorDataPath == "" {
-			sBiosPath, err = findQemuDataDir("seabios")
-		} else {
-			sBiosPath = filepath.Join(monitorDataPath, "seabios")
-			err = nil
-		}
-		if err != nil {
-			return fmt.Errorf("failed to get info of seabios directory: %w", err)
-		}
-		err = fileFromHost(monRootfs, sBiosPath, "/usr/share/seabios", unix.MS_BIND|unix.MS_PRIVATE, false)
-		if err != nil {
-			// In urunc-deploy and in some distros seabios does not exist and
-			// we do not need it. So if we could not find it, just ignore it.
-			if !os.IsNotExist(err) {
-				return err
-			}
-		}
-	}
-
-	newProcDir := filepath.Join(monRootfs, "/proc")
-	err = os.MkdirAll(newProcDir, 0555)
-	if err != nil {
-		return err
-	}
-
-	err = unix.Mount("proc", newProcDir, "proc", 0, "")
-	if err != nil {
-		return err
-	}
-
-	err = createTmpfs(monRootfs, "/dev", unix.MS_NOSUID|unix.MS_STRICTATIME, "755", "65536k")
-	if err != nil {
-		return err
-	}
-
-	err = setupDev(monRootfs, "/dev/null")
+// for the monitor execution
+func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needsTAP bool) error {
+	err := setupDev(monRootfs, "/dev/null")
 	if err != nil {
 		return err
 	}
@@ -435,21 +377,6 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 		if err != nil {
 			return err
 		}
-	}
-
-	// Setup /dev/pts for PTY support (needed for console and debugging tools like cntr)
-	// This allows tools like cntr to attach to the container with a shell
-	devPtsDir := filepath.Join(monRootfs, "/dev/pts")
-	err = os.MkdirAll(devPtsDir, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create /dev/pts directory: %w", err)
-	}
-
-	// Mount devpts filesystem
-	// Using newinstance creates an isolated pts namespace for this container
-	err = unix.Mount("devpts", devPtsDir, "devpts", unix.MS_NOSUID|unix.MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620,gid=5")
-	if err != nil {
-		return fmt.Errorf("failed to mount devpts: %w", err)
 	}
 
 	// Create /dev/ptmx as a symlink to /dev/pts/ptmx
@@ -474,4 +401,74 @@ func prepareMonRootfs(monRootfs string, monitorPath string, monitorDataPath stri
 	}
 
 	return nil
+}
+
+// mountsForMonitor returns all the required mounts from the host for the
+// monitor execution: the binary, supporting libraries and data directories.
+// These are the host files that need to be mirrored inside the monitor rootfs.
+// In addition, it also includes the special filesystems required for the monitor
+// execution (e.g. procfs)
+func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount, error) {
+	procMount := specs.Mount{
+		Type:        "proc",
+		Source:      "proc",
+		Destination: "/proc",
+	}
+	devMount := specs.Mount{
+		Type:        "tmpfs",
+		Source:      "tmpfs",
+		Destination: "/dev",
+		Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536k"},
+	}
+	devPtsMount := specs.Mount{
+		Type:        "devpts",
+		Source:      "devpts",
+		Destination: "/dev/pts",
+		Options:     []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620"},
+	}
+
+	mounts := []specs.Mount{procMount, devMount, devPtsMount, bindMount(monitorPath, monitorPath)}
+
+	monitorName := filepath.Base(monitorPath)
+	// TODO: Remove most of these when we switch to static binaries.
+	if monitorName != "firecracker" {
+		mounts = append(mounts, bindMount("/lib", "/lib"))
+
+		// If /lib64 does not exist, just ignore it
+		if _, err := os.Stat("/lib64"); err == nil {
+			mounts = append(mounts, bindMount("/lib64", "/lib64"))
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+
+		mounts = append(mounts, bindMount("/usr/lib", "/usr/lib"))
+	}
+
+	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
+		qDataPath := filepath.Join(monitorDataPath, "qemu")
+		sBiosPath := filepath.Join(monitorDataPath, "seabios")
+		if monitorDataPath == "" {
+			var err error
+			qDataPath, err = findQemuDataDir("qemu")
+			if err != nil {
+				return nil, err
+			}
+			sBiosPath, err = findQemuDataDir("seabios")
+			if err != nil {
+				return nil, fmt.Errorf("failed to get info of seabios directory: %w", err)
+			}
+		}
+
+		mounts = append(mounts, bindMount(qDataPath, "/usr/share/qemu"))
+
+		// In urunc-deploy and in some distros seabios does not exist and
+		// we do not need it. So if we could not find it, just ignore it.
+		if _, err := os.Stat(sBiosPath); err == nil {
+			mounts = append(mounts, bindMount(sBiosPath, "/usr/share/seabios"))
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+
+	return mounts, nil
 }
