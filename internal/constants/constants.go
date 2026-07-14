@@ -15,3 +15,5 @@
 package constants
 
 const TimestampTargetFile = "/tmp/urunc.zlog"
+
+const AnnotRootfsParams = "com.urunc.internal.rootfs.params"

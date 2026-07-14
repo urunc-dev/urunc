@@ -29,6 +29,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -433,7 +434,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	var rootfsParams types.RootfsParams
 
 	// Read the rootfs choice written by the shim.
-	if rootfsParamsJSON := u.Spec.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
+	if rootfsParamsJSON := u.Spec.Annotations[constants.AnnotRootfsParams]; rootfsParamsJSON != "" {
 		if err := json.Unmarshal([]byte(rootfsParamsJSON), &rootfsParams); err != nil {
 			return fmt.Errorf("could not decode guest rootfs params: %w", err)
 		}
