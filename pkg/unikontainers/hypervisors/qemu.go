@@ -71,10 +71,10 @@ func (q *Qemu) Path() string {
 }
 
 func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
-	qemuMem := BytesToStringMB(args.MemSizeB)
+	qemuMem := BytesToBString(args.MemSizeB)
 	exArgs := []string{
 		q.binaryPath,
-		"-m", qemuMem + "M",
+		"-m", qemuMem + "B",
 		"-L", "/usr/share/qemu", // Set the path for qemu bios/data
 		"-cpu", "host", // Choose CPU
 		"-enable-kvm",      // Enable KVM to use CPU virt extensions
@@ -154,7 +154,7 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		sharedFSOption := ukernel.MonitorSharedfsCli(args.Sharedfs.Type, args.Sharedfs.Path)
 		exArgs = append(exArgs, sharedFSOption...)
 	case "virtiofs":
-		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
+		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sB,mem-path=/tmp,share=on", qemuMem)
 		exArgs = append(exArgs,
 			"-object", objArg,
 			"-numa", "node,memdev=mem",
