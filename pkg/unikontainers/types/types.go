@@ -54,10 +54,13 @@ type NetDevParams struct {
 }
 
 type BlockDevParams struct {
-	Source     string
-	MountPoint string
-	FsType     string
-	ID         string
+	Source         string
+	MountPoint     string
+	FsType         string
+	ID             string
+	HostMountPoint string
+	LoopAutoclear  bool
+	MountOptions   string
 }
 
 type SharedfsParams struct {

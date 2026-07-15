@@ -15,6 +15,7 @@ require (
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackpal/gateway v1.2.0
 	github.com/moby/sys/mount v0.3.5
+	github.com/moby/sys/mountinfo v0.7.2
 	github.com/moby/sys/userns v0.1.0
 	github.com/nubificus/hedge_cli v0.0.3
 	github.com/onsi/ginkgo/v2 v2.28.1
@@ -62,7 +63,6 @@ require (
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
-	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect

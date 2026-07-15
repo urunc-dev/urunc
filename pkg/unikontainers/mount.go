@@ -75,8 +75,11 @@ func createTmpfs(monRootfs string, path string, flags uintptr, data string) erro
 }
 
 // setupDevices creates every device from the list inside monitor's rootfs
-func setupDevices(monRootfs string, devices []specs.LinuxDevice) error {
+func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) error {
 	for _, dev := range devices {
+		if !needsTAP && dev.Path == "/dev/net/tun" {
+			continue
+		}
 		err := setupDev(monRootfs, dev)
 		if err != nil {
 			return err

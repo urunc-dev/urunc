@@ -197,22 +197,24 @@ func (u *Unikontainer) InitialSetup() error {
 		"mountedPath": rootfsParams.MountedPath,
 	}).Debug("guest rootfs params")
 
-	if rootfsParams.Type == "block" {
-		rfsBuilder := blockRootfs{
-			mounts:        u.Spec.Mounts,
-			monRootfs:     rootfsParams.MonRootfs,
-			mountedPath:   rootfsParams.MountedPath,
-			path:          rootfsParams.Path,
-			kernelPath:    unikernelPath,
-			initrdPath:    initrdPath,
-			uruncJSONPath: uruncJSONFilename,
-			guestType:     unikernelType,
-			guest:         unikernel,
-		}
-		err := rfsBuilder.preSetup()
-		if err != nil {
-			return fmt.Errorf("pre setup step for rootfs failed: %w", err)
-		}
+	vmmType := u.State.Annotations[annotHypervisor]
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
+	if err != nil {
+		return err
+	}
+
+	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
+	memory := monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources)
+	rfsBuilder := u.newRootfsBuilder(rootfsParams, unikernel, unikernelPath, initrdPath, memory)
+
+	err = rfsBuilder.preSetup()
+	if err != nil {
+		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
+	}
+
+	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath)
+	if err != nil {
+		return err
 	}
 
 	u.State.Status = specs.StateCreating
@@ -221,6 +223,12 @@ func (u *Unikontainer) InitialSetup() error {
 	if err != nil {
 		return err
 	}
+
+	err = saveMonitorResources(u.BaseDir, monRes)
+	if err != nil {
+		return fmt.Errorf("failed to store monitor resources: %w", err)
+	}
+
 	return u.saveContainerState()
 }
 
@@ -350,6 +358,94 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 	return result, nil
 }
 
+// getMonitorResources collects every mount and device required for the monitor's
+// execution environment, plus the block parameters passed to the guest.
+func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string) (monitorResources, error) {
+	var res monitorResources
+	var err error
+
+	res.Mounts, err = mountsForMonitor(vmm.Path(), monitorDataPath)
+	if err != nil {
+		return res, err
+	}
+	rootfsMounts, err := rfs.getMounts()
+	if err != nil {
+		return res, fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
+	}
+	res.Mounts = append(res.Mounts, rootfsMounts...)
+
+	res.Devices, err = getMonitorDevices(vmm.UsesKVM())
+	if err != nil {
+		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
+	}
+	res.BlockArgs, err = rfs.getBlockDevs()
+	if err != nil {
+		return res, fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
+	}
+	blockDevs, err := blockDevNodes(res.BlockArgs, rootfsParams)
+	if err != nil {
+		return res, fmt.Errorf("failed to get block devices which should be replicated inside monitor's execution environment: %w", err)
+	}
+	res.Devices = append(res.Devices, blockDevs...)
+
+	return res, nil
+}
+
+// newRootfsBuilder constructs the rootfsBuilder matching the selected guest
+// rootfs. It is shared by InitialSetup (which gathers the monitor resources) and
+// Exec (which performs the per-rootfs actions).
+func (u *Unikontainer) newRootfsBuilder(rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) rootfsBuilder {
+	switch rootfsParams.Type {
+	case "block":
+		return blockRootfs{
+			mounts:        u.Spec.Mounts,
+			monRootfs:     rootfsParams.MonRootfs,
+			mountedPath:   rootfsParams.MountedPath,
+			path:          rootfsParams.Path,
+			kernelPath:    unikernelPath,
+			initrdPath:    initrdPath,
+			uruncJSONPath: uruncJSONFilename,
+			guestType:     u.State.Annotations[annotType],
+			guest:         unikernel,
+		}
+	case "initrd":
+		return initrdRootfs{
+			mounts:             u.Spec.Mounts,
+			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
+			monRootfs:          rootfsParams.MonRootfs,
+		}
+	case "virtiofs", "9pfs":
+		return sharedfsRootfs{
+			mounts:      u.Spec.Mounts,
+			monRootfs:   rootfsParams.MonRootfs,
+			mountedPath: rootfsParams.MountedPath,
+			sfsType:     rootfsParams.Type,
+			vfsdConfig:  u.UruncCfg.ExtraBins["virtiofsd"],
+			sharedPath:  containerRootfsMountPath,
+			memory:      memory,
+		}
+	default:
+		return noRootfs{
+			monRootfs:            rootfsParams.MonRootfs,
+			annotBlockPath:       u.State.Annotations[annotBlock],
+			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
+		}
+	}
+}
+
+// monitorMemoryBytes returns the guest memory size in bytes, honoring a memory
+// limit from the OCI spec and falling back to the monitor's configured default.
+func monitorMemoryBytes(defaultMem uint, resources *specs.LinuxResources) uint64 {
+	mem := uint64(defaultMem * 1024 * 1024)
+	if resources != nil && resources.Memory != nil {
+		if resources.Memory.Limit != nil && *resources.Memory.Limit > 0 {
+			mem = uint64(*resources.Memory.Limit) // nolint:gosec
+		}
+	}
+
+	return mem
+}
+
 // nolint:gocyclo
 func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(m.TS15)
@@ -409,19 +505,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		UnikernelPath: unikernelPath,
 		InitrdPath:    initrdPath,
 		Seccomp:       true, // Enable Seccomp by default
-		MemSizeB:      uint64(defaultMemSizeMB * 1024 * 1024),
+		MemSizeB:      monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources),
 		VCPUs:         uint(defaultVCPUs),
 		Environment:   os.Environ(),
-	}
-
-	// ExecArgs
-	// If memory limit is set in spec, use it instead of the config default value
-	if u.Spec.Linux.Resources != nil && u.Spec.Linux.Resources.Memory != nil {
-		if u.Spec.Linux.Resources.Memory.Limit != nil {
-			if *u.Spec.Linux.Resources.Memory.Limit > 0 {
-				vmmArgs.MemSizeB = uint64(*u.Spec.Linux.Resources.Memory.Limit) // nolint:gosec
-			}
-		}
 	}
 
 	// ExecArgs
@@ -465,9 +551,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// ExecArgs
 	vmmArgs.Net = netArgs
 
-	// virtiofsd config
-	virtiofsdConfig := u.UruncCfg.ExtraBins["virtiofsd"]
-
 	// guest rootfs
 	// block
 	// handle guest's rootfs.
@@ -498,51 +581,11 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		"mon_rootfs":  rootfsParams.MonRootfs,
 	}).Debug("guest rootfs params")
 
-	// TODO: Add support for using both an existing
-	// block based snapshot of the container's rootfs
-	// and an auxiliary block image placed in the container's image
-	// Currently if a block Image is present in the container's image, then
-	// we will just use this image.
-	var rfsBuilder rootfsBuilder
-	switch rootfsParams.Type {
-	case "block":
-		rfsBuilder = blockRootfs{
-			mounts:        u.Spec.Mounts,
-			monRootfs:     rootfsParams.MonRootfs,
-			mountedPath:   rootfsParams.MountedPath,
-			path:          rootfsParams.Path,
-			kernelPath:    unikernelPath,
-			initrdPath:    initrdPath,
-			uruncJSONPath: uruncJSONFilename,
-			guestType:     unikernelType,
-			guest:         unikernel,
-		}
-	case "initrd":
-		rfsBuilder = initrdRootfs{
-			mounts:             u.Spec.Mounts,
-			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
-			monRootfs:          rootfsParams.MonRootfs,
-		}
-	case "virtiofs", "9pfs":
-		rfsBuilder = sharedfsRootfs{
-			mounts:      u.Spec.Mounts,
-			monRootfs:   rootfsParams.MonRootfs,
-			mountedPath: rootfsParams.MountedPath,
-			sfsType:     rootfsParams.Type,
-			vfsdConfig:  virtiofsdConfig,
-			sharedPath:  containerRootfsMountPath,
-			memory:      vmmArgs.MemSizeB,
-		}
+	rfsBuilder := u.newRootfsBuilder(rootfsParams, unikernel, unikernelPath, initrdPath, vmmArgs.MemSizeB)
+	if rootfsParams.Type == "virtiofs" || rootfsParams.Type == "9pfs" {
 		// Update the paths of the files we need to pass in the monitor process.
 		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
 		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-	default:
-		uniklog.Debug("No rootfs for guest")
-		rfsBuilder = noRootfs{
-			monRootfs:            rootfsParams.MonRootfs,
-			annotBlockPath:       u.State.Annotations[annotBlock],
-			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
-		}
 	}
 
 	if err = os.MkdirAll(rootfsParams.MonRootfs, 0o755); err != nil {
@@ -557,25 +600,18 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	monitorMounts, err := mountsForMonitor(vmm.Path(), u.UruncCfg.Monitors[vmmType].DataPath)
+	// The monitor mounts and devices were gathered and stored in a file during
+	// InitialSetup; here we just apply them. postSetup applies the container's own
+	// bind mounts on top of the shared rootfs, and setupDevices decides whether to
+	// create the TUN/TAP device based on the container's network configuration.
+	monRes, err := loadMonitorResources(u.BaseDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load monitor resources: %w", err)
 	}
 
-	rootfsMounts, err := rfsBuilder.getMounts()
-	if err != nil {
-		return fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
-	}
-	rootfsMounts = append(monitorMounts, rootfsMounts...)
-
-	err = applyMounts(rootfsParams.MonRootfs, rootfsMounts)
+	err = applyMounts(rootfsParams.MonRootfs, monRes.Mounts)
 	if err != nil {
 		return fmt.Errorf("failed to apply rootfs mounts: %w", err)
-	}
-
-	monitorDevs, err := getMonitorDevices(vmm.UsesKVM(), withTUNTAP)
-	if err != nil {
-		return fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}
 
 	err = rfsBuilder.postSetup()
@@ -583,18 +619,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return fmt.Errorf("post setup step for rootfs failed: %w", err)
 	}
 
-	blockArgs, err := rfsBuilder.getBlockDevs()
-	if err != nil {
-		return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
-	}
-
-	blockDevs, err := blockDevNodes(blockArgs, rootfsParams)
-	if err != nil {
-		return fmt.Errorf("failed to get block devices which should be replicated inside monitor's execution environment: %w", err)
-	}
-	monitorDevs = append(monitorDevs, blockDevs...)
-
-	err = setupDevices(rootfsParams.MonRootfs, monitorDevs)
+	err = setupDevices(rootfsParams.MonRootfs, monRes.Devices, withTUNTAP)
 	if err != nil {
 		return fmt.Errorf("failed to create devices in monitor rootfs: %w", err)
 	}
@@ -604,14 +629,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	sharedfsArgs, err := rfsBuilder.getSharedDirs()
-	if err != nil {
-		uniklog.Errorf("failed to get directories to share with sandbox: %v", err)
-		return err
-	}
-
 	metrics.Capture(m.TS17)
-
 	// vAccel setup
 	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
 	if err != nil {
@@ -635,7 +653,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		if err != nil {
 			uniklog.Debugf("failed to prepare get required vsock devices: %v", err)
 		}
-		err = setupDevices(rootfsParams.MonRootfs, vaccelDevices)
+		err = setupDevices(rootfsParams.MonRootfs, vaccelDevices, false)
 		if err != nil {
 			return fmt.Errorf("failed to create devices in monitor rootfs: %w", err)
 		}
@@ -648,9 +666,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	unikernelParams.Rootfs = rootfsParams
 
 	// unikernelParams
-	unikernelParams.Block = blockArgs
+	// The block parameters were gathered in InitialSetup and stored in the
+	// monitor resources file.
+	unikernelParams.Block = monRes.BlockArgs
 
 	// ExecArgs
+	sharedfsArgs, err := rfsBuilder.getSharedDirs()
+	if err != nil {
+		return fmt.Errorf("failed to get directories to share with sandbox: %w", err)
+	}
 	vmmArgs.Sharedfs = sharedfsArgs
 
 	// unikernel
@@ -819,6 +843,20 @@ func (u *Unikontainer) Delete() error {
 
 	if u.isRunning() {
 		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
+	}
+
+	// Restore the block volume mounts that were unmounted during create,
+	// so their sources become discoverable by future containers. Do it in
+	// a best-effort way, since a failure to restore a mount should not
+	// prevent the deletion of the container.
+	monRes, err := loadMonitorResources(u.BaseDir)
+	if err != nil {
+		uniklog.Errorf("failed to load monitor resources: %v", err)
+	}
+
+	err = restoreBlockVolumes(monRes.BlockArgs)
+	if err != nil {
+		uniklog.Errorf("failed to restore block volume mounts: %v", err)
 	}
 
 	// get a monitor instance of the running monitor

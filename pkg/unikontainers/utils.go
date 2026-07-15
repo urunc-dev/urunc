@@ -32,15 +32,54 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/internal/constants"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 const (
 	configFilename    = "config.json"
 	stateFilename     = "state.json"
+	monitorFilename   = "monitor.json"
 	initPidFilename   = "init.pid"
 	uruncJSONFilename = "urunc.json"
 	rootfsDirName     = "rootfs"
 )
+
+// monitorResources holds the mounts and devices that must be replicated inside
+// the monitor's rootfs, along with the block parameters the guest needs.
+type monitorResources struct {
+	Mounts    []specs.Mount          `json:"mounts"`
+	Devices   []specs.LinuxDevice    `json:"devices"`
+	BlockArgs []types.BlockDevParams `json:"blockArgs"`
+}
+
+// saveMonitorResources stores the monitorResources passed as an argument in a JSON
+// file under the container's base
+// directory, so that the reexec's Exec can read it back.
+func saveMonitorResources(baseDir string, res monitorResources) error {
+	data, err := json.Marshal(res)
+	if err != nil {
+		return err
+	}
+
+	path := filepath.Join(baseDir, monitorFilename)
+
+	return os.WriteFile(path, data, 0o644) //nolint: gosec
+}
+
+// loadMonitorResources reads the monitor resources file stored by InitialSetup.
+func loadMonitorResources(baseDir string) (monitorResources, error) {
+	var res monitorResources
+
+	path := filepath.Join(baseDir, monitorFilename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return res, err
+	}
+
+	err = json.Unmarshal(data, &res)
+
+	return res, err
+}
 
 // copy sourceFile to targetDir
 // creates targetDir and all necessary parent directories

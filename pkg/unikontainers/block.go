@@ -23,9 +23,11 @@ import (
 	"strings"
 
 	"github.com/moby/sys/mount"
+	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 // TODO: Find and set the correct size for the tmpfs in the host
@@ -75,7 +77,7 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 		}
 
 		preDash := strings.Fields(parts[0])
-		if len(preDash) < 5 {
+		if len(preDash) < 6 {
 			continue
 		}
 		postDash := strings.Fields(parts[1])
@@ -87,11 +89,15 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 				"mounted at": path,
 				"device":     postDash[1],
 				"fstype":     postDash[0],
+				"options":    preDash[5],
 			}).Debug("Found block device")
 
 			blockDev.Source = postDash[1]
 			blockDev.FsType = postDash[0]
 			blockDev.MountPoint = path
+			// Keep the-mount VFS options (field 6 of mountinfo)
+			// to restore them later in the delete path.
+			blockDev.MountOptions = preDash[5]
 			blockDev.ID = ""
 			continue
 		}
@@ -206,17 +212,111 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 			return nil, err
 		}
 		if ukernel.SupportsFS(mInfo.FsType) {
+			// So, there was an issue which was manifested from the testing.
+			// If we have a file (e.g. ext2) and mount it, then we use
+			// a loop device for the mount and this is what is shown
+			// in the mount list. However, since we perform the unmount
+			// the device might also get removed. See
+			// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-block-loop
+			// If the device gets removed, then we attach nothing to the
+			// sandbox. To resolve this we remove the autoclear flag
+			// and therefore the device will persist.
+			// NOTE: Although we restore the autoclear flag in the delete path,
+			// if delete is never called then the autoclear flag will never
+			// get restored.and remounted
+			// TODO; Add the above note in a documentation for storage
+			// handling
+			cleared, err := setLoopAutoclear(mInfo.Source, false)
+			if err != nil {
+				return nil, err
+			}
+			mInfo.LoopAutoclear = cleared
 			err = mount.Unmount(mInfo.MountPoint)
 			if err != nil {
 				return nil, err
 			}
 			mInfo.ID = fmt.Sprintf("vol%d", i)
+			mInfo.HostMountPoint = mInfo.MountPoint
 			mInfo.MountPoint = m.Destination
 			blkImgs = append(blkImgs, mInfo)
 		}
 	}
 
 	return blkImgs, nil
+}
+
+// restoreBlockVolumes mounts the block volume sources that were unmounted
+// during create
+func restoreBlockVolumes(blockArgs []types.BlockDevParams) error {
+	for _, b := range blockArgs {
+		// Only volumes gathered from the container's mounts carry the
+		// host mountpoint where their source was originally mounted.
+		if b.HostMountPoint == "" {
+			continue
+		}
+		mounted, err := mountinfo.Mounted(b.HostMountPoint)
+		if err != nil {
+			return fmt.Errorf("failed to check if %s is a mountpoint: %w", b.HostMountPoint, err)
+		}
+		if mounted {
+			continue
+		}
+
+		flags, _ := splitMountOptions(strings.Split(b.MountOptions, ","))
+		err = unix.Mount(b.Source, b.HostMountPoint, b.FsType, flags, "")
+		if err != nil {
+			return fmt.Errorf("failed to remount %s at %s: %w", b.Source, b.HostMountPoint, err)
+		}
+
+		if b.LoopAutoclear {
+			_, err = setLoopAutoclear(b.Source, true)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// setLoopAutoclear sets or clears the autoclear flag of a loop device and
+// returns true when the flag was changed. It returns false without an error
+// when the path is not a loop device or the flag already has the wanted value.
+func setLoopAutoclear(devPath string, autoclear bool) (bool, error) {
+	_, err := os.Stat(filepath.Join("/sys/class/block", filepath.Base(devPath), "loop"))
+	if os.IsNotExist(err) {
+		// Not a loop device
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	dev, err := os.OpenFile(devPath, os.O_RDWR, 0)
+	if err != nil {
+		return false, fmt.Errorf("failed to open %s: %w", devPath, err)
+	}
+	defer dev.Close()
+
+	info, err := unix.IoctlLoopGetStatus64(int(dev.Fd()))
+	if err != nil {
+		return false, fmt.Errorf("failed to get the status of %s: %w", devPath, err)
+	}
+	if autoclear == (info.Flags&unix.LO_FLAGS_AUTOCLEAR != 0) {
+		return false, nil
+	}
+
+	if autoclear {
+		info.Flags |= unix.LO_FLAGS_AUTOCLEAR
+	} else {
+		info.Flags &^= unix.LO_FLAGS_AUTOCLEAR
+	}
+	err = unix.IoctlLoopSetStatus64(int(dev.Fd()), info)
+	if err != nil {
+		return false, fmt.Errorf("failed to set the status of %s: %w", devPath, err)
+	}
+
+	return true, nil
 }
 
 // blockDevNodes transforms a list of types.BlockDevParams to a list of

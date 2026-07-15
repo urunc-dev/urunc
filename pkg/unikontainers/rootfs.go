@@ -15,6 +15,7 @@
 package unikontainers
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -74,7 +75,7 @@ func deviceFromHost(path string) (specs.LinuxDevice, error) {
 	var devStat unix.Stat_t
 	err := unix.Stat(path, &devStat)
 	if err != nil {
-		return specs.LinuxDevice{}, fmt.Errorf("failed to stat dev %s: %w", path, err)
+		return specs.LinuxDevice{}, err
 	}
 
 	var devType string
@@ -387,7 +388,7 @@ func changeRoot(rootfsDir string, pivot bool) error {
 
 // getMonitorDevices returns the devices which are needed for the execution of
 // the monitor process
-func getMonitorDevices(needsKVM bool, needsTAP bool) ([]specs.LinuxDevice, error) {
+func getMonitorDevices(needsKVM bool) ([]specs.LinuxDevice, error) {
 	nullDev, err := deviceFromHost("/dev/null")
 	if err != nil {
 		return nil, fmt.Errorf("could not get host device /dev/null: %w", err)
@@ -396,15 +397,21 @@ func getMonitorDevices(needsKVM bool, needsTAP bool) ([]specs.LinuxDevice, error
 	if err != nil {
 		return nil, fmt.Errorf("could not get host device /dev/urandom: %w", err)
 	}
-	devices := []specs.LinuxDevice{nullDev, randomDev}
-
-	if needsTAP {
-		tunDev, err := deviceFromHost("/dev/net/tun")
-		if err != nil {
+	// The tun device is always included because in urunc create we can not know
+	// if there will be a virtual ethernet device or not, since the CNI hooks
+	// have not executed yet. Therefore, the decision about whether it is actually
+	// created in the monitor rootfs is decided in Exec, which checks the
+	// network configuration. However, if the host does not have the "/dev/net/tun"
+	// device then simply skip it and fail later if the container requires network
+	tunDev, err := deviceFromHost("/dev/net/tun")
+	if err != nil {
+		if errors.Is(err, unix.ENOENT) {
+			uniklog.Warnf("could not find /dev/net/tun in host, skipping it")
+		} else {
 			return nil, fmt.Errorf("could not get host device /dev/net/tun: %w", err)
 		}
-		devices = append(devices, tunDev)
 	}
+	devices := []specs.LinuxDevice{nullDev, randomDev, tunDev}
 
 	if needsKVM {
 		kvmDev, err := deviceFromHost("/dev/kvm")
