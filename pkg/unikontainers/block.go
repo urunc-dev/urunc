@@ -187,7 +187,7 @@ func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDe
 
 // Search all the mount entries in the container's config and
 // find the ones that come from a block.
-func getBlockVolumes(monRootfs string, mounts []specs.Mount, ukernel types.Unikernel) ([]types.BlockDevParams, error) {
+func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.BlockDevParams, error) {
 	blkImgs := []types.BlockDevParams{}
 	for i, m := range mounts {
 		// We check only bind mounts
@@ -210,10 +210,6 @@ func getBlockVolumes(monRootfs string, mounts []specs.Mount, ukernel types.Unike
 			if err != nil {
 				return nil, err
 			}
-			err = setupDev(monRootfs, mInfo.Source)
-			if err != nil {
-				return nil, err
-			}
 			mInfo.ID = fmt.Sprintf("vol%d", i)
 			mInfo.MountPoint = m.Destination
 			blkImgs = append(blkImgs, mInfo)
@@ -221,6 +217,32 @@ func getBlockVolumes(monRootfs string, mounts []specs.Mount, ukernel types.Unike
 	}
 
 	return blkImgs, nil
+}
+
+// blockDevNodes transforms a list of types.BlockDevParams to a list of
+// specs.LinuxDevice which cna be then used for replicating these block
+// devices form the host to the monitor's execution environment.
+func blockDevNodes(blockArgs []types.BlockDevParams, rootfs types.RootfsParams) ([]specs.LinuxDevice, error) {
+	if rootfs.Type != "block" {
+		return nil, nil
+	}
+
+	var blockDevs []specs.LinuxDevice
+	for _, b := range blockArgs {
+		// The rootfs device is a real host device only when a container rootfs
+		// was converted to a block device (MountedPath set). When it is an
+		// explicit block image referenced by an annotation, no node is created.
+		if b.Source == rootfs.Path && rootfs.MountedPath == "" {
+			continue
+		}
+		bDev, err := deviceFromHost(b.Source)
+		if err != nil {
+			return nil, err
+		}
+		blockDevs = append(blockDevs, bDev)
+	}
+
+	return blockDevs, nil
 }
 
 func (b blockRootfs) preSetup() error {
@@ -249,13 +271,6 @@ func (b blockRootfs) preSetup() error {
 }
 
 func (b blockRootfs) postSetup() error {
-	if b.mountedPath != "" {
-		err := setupDev(b.monRootfs, b.path)
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -280,7 +295,7 @@ func (b blockRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
 	}
 
 	blockArgs = append(blockArgs, rootfsBlock)
-	blockFromMounts, err := getBlockVolumes(b.monRootfs, b.mounts, b.guest)
+	blockFromMounts, err := getBlockVolumes(b.mounts, b.guest)
 	if err != nil {
 		return nil, err
 	}

@@ -68,6 +68,40 @@ func bindMount(source string, target string) specs.Mount {
 	}
 }
 
+// deviceFromHost finds a device in the host from the path and returns its info
+// in the form of specs.LinuxDevice
+func deviceFromHost(path string) (specs.LinuxDevice, error) {
+	var devStat unix.Stat_t
+	err := unix.Stat(path, &devStat)
+	if err != nil {
+		return specs.LinuxDevice{}, fmt.Errorf("failed to stat dev %s: %w", path, err)
+	}
+
+	var devType string
+	switch devStat.Mode & unix.S_IFMT {
+	case unix.S_IFCHR:
+		devType = "c"
+	case unix.S_IFBLK:
+		devType = "b"
+	default:
+		return specs.LinuxDevice{}, fmt.Errorf("%s is not a device node", path)
+	}
+
+	mode := os.FileMode(devStat.Mode & 0o777)
+	uid := devStat.Uid
+	gid := devStat.Gid
+
+	return specs.LinuxDevice{
+		Path:     path,
+		Type:     devType,
+		Major:    int64(unix.Major(uint64(devStat.Rdev))),
+		Minor:    int64(unix.Minor(uint64(devStat.Rdev))),
+		FileMode: &mode,
+		UID:      &uid,
+		GID:      &gid,
+	}, nil
+}
+
 // rootfsSelector encapsulates the context for rootfs selection
 type rootfsSelector struct {
 	bundle     string
@@ -351,38 +385,44 @@ func changeRoot(rootfsDir string, pivot bool) error {
 	return nil
 }
 
-// prepareMonRootfs prepares the rootfs where the monitor will execute. It
-// essentially sets up the devices (KVM, snapshotter block device) that are required
-// for the monitor execution
-func prepareMonRootfs(monRootfs string, monitorPath string, needsKVM bool, needsTAP bool) error {
-	err := setupDev(monRootfs, "/dev/null")
+// getMonitorDevices returns the devices which are needed for the execution of
+// the monitor process
+func getMonitorDevices(needsKVM bool, needsTAP bool) ([]specs.LinuxDevice, error) {
+	nullDev, err := deviceFromHost("/dev/null")
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not get host device /dev/null: %w", err)
 	}
-
-	err = setupDev(monRootfs, "/dev/urandom")
+	randomDev, err := deviceFromHost("/dev/urandom")
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not get host device /dev/urandom: %w", err)
 	}
+	devices := []specs.LinuxDevice{nullDev, randomDev}
 
 	if needsTAP {
-		err = setupDev(monRootfs, "/dev/net/tun")
+		tunDev, err := deviceFromHost("/dev/net/tun")
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("could not get host device /dev/net/tun: %w", err)
 		}
+		devices = append(devices, tunDev)
 	}
 
 	if needsKVM {
-		err = setupDev(monRootfs, "/dev/kvm")
+		kvmDev, err := deviceFromHost("/dev/kvm")
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("could not get host device /dev/kvm: %w", err)
 		}
+		devices = append(devices, kvmDev)
 	}
 
+	return devices, nil
+}
+
+// setupConsole setups a /dev/console file for the monitor's execution environment
+func setupConsole(monRootfs string) error {
 	// Create /dev/ptmx as a symlink to /dev/pts/ptmx
 	// This is the standard way to provide the PTY master device
 	ptmxPath := filepath.Join(monRootfs, "/dev/ptmx")
-	err = os.Symlink("pts/ptmx", ptmxPath)
+	err := os.Symlink("pts/ptmx", ptmxPath)
 	if err != nil && !os.IsExist(err) {
 		return fmt.Errorf("failed to create /dev/ptmx symlink: %w", err)
 	}

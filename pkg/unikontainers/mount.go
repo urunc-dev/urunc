@@ -22,6 +22,7 @@ package unikontainers
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,48 +74,50 @@ func createTmpfs(monRootfs string, path string, flags uintptr, data string) erro
 	return nil
 }
 
-// SetupDev set ups one new device in the container's rootfs.
+// setupDevices creates every device from the list inside monitor's rootfs
+func setupDevices(monRootfs string, devices []specs.LinuxDevice) error {
+	for _, dev := range devices {
+		err := setupDev(monRootfs, dev)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// setupDev set ups one new device in the container's rootfs.
 // This function will get the major and minor number of
 // the device from the host's rootfs and it will replicate the device
 // inside the container's rootfs.
-// When running in a user namespace, urunc bind-mounts the host device node to avoid EPERM from mknod.
-// When not running in a user namespace, urunc creates the device node with mknod and adds rw for other
-// users so non-root monitors can access it.
-func setupDev(monRootfs string, devPath string) error {
+// When running in a user namespace, urunc bind-mounts the host device node
+// instead of using mknod.
+func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	// In a user namespace, always bind-mount the existing host device node.
 	// Only MS_BIND is used here (no extra flags) to mirror runc's device handling.
 	if userns.RunningInUserNS() {
-		return fileFromHost(monRootfs, devPath, "", unix.MS_BIND, false)
+		return fileFromHost(monRootfs, dev.Path, "", unix.MS_BIND, false)
 	}
 
-	// Get info of the original file
-	var devStat unix.Stat_t
-	err := unix.Stat(devPath, &devStat)
-	if err != nil {
-		return fmt.Errorf("failed to stat dev %s: %w", devPath, err)
+	var devType uint32
+	switch dev.Type {
+	case "c":
+		devType = unix.S_IFCHR
+	case "b":
+		devType = unix.S_IFBLK
+	default:
+		return fmt.Errorf("%s is not a device node", dev.Path)
 	}
-
-	// mask file's mode
-	mode := devStat.Mode & unix.S_IFMT
-	if mode != unix.S_IFCHR && mode != unix.S_IFBLK {
-		return fmt.Errorf("%s is not a device node", devPath)
-	}
-	// Get minor,major numbers
-	rdev := devStat.Rdev
-	major := unix.Major(uint64(rdev))
-	minor := unix.Minor(uint64(rdev))
-
-	newDev := unix.Mkdev(major, minor)
 
 	// Set the correct target path
-	relHostPath, err := filepath.Rel("/", devPath)
+	relHostPath, err := filepath.Rel("/", dev.Path)
 	if err != nil {
-		return fmt.Errorf("failed to get relative path of %s to /: %w", devPath, err)
+		return fmt.Errorf("failed to get relative path of %s to /: %w", dev.Path, err)
 	}
 	dstPath := filepath.Join(monRootfs, relHostPath)
 	// If the device is not at /dev but further down the tree, create
 	// the necessary directories
-	if filepath.Dir(devPath) != "/dev" {
+	if filepath.Dir(dev.Path) != "/dev" {
 		dstDir := filepath.Dir(dstPath)
 		err = os.MkdirAll(dstDir, 0755)
 		if err != nil {
@@ -122,8 +125,20 @@ func setupDev(monRootfs string, devPath string) error {
 		}
 	}
 
+	if dev.FileMode == nil {
+		return fmt.Errorf("reference of %s FileMode is nil", dev.Path)
+	}
 	// Create the new device node
-	err = unix.Mknod(dstPath, devStat.Mode, int(newDev)) //nolint: gosec
+	permBits := uint32(*dev.FileMode) & 0o777
+	if dev.Major < 0 || dev.Major > math.MaxUint32 ||
+		dev.Minor < 0 || dev.Minor > math.MaxUint32 {
+		return fmt.Errorf("device number out of range for %s: major=%d minor=%d", dstPath, dev.Major, dev.Minor)
+	}
+	newDev := unix.Mkdev(uint32(dev.Major), uint32(dev.Minor)) //#nosec G115 -- device numbers validated previously
+	if newDev > uint64(math.MaxInt) {
+		return fmt.Errorf("device number for %s too large: %d", dstPath, newDev)
+	}
+	err = unix.Mknod(dstPath, devType|permBits, int(newDev)) //#nosec G115 -- device numbers validated previously
 	if err != nil {
 		return fmt.Errorf("failed to make device node %s: %w", dstPath, err)
 	}
@@ -131,15 +146,20 @@ func setupDev(monRootfs string, devPath string) error {
 	// Set up permissions, adding rw for others to ensure that any user can
 	// read/write them. This is helpful for non-root monitor execution and
 	// removes the burdain of getting kvm/block group id
-	permBits := devStat.Mode & 0o777
 	permBits |= 0o006
 	err = unix.Chmod(dstPath, permBits)
 	if err != nil {
 		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
 	}
 
+	if dev.UID == nil {
+		return fmt.Errorf("reference of %s UID is nil", dev.Path)
+	}
+	if dev.GID == nil {
+		return fmt.Errorf("reference of %s GID is nil", dev.Path)
+	}
 	// Set the owner as in the original file
-	err = os.Chown(dstPath, int(devStat.Uid), int(devStat.Gid))
+	err = os.Chown(dstPath, int(*dev.UID), int(*dev.GID))
 	if err != nil {
 		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
 	}

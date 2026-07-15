@@ -573,21 +573,35 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return fmt.Errorf("failed to apply rootfs mounts: %w", err)
 	}
 
-	// Setup the rootfs for the monitor execution, creating necessary
-	// devices and the monitor's binary.
-	err = prepareMonRootfs(rootfsParams.MonRootfs, vmm.Path(), vmm.UsesKVM(), withTUNTAP)
+	monitorDevs, err := getMonitorDevices(vmm.UsesKVM(), withTUNTAP)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}
 
 	err = rfsBuilder.postSetup()
 	if err != nil {
-		return fmt.Errorf("post setup step for block based rootfs failed: %w", err)
+		return fmt.Errorf("post setup step for rootfs failed: %w", err)
 	}
 
 	blockArgs, err := rfsBuilder.getBlockDevs()
 	if err != nil {
 		return fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
+	}
+
+	blockDevs, err := blockDevNodes(blockArgs, rootfsParams)
+	if err != nil {
+		return fmt.Errorf("failed to get block devices which should be replicated inside monitor's execution environment: %w", err)
+	}
+	monitorDevs = append(monitorDevs, blockDevs...)
+
+	err = setupDevices(rootfsParams.MonRootfs, monitorDevs)
+	if err != nil {
+		return fmt.Errorf("failed to create devices in monitor rootfs: %w", err)
+	}
+
+	err = setupConsole(rootfsParams.MonRootfs)
+	if err != nil {
+		return err
 	}
 
 	sharedfsArgs, err := rfsBuilder.getSharedDirs()
@@ -596,15 +610,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	unikernelParams.Rootfs = rootfsParams
-
 	metrics.Capture(m.TS17)
-
-	// unikernelParams
-	unikernelParams.Block = blockArgs
-
-	// ExecArgs
-	vmmArgs.Sharedfs = sharedfsArgs
 
 	// vAccel setup
 	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
@@ -625,15 +631,27 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		unikernelParams.EnvVars = append(unikernelParams.EnvVars, "VACCEL_RPC_ADDRESS="+rpcAddress)
 
 		// Prepare the guest environment for vAccel vsock communication
-		err = prepareVSockEnvironment(rootfsParams.MonRootfs, u.State.Annotations[annotHypervisor], vsockSocketPath)
+		vaccelDevices, err := prepareVSockEnvironment(rootfsParams.MonRootfs, u.State.Annotations[annotHypervisor], vsockSocketPath)
 		if err != nil {
-			uniklog.Debugf("failed to prepare all required vsock mounts: %v", err)
+			uniklog.Debugf("failed to prepare get required vsock devices: %v", err)
+		}
+		err = setupDevices(rootfsParams.MonRootfs, vaccelDevices)
+		if err != nil {
+			return fmt.Errorf("failed to create devices in monitor rootfs: %w", err)
 		}
 
 		vmmArgs.VAccelType = vAccelType
 		vmmArgs.VSockDevPath = vsockSocketPath
 		vmmArgs.VSockDevID = idToGuestCID(u.State.ID)
 	}
+
+	unikernelParams.Rootfs = rootfsParams
+
+	// unikernelParams
+	unikernelParams.Block = blockArgs
+
+	// ExecArgs
+	vmmArgs.Sharedfs = sharedfsArgs
 
 	// unikernel
 	err = unikernel.Init(unikernelParams)

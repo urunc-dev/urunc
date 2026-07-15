@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
 )
 
@@ -109,23 +110,24 @@ func resolveVAccelConfig(hypervisor string, annotations map[string]string) (stri
 // prepareVSockEnvironment prepares all required vsock devices and mounts
 // for vAccel execution inside the guest. This includes /dev/vsock,
 // /dev/vhost-vsock, and (for Firecracker) binding the host unix socket.
-func prepareVSockEnvironment(monRootfs string, hypervisor string, vsockSocketPath string) error {
-	err := setupDev(monRootfs, "/dev/vsock")
+func prepareVSockEnvironment(monRootfs string, hypervisor string, vsockSocketPath string) ([]specs.LinuxDevice, error) {
+	vsockDev, err := deviceFromHost("/dev/vsock")
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not get host device /dev/vsock: %w", err)
 	}
-
-	err = setupDev(monRootfs, "/dev/vhost-vsock")
+	vhostSockDev, err := deviceFromHost("/dev/vhost-vsock")
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("could not get host device /dev/vhost-vsock: %w", err)
 	}
+	devices := []specs.LinuxDevice{vsockDev, vhostSockDev}
 
 	// bind mount the unix socket directory
 	if hypervisor == "firecracker" {
 		err = fileFromHost(monRootfs, vsockSocketPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+
+	return devices, nil
 }
