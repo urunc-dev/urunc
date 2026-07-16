@@ -78,13 +78,18 @@ func defaultTimestampsConfig() UruncTimestamps {
 	}
 }
 
+const (
+	defaultMonitorMemoryMB uint = 256
+	defaultMonitorVCPUs    uint = 1
+)
+
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
-		"qemu":             {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"hvt":              {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"spt":              {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"firecracker":      {DefaultMemoryMB: 256, DefaultVCPUs: 1},
-		"cloud-hypervisor": {DefaultMemoryMB: 256, DefaultVCPUs: 1},
+		"qemu":             {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"hvt":              {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"spt":              {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"firecracker":      {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"cloud-hypervisor": {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 	}
 }
 
@@ -108,11 +113,24 @@ func defaultUruncConfig() *UruncConfig {
 func LoadUruncConfig(path string) (*UruncConfig, error) {
 	cfg := defaultUruncConfig()
 	_, err := toml.DecodeFile(path, cfg)
-	if err == nil {
-		return cfg, nil
+	if err != nil {
+		uniklog.Warnf("Failed to load urunc config from %s: %v. Using default configuration.", path, err)
+		return defaultUruncConfig(), err
 	}
-	uniklog.Warnf("Failed to load urunc config from %s: %v. Using default configuration.", path, err)
-	return defaultUruncConfig(), err
+	// Decoding a partially-specified [monitors.<name>] section (e.g. one that
+	// only sets binary_path) zeroes the fields absent from the file, dropping
+	// the seeded defaults. Re-apply them for any zero value.
+	for name, mon := range cfg.Monitors {
+		if mon.DefaultMemoryMB == 0 {
+			mon.DefaultMemoryMB = defaultMonitorMemoryMB
+		}
+		if mon.DefaultVCPUs == 0 {
+			mon.DefaultVCPUs = defaultMonitorVCPUs
+		}
+		cfg.Monitors[name] = mon
+	}
+
+	return cfg, nil
 }
 
 func (p *UruncConfig) Map() map[string]string {

@@ -15,6 +15,8 @@
 package unikontainers
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -535,5 +537,84 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.False(t, config.Log.Syslog)
 		assert.False(t, config.Timestamps.Enabled)
 		assert.Equal(t, testTimestampsPath, config.Timestamps.Destination)
+	})
+}
+
+func writeTestConfig(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	return path
+}
+
+func TestLoadUruncConfig(t *testing.T) {
+	t.Run("partial monitor section keeps default memory and vcpus", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.qemu]
+path = "/opt/urunc/bin/qemu-system-x86_64"
+data_path = "/opt/urunc"
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		qemu := config.Monitors["qemu"]
+		assert.Equal(t, defaultMonitorMemoryMB, qemu.DefaultMemoryMB)
+		assert.Equal(t, defaultMonitorVCPUs, qemu.DefaultVCPUs)
+		assert.Equal(t, "/opt/urunc/bin/qemu-system-x86_64", qemu.BinaryPath)
+		assert.Equal(t, "/opt/urunc", qemu.DataPath)
+	})
+
+	t.Run("explicit values are honored", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.qemu]
+default_memory_mb = 512
+default_vcpus = 4
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		qemu := config.Monitors["qemu"]
+		assert.Equal(t, uint(512), qemu.DefaultMemoryMB)
+		assert.Equal(t, uint(4), qemu.DefaultVCPUs)
+	})
+
+	t.Run("monitors absent from the file keep their defaults", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.qemu]
+default_memory_mb = 512
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		assert.Equal(t, uint(512), config.Monitors["qemu"].DefaultMemoryMB)
+		assert.Equal(t, defaultMonitorMemoryMB, config.Monitors["hvt"].DefaultMemoryMB)
+		assert.Equal(t, defaultMonitorVCPUs, config.Monitors["hvt"].DefaultVCPUs)
+	})
+
+	t.Run("custom monitor gets defaults for omitted fields", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.mon]
+path = "/usr/bin/mon"
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		mon := config.Monitors["mon"]
+		assert.Equal(t, defaultMonitorMemoryMB, mon.DefaultMemoryMB)
+		assert.Equal(t, defaultMonitorVCPUs, mon.DefaultVCPUs)
+	})
+
+	t.Run("missing file returns defaults", func(t *testing.T) {
+		t.Parallel()
+		config, err := LoadUruncConfig(filepath.Join(t.TempDir(), "does-not-exist.toml"))
+		assert.Error(t, err)
+		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
 	})
 }
