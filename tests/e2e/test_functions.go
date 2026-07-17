@@ -417,7 +417,7 @@ func httpStaticNetTest(tool testTool) (err error) {
 		return fmt.Errorf("Failed to receive valid response")
 	}
 
-	// FIXME: Investigate why the GET request using net/http fails, while is successful using curl
+	// FIXME: Investigate why the GET request using net/http fails, while it is successful using curl
 	//
 	// client := http.DefaultClient
 	// client.Timeout = 10 * time.Second

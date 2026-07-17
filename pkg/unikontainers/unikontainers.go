@@ -53,7 +53,7 @@ const (
 
 var uniklog = logrus.WithField("subsystem", "unikontainers")
 
-var ErrQueueProxy = errors.New("this a queue proxy container")
+var ErrQueueProxy = errors.New("this is a queue proxy container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
 
 // Unikontainer holds the data necessary to create, manage and delete unikernel containers
@@ -188,7 +188,7 @@ func (u *Unikontainer) InitialSetup() error {
 	// By default, urunc will not set any rootfs for the guest. However,
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
-	// both ae supported, then the block option will be used by default.
+	// both are supported, then the block option will be used by default.
 	rootfsParams, err := ChooseRootfs(bundleDir, rootfsDir, u.State.Annotations, u.UruncCfg)
 	if err != nil {
 		uniklog.Errorf("could not choose guest rootfs: %v", err)
@@ -296,7 +296,7 @@ func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
 		// TODO: Handle this case better. We do not need to show an error
 		// since there was no network in the container. Therefore, we
 		// need better error handling and specifically check if the container
-		// di not have any network.
+		// did not have any network.
 		uniklog.Errorf("Failed to setup network :%v. Possibly due to ctr", err)
 	}
 	// if network info is nil, we didn't find eth0, so we are running with ctr

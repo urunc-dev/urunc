@@ -52,7 +52,7 @@ func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) 
 	return nil
 }
 
-// setupDev set ups one new device in the container's rootfs.
+// setupDev sets up one new device in the container's rootfs.
 // This function will get the major and minor number of
 // the device from the host's rootfs and it will replicate the device
 // inside the container's rootfs.
@@ -111,7 +111,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 
 	// Set up permissions, adding rw for others to ensure that any user can
 	// read/write them. This is helpful for non-root monitor execution and
-	// removes the burdain of getting kvm/block group id
+	// removes the burden of getting kvm/block group id
 	permBits |= 0o006
 	err = unix.Chmod(dstPath, permBits)
 	if err != nil {
