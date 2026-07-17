@@ -55,7 +55,7 @@ by running the:
 - end-to-end tests: `sudo make e2etest`
 
 > Note: When running `make` commands for `urunc` that will use go (i.e. build,
-> unitest, e2etest) you might need to specify the path to the go binary
+> unittest, e2etest) you might need to specify the path to the go binary
 with `sudo GO=$(which go) make`.
 
 ## Next Steps

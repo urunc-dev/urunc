@@ -23,7 +23,7 @@ monitor with `urunc` as `nobody`, we use the following command:
 sudo nerdctl run  --user 65534:65534 --runtime "io.containerd.urunc.v2" --rm -it harbor.nbfc.io/nubificus/urunc/nginx-firecracker-unikraft-initrd:latest
 ```
 
-> Note The commands are the same for docker.
+> Note: The commands are the same for docker.
 
 
 ### In a k8s deployment

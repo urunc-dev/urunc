@@ -42,7 +42,7 @@ Alternatively, prebuilt kernels are available via the following container images
 - `harbor.nbfc.io/nubificus/urunc/linux-kernel-qemu:v6.14`
 - `harbor.nbfc.io/nubificus/urunc/linux-kernel-firecracker:v6.14`
 
-> NOTE: For cloud-hypervisor users can use the Linux kernel image of Firecracker.
+> NOTE: For cloud-hypervisor, users can use the Linux kernel image of Firecracker.
 
 Each image contains the Linux kernel binary at `/kernel`.
 
@@ -65,7 +65,7 @@ treated as a separate argument.
   parameters. If too many or very long environment variables are passed, the
   boot process will fail once that limit is exceeded. 
 
-Especially, for CLI argument handing, `urunc` follows a simple convention. All
+Especially, for CLI argument handling, `urunc` follows a simple convention. All
 multi-word CLI arguments are wrapped in single quotes and the init process (or
 application) is expected to reconstruct them properly.
 
@@ -76,7 +76,7 @@ designed specifically for `urunc`. It performs the following actions:
 1. Sets default route through eth0. This is necessary when we deploy
    the container in a Kubernetes cluster, where there is a high chance that
    the gateway of the container might be in a different subnet than the IP.
-   As a result, Linux kernel will fail to set the gateway.
+   As a result, the Linux kernel will fail to set the gateway.
 2. Groups multi-word arguments correctly.
 3. Mounts `/proc` and `/sys`.
 4. Reads and sets the environment variables for the application execution
@@ -85,7 +85,7 @@ designed specifically for `urunc`. It performs the following actions:
 
 To pass the necessary information to
 [urunit](https://github.com/nubificus/urunit), `urunc` uses a configuration
-file that passes to the VM with the following format:
+file that it passes to the VM with the following format:
 
 ```
 UES
@@ -120,7 +120,7 @@ You can obtain [urunit](https://github.com/nubificus/urunit) in two ways:
 
 - Fetch a static binary from [urunit's release
   page](https://github.com/nubificus/urunit/releases).
-  Via the container image: `harbor.nbfc.io/nubificus/urunit:latest`,
+- Via the container image: `harbor.nbfc.io/nubificus/urunit:latest`,
   with the binary located at `/urunit`.
 
 ## Preparing the image
@@ -137,7 +137,7 @@ are three main ways to do this:
 
 1. Using directly the rootfs of the container's image (requires either a block based snapshotter or 9pfs/Virtiofs).
 2. Creating a block image out of a container's image rootfs.
-3. Creating a initrd.
+3. Creating an initrd.
 
 ### Using directly the container's rootfs
 

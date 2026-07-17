@@ -11,7 +11,7 @@ To use `urunc` in a k8s cluster there are 2 options:
 
 ### Install urunc
 
-Before we start, we need to have working Kubernetes cluster with [urunc installed](../installation.md) on one or more nodes.
+Before we start, we need to have a working Kubernetes cluster with [urunc installed](../installation.md) on one or more nodes.
 
 ### Add urunc as a RuntimeClass
 
@@ -326,7 +326,7 @@ rejected:
 - a non-integer value, zero, or a value exceeding the maximum signed 64-bit integer,
   for an integer key (e.g. `*_DEFAULT_MEMORY_MB`, `*_DEFAULT_VCPUS`);
 - a value other than `true` or `false` for a boolean key (e.g. `URUNC_LOG_SYSLOG`, `URUNC_TIMESTAMPS_ENABLED`);
-- an unrecognised `URUNC_*` variable that does not map to a key in `config.toml` (e.g. a typo).
+- an unrecognized `URUNC_*` variable that does not map to a key in `config.toml` (e.g. a typo).
 
 All detected problems are reported together. The `urunc-deploy` Pod logs contain
 the corresponding `ERROR:` lines when an installation does not complete.

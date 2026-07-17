@@ -67,7 +67,7 @@ The `[runtime]` section controls runtime-wide behavior.
 **Notes**:
 - the use of libcontainer to prepare the monitor execution environment is
   **experimental** and under active development. It is off by default.
-- For the time being libcontianer-based setup does not support vAccel.
+- For the time being libcontainer-based setup does not support vAccel.
 - The use of vAccel is **experimental** and requires a **specific deployment
   model**.
 - The vAccel annotations MUST always be set from the operator of the cluster

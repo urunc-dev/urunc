@@ -1,6 +1,6 @@
 # Governance
 
-`urunc` is dedicated to enable the deployment of unikernels and single
+`urunc` is dedicated to enabling the deployment of unikernels and single
 application kernels in cloud-native environments. This governance document
 explains how the project is run.
 
@@ -100,7 +100,7 @@ and invited to the [private maintainer mailing list](mailto:dev-priv@urunc.io).
 Maintainers may resign at any time if they feel that they will not be able to
 continue fulfilling their project duties.
 
-Maintainers may also be removed after being inactive, failure to fulfill their
+Maintainers may also be removed after being inactive, failing to fulfill their
 Maintainer responsibilities, violating the Code of Conduct, or other reasons.
 Inactivity is defined as a period of very low or no activity in the project for
 6 months or more, with no definite schedule to return to full Maintainer
@@ -115,9 +115,9 @@ and can be rapidly returned to Maintainer status if their availability changes.
 ### Admin
 
 `urunc` Admins (as defined by the [urunc Admin
-team](https://github.com/orgs/urunc-dev/teams/admins) have admin access to the
-`urunc` repo, allowing them to do actions like, change the branch protection
-rules for repositories, delete a repository and manage the access of others.
+team](https://github.com/orgs/urunc-dev/teams/admins)) have admin access to the
+`urunc` repo, allowing them to do actions like changing the branch protection
+rules for repositories, deleting a repository and managing the access of others.
 The Admin group is intentionally kept small, however, individuals can
 be granted temporary admin access to carry out tasks, like creating a secret
 that is used in a particular CI infrastructure.
