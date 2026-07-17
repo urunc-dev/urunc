@@ -8,7 +8,6 @@ Containerd
 Containerfile
 Crictl
 DIRSYNC
-Dcos
 Debugf
 Devmapper
 Dockerfiles
@@ -32,7 +31,6 @@ LAZYTIME
 LIBCONTAINER
 LOGLEVEL
 LOGPIPE
-Liste
 MANDLOCK
 Mainas
 Mewz
@@ -67,7 +65,6 @@ PROJECTNAME
 Poststart
 Poststop
 Prestart
-Prettyfier
 Privs
 Qdisc
 RDONLY
@@ -105,7 +102,6 @@ Vcpu
 Virt
 Warnf
 Zerolog
-abcshd
 ananos
 annot
 artefacts
@@ -121,7 +117,6 @@ buildkit's
 bunix
 bunix's
 bunnyfile
-burdain
 bytemsg
 chttp
 clis
@@ -146,7 +141,6 @@ dind
 dirsync
 distro
 distros
-djaidwnduwk
 dmsetup
 downscript
 dpkg
@@ -156,8 +150,6 @@ encoded
 endmacro
 epoll
 errdefs
-etest
-etesting
 etfs
 execve
 execve's
@@ -175,7 +167,6 @@ golangci
 goscall
 gosec
 govalidator
-grou
 groupid
 headerlink
 htmlmin
@@ -191,7 +182,6 @@ inlinehilite
 inspectp
 iobase
 iosize
-isues
 iversion
 jackpal
 javascripts
@@ -207,7 +197,6 @@ lazytime
 lenag
 lenpg
 leasesapi
-levarage
 libc
 libcontainer
 libseccomp
@@ -265,7 +254,6 @@ paravirtual
 pids
 pluginid
 posixacl
-practises
 prctl
 prebuild
 privs
@@ -282,9 +270,7 @@ rdev
 rdinit
 reexec
 relatime
-remobe
 resourcecontrol
-rhandling
 rootflags
 rootfs
 rootfstype
@@ -298,10 +284,8 @@ runp
 runtimeclasses
 runtimespec
 sandboxing
-scontroller
 seabios
 seccomp
-secomp
 setgroup
 settime
 sgid
@@ -311,12 +295,10 @@ sigaction
 sigreturn
 sigstr
 sirupsen
-socker
 stretchr
 strictatime
 subtest
 superfences
-sworker
 symfollow
 syscall
 syscalls
@@ -328,7 +310,6 @@ tmpfs
 tmpl
 tomlq
 traefik
-triger
 ttrpc
 twemoji
 typesapi
@@ -347,7 +328,6 @@ userns
 urfave
 urunc
 urunc's
-urunce
 uruncts
 urunit
 urunit's
@@ -355,7 +335,6 @@ veth
 virt
 virtio
 vishvananda
-vlaid
 vmcons
 vnet
 yourdockerhubid
@@ -402,7 +381,6 @@ vsock
 Gkeka
 Panagiotis
 Mavrikos
-zyfy
 Dionisia
 Koronellou
 sankalp
@@ -421,3 +399,24 @@ ESRCH
 Prafful
 praffq
 libcontainers
+daemonset
+devroom
+eksctl
+FOSDEM
+keypair
+MMIO
+Muen
+Opam
+paravirtualization
+sandboxed
+snapshotters
+WASI
+Prettyfier
+abcshd
+djaidwnduwk
+etest
+etesting
+scontroller
+sworker
+urunce
+zyfy

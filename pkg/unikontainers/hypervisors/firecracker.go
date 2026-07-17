@@ -153,7 +153,7 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	}
 
 	// Block config for Firecracker
-	// TODO: Add support for block devices in FIrecracker
+	// TODO: Add support for block devices in Firecracker
 	FCDrives := make([]FirecrackerDrive, 0)
 
 	bArgs := ukernel.MonitorBlockCli()

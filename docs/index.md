@@ -8,7 +8,7 @@ from the OCI tools and methodology, `urunc` aims to become
 Runtime Interface (CRI). Unikernels are packaged inside OCI-compatible images
 and `urunc` launches the unikernel on top of the underlying Virtual Machine or
 seccomp monitors. Thus, developers and administrators can package, deliver,
-deploy and manage unikernels using familiar cloud-native practises.
+deploy and manage unikernels using familiar cloud-native practices.
 
 For the above purpose `urunc` acts as any other OCI runtime. The main
 difference of `urunc` with other container runtimes is that instead of
@@ -38,9 +38,9 @@ Unikernels are well known as a good fit for a variety of use cases, such as:
   satisfies the event-driven, short-lived and scalable characteristics of
   serverless computing
 - Edge computing: The lightweight notion of unikernels suits very well with edge
-  devices, where resources constraints and performance are critical.
+  devices, where resource constraints and performance are critical.
 - Sensitive environments: The inherited strong VM-based isolation, along with
-  the minimized attack surface of unikernels, provide strong security guarantees
+  the minimized attack surface of unikernels, provides strong security guarantees
   for sensitive applications which demand high security standards.
 
 In all the above use cases, `urunc` facilitates the seamless integration of

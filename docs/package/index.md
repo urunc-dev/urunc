@@ -52,14 +52,14 @@ required annotations are the following:
 - `com.urunc.unikernel.unikernelType`: The type of the unikernel. Currently
   supported values: a) unikraft, b) rumprun, c) mirage.
 - `com.urunc.unikernel.hypervisor`: The VMM or sandbox monitor to run the
-  unikernel Currently supported values: a) `qemu`, b) `firecracker`, c)
+  unikernel. Currently supported values: a) `qemu`, b) `firecracker`, c)
   `cloud-hypervisor`, d) `spt`,  e) `hvt`.
 - `com.urunc.unikernel.binary`: The path to the unikernel binary inside the
   container's rootfs
 - `com.urunc.unikernel.cmdline`: The application's cmdline to pass to the
   unikernel.
 
-Except of the above, `urunc` accepts the following optional annotations:
+Apart from the above, `urunc` accepts the following optional annotations:
 
 - `com.urunc.unikernel.initrd`: The path to the initrd of the unikernel inside
   the container's rootfs.
@@ -88,7 +88,7 @@ package unikernels in OCI images with `urunc`'s annotations.
 ### bunny
 
 In an effort to simplify the process of building various unikernels, we built
-[bunny](https://github.com/nubificus/bunny). Except of building unikernels [bunny](https://github.com/nubificus/bunny)
+[bunny](https://github.com/nubificus/bunny). Apart from building unikernels [bunny](https://github.com/nubificus/bunny)
 can also pack existing unikernels (whether locally or from OCI images) as OCI images
 for `urunc`. At its core [bunny](https://github.com/nubificus/bunny) leverages
 [buildkit's LLB](https://github.com/moby/buildkit?tab=readme-ov-file#exploring-llb),
@@ -113,7 +113,7 @@ can handle the following *instructions*:
 To further extend the functionality and provide a common interface to facilitate
 unikernel building, we defined `bunnyfile`. It is a YAML-based special file that
 [bunny](https://github.com/nubificus/bunny) transforms to LLB with all the
-necessary steps to build the respective unikernel. Except of building
+necessary steps to build the respective unikernel. Apart from building
 unikernels, [bunny](https://github.com/nubificus/bunny) can also be used to build or append files in the unikernel's
 rootfs.
 
@@ -157,7 +157,7 @@ Since [bunny](https://github.com/nubificus/bunny) uses
 [buildkit](https://github.com/moby/buildkit?tab=readme-ov-file#output) it
 supports two modes of execution. In the first mode it acts as a [buildkit
 frontend](https://docs.docker.com/build/buildkit/frontend/) and in the second
-mode it outputs a LLB which can be passed to `buildctl`.Therefore,
+mode it outputs a LLB which can be passed to `buildctl`. Therefore,
 [bunny](https://github.com/nubificus/bunny) depends on
 [buildkit](https://github.com/moby/buildkit?tab=readme-ov-file#output) which
 should be installed. However, if [docker](https://www.docker.com/) is already
@@ -175,7 +175,7 @@ we need to start the Containerfile with the following line:
 ***Using a Dockerfile-like syntax file***
 
 If we want to package a locally built Nginx Unikraft unikernel, we
-can define the a Dockerfile-like syntax file as:
+can define a Dockerfile-like syntax file as:
 
 ```Dockerfile
 #syntax=harbor.nbfc.io/nubificus/bunny:latest
@@ -222,7 +222,7 @@ and we can build it with a docker command:
 docker build -f bunnyfile -t nubificus/urunc/nginx-unikraft-qemu:test .
 ```
 
-> **NOTE**: We can use the above command and switch form bunnyfile to the
+> **NOTE**: We can use the above command and switch from bunnyfile to the
 > Dockerfile-like file and build the same unikernel OCI image.
 
 For more information check [bunny's README](https://github.com/nubificus/bunny?tab=readme-ov-file#bunny-build-and-package-unikernels-like-containers).
@@ -241,7 +241,7 @@ particular, this file is the `args.nix` file, which expects the same fields:
 - files: a list of key-value pairs with all the files to copy inside the
   container image. The key-value pairs have the following format:
   `"<path-based-on-cwd>" = "<path-inside-container>"`.
-- annotations: a list will all the `urunc` annotations.
+- annotations: a list with all the `urunc` annotations.
 
 #### Packaging a unikernel with bunix
 

@@ -62,7 +62,7 @@
 * Update instructions for installing Go and remove obsolete image references
 * Add tutorial for using `urunc` with kind
 * Centralize the version definition of the tools mentioned in docs
-* Add instructions fo using blockfile snapshotter with `urunc`
+* Add instructions for using blockfile snapshotter with `urunc`
 * Provide documentation for using the new [monitors-build repository](https://github.com/urunc-dev/monitors-build)
 
 ## New Contributors
@@ -180,7 +180,7 @@ Big thanks for all new contributors in `urunc`:
   - `SupportsFS()` takes as an argument a filesystem type and checks if the unikernel supports that type.
 - Partial unit tests for pkg/unikontainers
 - Refactor devmapper snapshot handling
-- Define new environment variable `USE_DEVMAPPER_AS_BLOCK`to use devmapper's snapshot as a block image for the unikernel
+- Define new environment variable `USE_DEVMAPPER_AS_BLOCK` to use devmapper's snapshot as a block image for the unikernel
 - Handle newer versions of Unikraft unikernels
 - Enable NAT and IP forwarding in static networking
 
@@ -196,7 +196,7 @@ Big thanks for all new contributors in `urunc`:
 
 #### Misc
 * Bug fixes
-* Refactor handling of normal containers and replaces constants in paths and annotations
+* Refactor handling of normal containers and replace constants in paths and annotations
 * Unikraft FC boot on arm64
 * Huge refactor and update of `urunc`'s documentation. The documentation is available at https://nubificus.github.io/urunc/
 

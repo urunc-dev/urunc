@@ -274,7 +274,7 @@ func pivotRootfs(newRoot string) error {
 	// Make oldroot rslave to make sure our unmounts don't propagate to the
 	// host (and thus bork the machine). We don't use rprivate because this is
 	// known to cause issues due to races where we still have a reference to a
-	// mount while a process in the host namespace are trying to operate on
+	// mount while a process in the host namespace is trying to operate on
 	// something they think has no mounts (devicemapper in particular).
 	err = unix.Mount("", "old_root", "", unix.MS_SLAVE|unix.MS_REC, "")
 	if err != nil {

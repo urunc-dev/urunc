@@ -9,7 +9,7 @@ on a number of GNU/Linux distributions.
 
 ## Using Docker
 
-The easiest and fastest way to try out `urunc` would be with `docker`
+The easiest and fastest way to try out `urunc` would be with `docker`.
 Before doing so, please make sure that the host system satisfies the
 following dependencies:
 
@@ -212,7 +212,7 @@ rm -f nerdctl-$NERDCTL_VERSION-linux-$(dpkg --print-architecture).tar.gz
 
 ### Install `urunc` from its latest release
 
-At last, but not least, we will install `urunc` from its latest release. At first, we
+Last but not least, we will install `urunc` from its latest release. At first, we
 will install the `urunc` binary:
 
 ```bash
@@ -236,7 +236,7 @@ We will try out a Rumprun unikernel running over Solo5-hvt with [nerdctl](https:
 
 #### Install solo5
 
-Lets install `solo5-hvt`:
+Let's install `solo5-hvt`:
 
 ```bash
 sudo apt install make gcc pkg-config libseccomp-dev
@@ -254,7 +254,7 @@ Now, let's run a Redis unikernel on top of Rumprun and solo5-hvt:
 sudo nerdctl run -d --snapshotter devmapper --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest
 ```
 
-We can inspect the running container to check it's IP address:
+We can inspect the running container to check its IP address:
 
 ```console
 $ sudo nerdctl ps 

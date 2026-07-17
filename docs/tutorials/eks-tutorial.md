@@ -314,7 +314,7 @@ installation.operator.tigera.io/default created
 ##### Step 4: Provision nodes
 
 Now, you are ready to provision nodes for the cluster. Use the following description to create two bare-metal nodes, one for each supported architecture (`amd64` and `arm64`):
-> Note: Make sure the `metadata.name` entry corresponds to the name you specified for your cluster above, and that the managedNodeGroups.[].subnets entry correspond to the ones specified above.
+> Note: Make sure the `metadata.name` entry corresponds to the name you specified for your cluster above, and that the managedNodeGroups.[].subnets entry corresponds to the ones specified above.
 
 ```bash
 eksctl create nodegroup -f - <<EOF
@@ -452,7 +452,7 @@ done
 
 #### Verify the cluster is operational
 
-We have successfully setup the cluster. Let's see what we have using a simple `kubectl get pods -o wide -A`:
+We have successfully set up the cluster. Let's see what we have using a simple `kubectl get pods -o wide -A`:
 
 ```console
 NAMESPACE         NAME                                       READY   STATUS    RESTARTS   AGE     IP                NODE                                               NOMINATED NODE   READINESS GATES
@@ -564,11 +564,11 @@ Commercial support is available at
 </body>
 </html>
 ```
-There we go! We have a working EKS cluster, with Calico and two bare-metal nodes. Time to setup urunc! 
+There we go! We have a working EKS cluster, with Calico and two bare-metal nodes. Time to set up urunc! 
 
 ### `urunc` setup
 
-The easiest way to setup `urunc` in such a setting is to use `urunc-deploy`. This process follows the principles of `kata-deploy` and is build to work on `k8s` and `k3s`. The process is as follows:
+The easiest way to set up `urunc` in such a setting is to use `urunc-deploy`. This process follows the principles of `kata-deploy` and is built to work on `k8s` and `k3s`. The process is as follows:
 
 #### 1. Clone the repo
 

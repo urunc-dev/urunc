@@ -3,7 +3,7 @@
 One of the main goals of `urunc` is to be a generic OCI unikernel runtime for
 various unikernel frameworks and similar technologies. In order to achieve
 that, we want to support as many Virtual Machine Monitors (VMMs) and other
-types of sandboxing mechanisms such as user-space monitors based on
+types of sandboxing mechanisms as possible, such as user-space monitors based on
 [seccomp](https://en.wikipedia.org/wiki/Seccomp).
 
 In this document, we will go through the current state of `urunc`'s support for
@@ -18,7 +18,7 @@ somewhere in the `$PATH`.
 
 VMMs use hardware-assisted virtualization technologies in order to create a
 Virtual Machine (VM) where a guest OS will execute. It is one of the most
-widely used technology for providing strong isolation in multi-tenant
+widely used technologies for providing strong isolation in multi-tenant
 environments. For the time being `urunc` supports 4 types of such VMMs: 1)
 [Qemu](https://www.qemu.org/), 2)
 [Firecracker](https://firecracker-microvm.github.io/), 3)
@@ -120,7 +120,7 @@ versions.
 
 In the case of [Firecracker](https://firecracker-microvm.github.io/), `urunc`
 makes use of its `virtio-net` device to provide network support for the
-unikernel though a tap device. In addition, `urunc` can leverage
+unikernel through a tap device. In addition, `urunc` can leverage
 [Firecracker](https://firecracker-microvm.github.io/)'s initrd option in order
 to provide the Unikernel with an initial RamFS (initramfs).
 [Firecracker](https://firecracker-microvm.github.io/) does not support
@@ -192,8 +192,8 @@ sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubifi
 VMM designed to run unikernels in a virtualized environment. As a part of the
 broader Solo5 project, [Solo5-hvt](https://github.com/Solo5/solo5) provides a
 minimal, efficient abstraction layer for running unikernels on modern hardware,
-leveraging hardware virtualization technologies Some of the key benefits of
-[Solo5-hvt](https://github.com/Solo5/solo5) is its simplicity and extremely
+leveraging hardware virtualization technologies. Some of the key benefits of
+[Solo5-hvt](https://github.com/Solo5/solo5) are its simplicity and extremely
 fast boot times of unikernels. In contrast to the other VMMs,
 [Solo5-hvt](https://github.com/Solo5/solo5) does not provide support for virtIO
 devices. Instead, it defines its own interface, which can be used for network
@@ -239,7 +239,7 @@ In the second case, we copy directly all the files we want the unikernel to
 access inside the container's image. Using devmapper `urunc` will use the
 container's image snapshot as a block image for the unikernel. It is important
 to note that the unikernel framework must support the respective filesystem
-type (e.g. ext2/3/4). This is the case for Rumprun unikernel.
+type (e.g. ext2/3/4). This is the case for Rumprun unikernels.
 
 Supported unikernel frameworks with `urunc`:
 

@@ -20,7 +20,7 @@ finding a proper fix.
 ## Reporting Vulnerabilities
 
 Please do not open public issues or PRs to report a vulnerability. Instead, use
-the private vulnerability reporting of the `urunc`'s Github repository. In
+the private vulnerability reporting of `urunc`'s Github repository. In
 particular, in `urunc`'s repository page, navigate to the [Security
 tab](https://github.com/urunc-dev/urunc/security), click
 [`Advisories`](https://github.com/urunc-dev/urunc/security/advisories) and then
@@ -81,7 +81,7 @@ _eg. github.com/urunc-dev/urunc_
 _eg. < 0.5.0_
 
 ### Patched Versions
-_eg. 0.5.1
+_eg. 0.5.1_
 
 ### Severity
 _eg. Low, Critical etc._

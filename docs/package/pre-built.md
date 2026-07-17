@@ -93,7 +93,7 @@ docker build -f Containerfile -t urunc/prebuilt/network-mirage-hvt:test .
 ## Using `bunix`
 
 In the case of [bunix](https://github.com/nubificus/bunix) we need to clone the whole
-repository in the same directly as the
+repository in the same directory as the
 unikernel. Then, we simply need to edit the `args.nix` file as:
 
 ```Nix

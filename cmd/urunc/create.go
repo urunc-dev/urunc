@@ -83,8 +83,8 @@ var createCommand = &cli.Command{
 }
 
 // createUnikontainer creates a Unikernel struct from bundle data,
-// initializes it's base dir and state.json,
-// setups terminal if required and spawns reexec process,
+// initializes its base dir and state.json,
+// sets up terminal if required and spawns reexec process,
 // waits for reexec process to notify, executes CreateRuntime hooks,
 // sends ACK to reexec process
 func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
@@ -99,7 +99,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	// We have already made sure in main.go that root is not nil
 	rootDir := cmd.String("root")
 
-	// bundle option cli option is optional. Therefore the bundle directory
+	// bundle cli option is optional. Therefore the bundle directory
 	// is either the CWD or the one defined in the cli option
 	bundlePath := cmd.String("bundle")
 	if bundlePath == "" {
@@ -144,7 +144,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	}()
 
 	// Create log pipe for nsenter
-	// NOTE: We might want to switch form pipe to socketpair for logs too.
+	// NOTE: We might want to switch from pipe to socketpair for logs too.
 	logPipeParent, logPipeChild, err := os.Pipe()
 	if err != nil {
 		err = fmt.Errorf("failed to create pipe for logs: %w", err)
@@ -167,7 +167,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	// Start reexec process
 	metrics.Capture(m.TS03)
 	// setup terminal if required and start reexec process
-	// TODO: This part of code needs better rhandling. It is not the
+	// TODO: This part of code needs better handling. It is not the
 	// job of the urunc create to setup the terminal for reexec.
 	// The main concern is the nsenter execution before the reexec.
 	// If anything goes wrong and we mess up with nsenter debugging
@@ -298,7 +298,7 @@ func createReexecCmd(initSock *os.File, logPipe *os.File) *exec.Cmd {
 	// first file we added in ExtraFiles, its file descriptor should be 2+1=3,
 	// since 0 is stdin, 1 is stdout and 2 is stderr. Similarly, the logPipeChild
 	// should be right after initSockChild, hence 4
-	// NOTE: THis might need bette rhandling in the future.
+	// NOTE: This might need better handling in the future.
 	reexecCommand.Env = append(reexecCommand.Env, "_LIBCONTAINER_INITPIPE=3")
 	reexecCommand.Env = append(reexecCommand.Env, "_LIBCONTAINER_LOGPIPE=4")
 	logLevel := strconv.Itoa(int(logrus.GetLevel()))
@@ -384,7 +384,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 
 	// get Unikontainer data from state.json
 	// TODO: We need to find a better way to synchronize and make sure
-	// the pid is written from urunc` create. Right now we rely on receiving
+	// the pid is written from urunc create. Right now we rely on receiving
 	// the AckReexec message, however this is not optimal and we might lose
 	// time because urunc create tries to write in a socket that the reexec
 	// process has not created yet.
@@ -419,7 +419,7 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	// preparation the error will get manifested later. However, if environment
 	// setup goes well and the socket was not cleaned up correctly,
 	// we execve the monitor and we rely on Go's close-on-exec feature in all file
-	// descriptors. THerefore, we might want to rethink this in future and not rely
+	// descriptors. Therefore, we might want to rethink this in future and not rely
 	// on Go, but this requires quite a lot of changes.
 	if awaitErr != nil {
 		awaitErr = fmt.Errorf("error waiting START message: %w", awaitErr)
@@ -438,8 +438,8 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	// ignore any errors, since it is a simple socket cleanup and the process exits.
 	// If unikontainers.Exec succeeds though, then we will never execute this
 	// cleanup, since we execve to the monitor process. In that case, we rely
-	// once more in Go's close on exec handling of all file descriptors.
-	// In the future, we might want to revisit this and rely less in Go.
+	// once more on Go's close on exec handling of all file descriptors.
+	// In the future, we might want to revisit this and rely less on Go.
 	defer func() {
 		tmpErr := unikontainer.DestroyConn(unikontainers.FromReexec)
 		if tmpErr != nil {

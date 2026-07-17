@@ -125,7 +125,7 @@ func writePidFile(path string, pid int) error {
 
 // handleQueueProxy adds a hardcoded IP to the process's environment.
 // Then, the container is identified as a non-bima container
-// is spawned using runc.
+// and is spawned using runc.
 func handleQueueProxy(spec specs.Spec, configFile string) error {
 	var readinessProbeEnv string
 	for i, envVar := range spec.Process.Env {
@@ -246,7 +246,7 @@ func fileExists(fpath string) bool {
 	return true
 }
 
-// containsNS checks of the container's configuration contains a specific namespace
+// containsNS checks if the container's configuration contains a specific namespace
 func findNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) (string, error) {
 	for _, ns := range namespaces {
 		if ns.Type == nsType {

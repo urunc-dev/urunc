@@ -9,7 +9,7 @@ description: "Reusing OCI images that contain unikernels"
 In this page we will explain how we can reuse existing OCI images that contain
 unikernels to either update or append `urunc` annotations. As an
 example, we will use an existing [Unikraft](https://unikraft.org) Unikernel
-image from [Unikraft's catalog](https://github.com/unikraft/catalog), The goal
+image from [Unikraft's catalog](https://github.com/unikraft/catalog). The goal
 will be to transform this image to an OCI image that `urunc` can handle, by
 simply appending the necessary annotations.
 
@@ -39,13 +39,13 @@ kernel:
 cmdline: "nginx -c /nginx/conf/nginx.conf"
 ```
 
-In the above file we specify the followings:
+In the above file we specify the following:
 
 - We want to use a [Unikraft](https://unikraft.org) unikernel that will execute on top of Qemu over x86
   architecture.
 - We want to use the unikernel binary `/unikraft/bin/kernel` from the
   `unikraft.org/nginx:1.15` OCI image.
-- We specify the cmdline for the unikernel as `nginx -c /nginx/conf/nginx.conf"`
+- We specify the cmdline for the unikernel as `nginx -c /nginx/conf/nginx.conf`
 
 With the above file, `bunny` will fetch the OCI image and append the `urunc`
 annotations. We can build the OCI image with the following command:

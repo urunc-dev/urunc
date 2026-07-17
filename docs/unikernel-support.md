@@ -80,7 +80,7 @@ compiled for production deployment. We can easily set up and build
 be installed through the [Opam](https://opam.ocaml.org/) source package manager.
 The framework is fully event-driven, with no support for preemptive threading.
 
-[MirageOS](https://github.com/mirage/mirage) is characterized from the extremely
+[MirageOS](https://github.com/mirage/mirage) is characterized by the extremely
 fast start up times (just a few milliseconds), small binaries (usually a few
 megabytes), small footprint (requires a few megabytes of memory) and safe logic,
 as it is completely written in OCaml.
@@ -113,15 +113,15 @@ storage through [Solo5](https://github.com/Solo5/solo5)'s I/O interface.
 ### MirageOS and `urunc`
 
 In the case of [MirageOS](https://github.com/mirage/mirage) `urunc` provides
-support for [Solo5](https://github.com/Solo5/solo5),
-[Solo5](https://github.com/Solo5/solo5) and [Qemu](https://qemu.org). For all
+support for [Solo5-hvt](https://github.com/Solo5/solo5),
+[Solo5-spt](https://github.com/Solo5/solo5) and [Qemu](https://qemu.org). For all
 monitors of [Solo5](https://github.com/Solo5/solo5) `urunc` allows the access
 of both network and block storage through
 [Solo5](https://github.com/Solo5/solo5)'s I/O interface and for
 [Qemu](https://qemu.org) through virtio-net and virtio-block.
 
 For the time being, the block image that the
-[MirageOS](https://github.com/mirage/mirage) unikernel access during its
+[MirageOS](https://github.com/mirage/mirage) unikernel accesses during its
 execution should be placed inside the container image.
 
 For more information on packaging
@@ -170,7 +170,7 @@ Especially in the case of KVM,
 It can access the network through virtio-net in the case of
 [Qemu](https://qemu.org) and using [Solo5](https://github.com/Solo5/solo5)'s
 I/O interface in the case of [Solo5](https://github.com/Solo5/solo5).  As far
-as we concern, [Rumprun](https://github.com/cloudkernels/rumprun) only supports
+as we know, [Rumprun](https://github.com/cloudkernels/rumprun) only supports
 block storage through virtio-block and
 [Solo5](https://github.com/Solo5/solo5)'s I/O in [Qemu](https://qemu.org) and
 [Solo5](https://github.com/Solo5/solo5) respectively.
@@ -185,8 +185,8 @@ storage through [Solo5](https://github.com/Solo5/solo5)'s I/O interface.
 ### Rumprun and `urunc`
 
 In the case of [Rumprun](https://github.com/cloudkernels/rumprun), `urunc`
-provides support for [Solo5](https://github.com/Solo5/solo5) and
-[Solo5](https://github.com/Solo5/solo5), but not yet for
+provides support for [Solo5-hvt](https://github.com/Solo5/solo5) and
+[Solo5-spt](https://github.com/Solo5/solo5), but not yet for
 [Qemu](https://qemu.org). For all monitors of
 [Solo5](https://github.com/Solo5/solo5) `urunc` allows the access of both
 network and block storage through [Solo5](https://github.com/Solo5/solo5)'s I/O
@@ -241,7 +241,7 @@ the linked WASM application. [Mewz](https://github.com/Mewz-project/Mewz) has
 partial support for [WASI](https://github.com/WebAssembly/WASI) and it provides
 support for networking and an in-memory, read-only filesystem. In addition,
 [Mewz](https://github.com/Mewz-project/Mewz) has socket compatibility with
-[WasmEdge](https://github.com/WasmEdge/WasmEdge),
+[WasmEdge](https://github.com/WasmEdge/WasmEdge).
 
 A few examples of [Mewz](https://github.com/Mewz-project/Mewz) unikernels can
 be found in the [examples directory of Mewz's
@@ -290,7 +290,7 @@ how we can turn the [Linux](https://github.com/torvalds/linux) kernel into a
 unikernel.
 
 Using [Linux](https://github.com/torvalds/linux), we can execute the vast
-majority of the existing containers on top of `urunc`. However, the rational is
+majority of the existing containers on top of `urunc`. However, the rationale is
 to target single application containers and not fully-blown distro containers.
 Focusing on a single application, we can further minimize the
 [Linux](https://github.com/torvalds/linux) kernel and keep only the necessary
@@ -311,14 +311,14 @@ emulated devices etc.).
 
 Focusing on the single-application notion of using the
 [Linux](https://github.com/torvalds/linux) kernel, `urunc` provides support for
-both [Qemu](https://qemu.org),
+[Qemu](https://qemu.org),
 [Firecracker](https://github.com/firecracker-microvm/firecracker) and
 [Cloud-Hypervisor](https://www.cloudhypervisor.org/). For network,
 `urunc` will make use of virtio-net either through PCI or MMIO, depending on
 the monitor. In the case of storage, `urunc` can use initrd, virtio-block, 9pfs
 or Virtiofs. In particular, `urunc` takes advantage of the extensive filesystem
 support of [Linux](https://github.com/torvalds/linux) and can directly mount
-containerd's snapshot directly to a [Linux](https://github.com/torvalds/linux)
+containerd's snapshot to a [Linux](https://github.com/torvalds/linux)
 VM. This is only possible using devmapper as a snapshotter in containerd. For
 more information on setting up devmapper, please take a look on our
 [installation guide](../installation#setup-thinpool-devmapper).
@@ -355,10 +355,10 @@ sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubifi
 
 [Hermit](https://hermit-os.org/) is a unikernel designed for
 high-performance and cloud/HPC workloads.
-Its a Rust re-write of the Hermit-Core unikernel in order to leverage the
+It's a Rust re-write of the Hermit-Core unikernel in order to leverage the
 memory/thread-safety guarantees provided by the Rust ownership model.
 
-Hermit provides support for multiple compiled languages like Rust, C, C++, Go and Fotran. Hermit applications are compiled
+Hermit provides support for multiple compiled languages like Rust, C, C++, Go and Fortran. Hermit applications are compiled
 into a unikernel image that includes both the application and the operating system.
 When the unikernel boots, the application starts execution immediately.
 

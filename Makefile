@@ -215,7 +215,7 @@ clean:
 lint:
 	$(CNTR_TOOL) $(LINT_CNTR_OPTS) $(LINT_CNTR_IMG) $(LINT_CNTR_CMD)
 
-# Dcos targets
+# Docs targets
 ## docs Build and serve urunc's docs locally
 .PHONY: docs
 docs:

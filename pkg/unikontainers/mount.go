@@ -73,7 +73,7 @@ func createTmpfs(monRootfs string, path string, flags uint64, mode string, size 
 	return nil
 }
 
-// SetupDev set ups one new device in the container's rootfs.
+// SetupDev sets up one new device in the container's rootfs.
 // This function will get the major and minor number of
 // the device from the host's rootfs and it will replicate the device
 // inside the container's rootfs.
@@ -130,7 +130,7 @@ func setupDev(monRootfs string, devPath string) error {
 
 	// Set up permissions, adding rw for others to ensure that any user can
 	// read/write them. This is helpful for non-root monitor execution and
-	// removes the burdain of getting kvm/block group id
+	// removes the burden of getting kvm/block group id
 	permBits := devStat.Mode & 0o777
 	permBits |= 0o006
 	err = unix.Chmod(dstPath, permBits)
@@ -147,7 +147,7 @@ func setupDev(monRootfs string, devPath string) error {
 	return nil
 }
 
-// fileFromHost set ups a mirror of file from the host's rootfs inside the
+// fileFromHost sets up a mirror of file from the host's rootfs inside the
 // container's rootfs. Also, it preserves the permissions and ownership of the
 // file in the host's rootfs.
 // if withCopy is set then copy the file, otherwise

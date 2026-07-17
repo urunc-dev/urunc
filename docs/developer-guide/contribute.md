@@ -144,7 +144,7 @@ A new (draft) PR triggers the following process:
 ## Labels for the CI
 
 We use GitHub workflows to invoke some tests when a new PR opens for `urunc`.
-In particular, we perform the following workflows tests:
+In particular, we perform the following workflow tests:
 
 - Linting of the commit message. Please check the [git commit message style](#git-commit-messages) below for more info.
 - Spell check, since `urunc` repository contains its documentation too.
@@ -160,7 +160,7 @@ three labels which can be used:
 - `ok-to-test`: Runs a full CI workflow, meaning all lint tests (commit
   message, spellcheck, license), Go's linting, building for x86 and aarch64,
   unit tests and at last end-to-end tests.
-- `skip-build`: Skips the building workflows along with unit and end-to end tests
+- `skip-build`: Skips the building workflows along with unit and end-to-end tests
   running all the linting tests. This is useful when
   the PR is related to docs and it can help for catching spelling errors etc. In
   addition, if the changes are not related to the codebase, running the
@@ -215,5 +215,5 @@ Go provides the `gofmt` tool, which can be used for formatting your code.
 
 We kindly invite everyone interested in `urunc` to join our
 [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J).
-To directly communicate with the maintainers, feel free to drop an email At
+To directly communicate with the maintainers, feel free to drop an email at
 [`urunc`'s maintainers' mailing list](cncf-urunc-maintainers@lists.cncf.io )

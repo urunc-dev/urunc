@@ -85,7 +85,7 @@ Using `cntr` with a urunc container gives:
 
 - Working PTY devices (`/dev/pts`, `/dev/ptmx`, `/dev/console`)
 - A debugging environment with common tools (e.g., `ls`, `ps`, `strace`)
-- Visibility into the container namespace where the monitor process (qemu/rirecracker/cloud-hypervisor/solo5) runs
+- Visibility into the container namespace where the monitor process (qemu/firecracker/cloud-hypervisor/solo5) runs
 
 > **Note:** `cntr` does **not** enter the unikernel VM — it only provides access to the container namespace hosting the monitor.
 

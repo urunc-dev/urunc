@@ -61,7 +61,7 @@ func (m *Mewz) MonitorNetCli(ifName string, mac string) string {
 	}
 }
 
-// Mewz does not seem to support virtio block or anu other kind of block/fs.
+// Mewz does not seem to support virtio block or any other kind of block/fs.
 func (m *Mewz) MonitorBlockCli() []types.MonitorBlockArgs {
 	return nil
 }

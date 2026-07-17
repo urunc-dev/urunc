@@ -34,8 +34,8 @@ type HVT struct {
 	binary     string
 }
 
-// applySeccompFilter applies some secomp filters for the Hvt process.
-// By default all systemcalls will cause a SIGSYS, except the ones that we whitelist
+// applySeccompFilter applies some seccomp filters for the Hvt process.
+// By default all system calls will cause a SIGSYS, except the ones that we whitelist
 func applySeccompFilter() error {
 	syscalls := []string{
 		"rt_sigaction",
@@ -86,7 +86,7 @@ func applySeccompFilter() error {
 	// Some of the actions that we can take for accessing non-permitted system calls are:
 	// - seccomp.ActionKillThread will kill the thread that tried to use a non-permitted
 	//	system call, but the rest of the threads can still run
-	// - seccomp.ActionErrno will result to returning EPERM error in all non-permitted
+	// - seccomp.ActionErrno will result in returning EPERM error in all non-permitted
 	//	system calls.
 	// - ActionTrap will cause a SIGSYS trap to the process.
 	//

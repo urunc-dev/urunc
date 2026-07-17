@@ -34,7 +34,7 @@ The timestamps currently depicting each unikernel container execution are the fo
 
 ## Timestamping logging method
 
-To log the timestamps with minimal overhead, we opted to use the [zerolog](https://github.com/rs/zerolog) package. We were able to keep the delay caused by the timestamp logging in a low level, around 38351ns for the 20 timestamps required. In comparison, when using [logrus](https://github.com/sirupsen/logrus) the overhead was measured at around 71589ns.
+To log the timestamps with minimal overhead, we opted to use the [zerolog](https://github.com/rs/zerolog) package. We were able to keep the delay caused by the timestamp logging at a low level, around 38351ns for the 20 timestamps required. In comparison, when using [logrus](https://github.com/sirupsen/logrus) the overhead was measured at around 71589ns.
 
 Timestamp logging is now handled through a fixed schema using zerolog. The previous logger benchmark suite has been removed, as it is no longer relevant to the current timestamping implementation.
 

@@ -169,7 +169,7 @@ func reviseRootDir(cmd *cli.Command) error {
 		return err
 	}
 	if root == "/" {
-		// This can happen if --root argument is.
+		// This can happen if --root argument is:
 		//  - "" (i.e. empty);
 		//  - "." (and the CWD is /);
 		//  - "../../.." (enough to get to /);
@@ -210,7 +210,7 @@ func configLogrus(cmd *cli.Command, cfg unikontainers.UruncLog) error {
 	logLevel := max(cfgLogLevel, cliLogLevel)
 	logrus.SetLevel(logLevel)
 
-	// If loglevel is debug or lower, enable report caller with prettyfier for text format
+	// If loglevel is debug or lower, enable report caller with prettifier for text format
 	if logLevel >= logrus.DebugLevel {
 		logrus.SetReportCaller(true)
 		// Shorten function and file names reported by the logger, by

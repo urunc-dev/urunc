@@ -45,7 +45,7 @@ inside the unikernel through the respective VM process.
 
 ## Quick start
 
-The easiest and fastest way to try out `urunc` would be with `docker`
+The easiest and fastest way to try out `urunc` would be with `docker`.
 Before doing so, please make sure that the host system satisfies the
 following dependencies:
 
@@ -145,7 +145,7 @@ supported VM/Sandbox monitors and unikernels:
 | Unikraft  | QEMU, Firecracker                   | x86         | Initrd, 9pfs                            |
 | MirageOS  | QEMU, Solo5-hvt, Solo5-spt          | x86,aarch64 | Block/Devmapper                         |
 | Mewz      | QEMU                                | x86         | In-memory                               |
-| Linux     | QEMU, Firecracker, Cloud-HYpervisor | x86,aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
+| Linux     | QEMU, Firecracker, Cloud-Hypervisor | x86,aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
 | Hermit    | QEMU                                | x86         | Initrd                                  |
 
 We plan to add support for more unikernel frameworks and other platforms too.
@@ -210,7 +210,7 @@ document](https://urunc.io/developer-guide/contribute/).
 ## Security policy
 
 In case of a security vulnerability, please refer to the
-[Security Policy document](https://urunc.io/developer-guide/security/).
+[Security Policy document](https://urunc.io/developer-guide/security/)
 for guidelines on how to report it responsibly.
 
 ## Changelog
@@ -226,5 +226,5 @@ for more information on what changed in the latest and previous releases.
 
 We kindly invite everyone interested in `urunc` to join our
 [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J).
-To directly communicate with the maintainers, feel free to drop an email At
+To directly communicate with the maintainers, feel free to drop an email at
 [`urunc`'s maintainers' mailing list](cncf-urunc-maintainers@lists.cncf.io )

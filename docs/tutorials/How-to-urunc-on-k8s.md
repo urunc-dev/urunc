@@ -11,7 +11,7 @@ To use `urunc` in a k8s cluster there are 2 options:
 
 ### Install urunc
 
-Before we start, we need to have working Kubernetes cluster with [urunc installed](../installation.md) on one or more nodes.
+Before we start, we need to have a working Kubernetes cluster with [urunc installed](../installation.md) on one or more nodes.
 
 ### Add urunc as a RuntimeClass
 

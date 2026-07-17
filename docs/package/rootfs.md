@@ -18,7 +18,7 @@ tools and explain how to use them to create and package a root filesystem
 For the time being, `urunc` supports three ways for passing the rootfs to the
 unikernel: a) through initrd, b) as a virtio-block and c) through shared-fs.
 In the virtio-block case,
-`urunc` can either levarage the container's snapshot and pass the whole
+`urunc` can either leverage the container's snapshot and pass the whole
 container's rootfs as the rootfs, or `urunc` can make use of
 a user-created file inside the OCI image to pass as a virtio-block device
 to the unikernel.
@@ -71,7 +71,7 @@ In the above file we specify the following:
 - We want to package a [Unikraft](https://unikraft.org) unikernel that will execute on top of [Qemu](https://qemu.org) over
   x86 architecture.
 - We want to create from `scratch` a rootfs with `initrd` as its type. In
-  particular, we want a initrd file that contains the file `redis.conf` in
+  particular, we want an initrd file that contains the file `redis.conf` in
   `/data/conf/redis.conf`. In that way, [bunny](https://github.com/nubificus/bunny) creates the initrd file for us
   and sets up the respective `urunc` annotations to attach this initrd file
   when we boot the unikernel.
@@ -93,9 +93,9 @@ rootfs. For this scenario we can use both
 [bunny](https://github.com/nubificus/bunny) and
 [bunix](https://github.com/nubificus/bunix).
 
-> **NOTE**: In case the unikernel does not supports shared-fs (e.g. 9pfs/virtiofs), we
+> **NOTE**: In case the unikernel does not support shared-fs (e.g. 9pfs/virtiofs), we
 > can only use block devices and for that reason we need to create the unikernel
-> container using devmapper as a snapshotter. In that way,`urunc` will use the
+> container using devmapper as a snapshotter. In that way, `urunc` will use the
 > snapshot of the container's image and directly attach it to the unikernel as  a
 > block device.
 
@@ -148,7 +148,7 @@ In the above file we specify the following:
 - We want to create a rootfs from `scratch` with a `raw` type, meaning that
   we will just copy the
   specified files directly to the OCI image's rootfs. In particular, we copy the
-  file `redis.conf` and place it at `/conf/redis.conf`.This is similar to
+  file `redis.conf` and place it at `/conf/redis.conf`. This is similar to
   `COPY` in Dockerfile.  Because of this type selection, [bunny](https://github.com/nubificus/bunny) will also set up
   the respective annotations to mount the OCI images rootfs directly to the
   unikernel.
@@ -198,7 +198,7 @@ docker build -f Containerfile -t urunc/prebuilt/redis-rumprun-hvt:test .
 
 ### Using `bunix`
 
-In the case of [bunix](https://github.com/nubificus/bunix) we need the whole repository in the same directly as
+In the case of [bunix](https://github.com/nubificus/bunix) we need the whole repository in the same directory as
 the unikernel. Then, we simply need to edit the `args.nix` file. For our
 pre-built Redis [Rumprun](https://github.com/nubificus/rumprun) unikernel we can define the files as:
 

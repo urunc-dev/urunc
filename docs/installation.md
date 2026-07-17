@@ -129,7 +129,7 @@ block device for a guest. Currently, `urunc` has been tested and verified with
 [devmapper](https://github.com/containerd/containerd/blob/main/docs/snapshotters/devmapper.md)
 and
 [blockfile](https://github.com/containerd/containerd/blob/main/docs/snapshotters/blockfile.md).
-Devmapper uses a thinpool for flexible management, while blockfile uses on a
+Devmapper uses a thinpool for flexible management, while blockfile uses a
 pre-allocated scratch file, though it lacks ext2 support and thus it is not
 compatible with Rumprun unikernels.
 
@@ -225,7 +225,7 @@ io.containerd.snapshotter.v1              devmapper                linux/amd64  
 #### Setting and configuring blockfile
 
 The first step of setting up `blockfile` is the creation of the
-scratch file, which will be used from the snapshotter:
+scratch file, which will be used by the snapshotter:
 
 ```bash
 sudo mkdir -p /opt/containerd/blockfile
@@ -305,7 +305,7 @@ respective installation guide.
 
 ### Option 1: Using the monitors-build repository
 
-The [monitor-builds repository](https://github.com/urunc-dev/monitors-build)
+The [monitors-build repository](https://github.com/urunc-dev/monitors-build)
 provides a reference setup for building and distributing static binaries of
 monitors and tools for `urunc`. In the [releases
 page](https://github.com/urunc-dev/monitors-build/releases) there are archives
@@ -337,7 +337,7 @@ rm release-${ARCH}-${VERSION}.tar.gz
 
 After downloading all the binaries, we need to instruct `urunc` about the
 location of the binaries. Therefore, in [`urunc`'s
-configuration](../configuration). there are three fields that need to
+configuration](../configuration), there are three fields that need to
 get updated:
 
 1. in each monitor the `path` field,
@@ -417,7 +417,7 @@ rm -fr release-${VERSION}-${ARCH}
 
 [Cloud-Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
 provides releases with statically-built binaries. To get a specific version
-(e.g. "v[[ versions.clh ]]":
+(e.g. "v[[ versions.clh ]]"):
 
 ```bash
 ARCH="$(uname -m)"
@@ -458,12 +458,12 @@ To install `urunc`, there are three options:
 
 1. building from source,
 2. grabbing the binaries from the latest release, or
-3. grabbing the binaries from the lastest commit in main.
+3. grabbing the binaries from the latest commit in main.
 
 #### Option 1: Building from source
 
-In order to build `urunc` from source, any earlier version of Go 1.20.6 should
-be sufficient, Let's download Go [[versions.go ]]
+In order to build `urunc` from source, any version of Go 1.20.6 or later should
+be sufficient. Let's download Go [[versions.go ]]
 
 ```bash
 GO_VERSION=[[ versions.go ]]

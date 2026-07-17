@@ -48,7 +48,7 @@ const (
 
 var uniklog = logrus.WithField("subsystem", "unikontainers")
 
-var ErrQueueProxy = errors.New("this a queue proxy container")
+var ErrQueueProxy = errors.New("this is a queue proxy container")
 var ErrNotUnikernel = errors.New("this is not a unikernel container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
 
@@ -168,7 +168,7 @@ func (u *Unikontainer) InitialSetup() error {
 	// By default, urunc will not set any rootfs for the guest. However,
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
-	// both ae supported, then the block option will be used by default.
+	// both are supported, then the block option will be used by default.
 	var rootfsParams types.RootfsParams
 
 	// Read the rootfs choice written by the shim.
@@ -261,7 +261,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 		// TODO: Handle this case better. We do not need to show an error
 		// since there was no network in the container. Therefore, we
 		// need better error handling and specifically check if the container
-		// di not have any network.
+		// did not have any network.
 		uniklog.Errorf("Failed to setup network :%v. Possibly due to ctr", err)
 	}
 	// if network info is nil, we didn't find eth0, so we are running with ctr
@@ -477,7 +477,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// By default, urunc will not set any rootfs for the guest. However,
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
-	// both ae supported, then the block option will be used by default.
+	// both are supported, then the block option will be used by default.
 	var rootfsParams types.RootfsParams
 
 	// Read the rootfs choice written by the shim.
@@ -639,7 +639,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
-	// We just want to check if a mount namespace was define din the list
+	// We just want to check if a mount namespace was defined in the list
 	// Therefore, if there was no error and the mount namespace was found
 	// we can pivot.
 	withPivot := err != nil
@@ -805,7 +805,7 @@ func (u *Unikontainer) Delete() error {
 	// the kernel cleanup the mounts and shim to remove directories.
 	// However, just to be on the safe side, we remove all the newly
 	// created directories from urunc. In order to check if we used the
-	// rootfs under the bundle directory or we create anew one, we can check
+	// rootfs under the bundle directory or we create a new one, we can check
 	// if the monitorRootfsDirName directory exists under the bundle.
 	_, err = os.Stat(monRootfs)
 	if !os.IsNotExist(err) {
@@ -815,7 +815,7 @@ func (u *Unikontainer) Delete() error {
 		dirs = append(dirs, monitorRootfsDirName)
 		prefPath = bundleDir
 	} else {
-		// Otherwise remove the enw directories we created inside the
+		// Otherwise remove the new directories we created inside the
 		// container's rootfs.
 		// We do not need to unmount anything here, since we rely on Linux
 		// to do the cleanup for us. This will happen automatically,

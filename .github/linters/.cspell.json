@@ -1,13 +1,15 @@
 {
   "version": "0.2",
-  "dictionaryDefinitions": [ 
-   { 
-    "name": "project-dict", 
-    "path": "urunc-dict.txt" 
-   }
+  "dictionaryDefinitions": [
+    {
+      "name": "project-dict",
+      "path": "urunc-dict.txt"
+    }
   ],
-  "dictionaries": ["project-dict"],
-  "words": [ ], 
+  "dictionaries": [
+    "project-dict"
+  ],
+  "words": [],
   "ignorePaths": [
     "node_modules",
     "vendor",
@@ -40,7 +42,7 @@
   ],
   "ignoreRegExpList": [
     "http[s]?://\\S+",
-    "`[^`]+`",
+    "`[^`\\n]+`",
     "\\$[^\\s]+",
     "/^Signed-off-by:.*$/gm",
     "/^Reviewed-by:.*$/gm",
@@ -48,7 +50,6 @@
     "/^Co-authored-by:.*$/gm",
     "/^Tested-by:.*$/gm",
     "/^Acked-by:.*$/gm",
-    "`[^`]+`",
     "```[\\s\\S]*?```"
   ]
 }

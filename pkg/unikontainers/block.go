@@ -109,7 +109,7 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 	}
 
 	// Check if the source of the mountpoint that refers to path
-	// exists i the map with the found sources. If this is the case,
+	// exists in the map with the found sources. If this is the case,
 	// then we are not dealing with a mount regarding a block device
 	// that we can attach to the sandbox.
 	_, ok := nonSpecialSources[blockDev.Source]

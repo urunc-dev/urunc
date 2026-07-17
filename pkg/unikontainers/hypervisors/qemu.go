@@ -81,7 +81,7 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		cmdString += ",elevateprivileges=deny"
 		// Allow or Deny *fork and execve
 		cmdString += ",spawn=deny"
-		// Allow or Deny process affinity and schedular priority
+		// Allow or Deny process affinity and scheduler priority
 		cmdString += ",resourcecontrol=deny"
 	}
 

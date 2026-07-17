@@ -24,12 +24,12 @@ type DynamicNetwork struct {
 }
 
 // NetworkSetup checks if any tap device is available in the current netns. If it is, it assumes a running unikernel
-// is present in the current netns and returns an error, because network functionality for more than one unikernels
+// is present in the current netns and returns an error, because network functionality for more than one unikernel
 // is not yet implemented.
 // If no TAP devices are available in the current netns, it creates a new tap device and
 // sets TC rules between the veth interface and the tap device inside the namespace.
 //
-// FIXME: CUrrently only one tap device per netns can provide functional networking. We need to find a proper way to handle networking
+// FIXME: Currently only one tap device per netns can provide functional networking. We need to find a proper way to handle networking
 // for multiple unikernels in the same pod/network namespace.
 // See: https://github.com/urunc-dev/urunc/issues/13
 func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {

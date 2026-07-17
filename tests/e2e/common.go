@@ -77,7 +77,7 @@ const (
 	testNerdctl = "TestNerdctl"
 )
 
-var errToolDoesNotSupport = errors.New("Operation not support")
+var errToolDoesNotSupport = errors.New("Operation not supported")
 
 func commonNewContainerCmd(a containerTestArgs) string {
 	cmdBase := "--runtime io.containerd.urunc.v2 "

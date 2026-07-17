@@ -29,12 +29,12 @@ import (
 
 var ErrEmptyAnnotations = errors.New("spec annotations are empty")
 
-// Important: Unfortunately GOlang does not allow to use constant values for
-// struct tagsAs a result, please always keep the constant definitions and the
+// Important: Unfortunately Golang does not allow to use constant values for
+// struct tags. As a result, please always keep the constant definitions and the
 // UnikernelConfig struct below in sync.
 
 // Urunc specific annotations
-// ALways keep it in sync with the struct UnikernelConfig struct
+// Always keep it in sync with the struct UnikernelConfig struct
 const (
 	annotType          = "com.urunc.unikernel.unikernelType"
 	annotVersion       = "com.urunc.unikernel.unikernelVersion"
