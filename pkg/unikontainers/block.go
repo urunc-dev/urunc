@@ -21,8 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/moby/sys/mount"
 	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
@@ -95,7 +95,7 @@ func getMountInfo(path string) (types.BlockDevParams, error) {
 			blockDev.Source = postDash[1]
 			blockDev.FsType = postDash[0]
 			blockDev.MountPoint = path
-			// Keep the-mount VFS options (field 6 of mountinfo)
+			// Keep the mount VFS options (field 6 of mountinfo)
 			// to restore them later in the delete path.
 			blockDev.MountOptions = preDash[5]
 			blockDev.ID = ""
@@ -161,7 +161,7 @@ func copyMountfiles(targetPath string, mounts []specs.Mount) error {
 		if m.Type != "bind" {
 			continue
 		}
-		err := fileFromHost(targetPath, m.Source, m.Destination, 0, true)
+		err := fileFromHost(targetPath, m.Source, m.Destination)
 		if (err != nil) && !errors.Is(err, ErrCopyDir) {
 			return err
 		}
@@ -224,14 +224,14 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 			// NOTE: Although we restore the autoclear flag in the delete path,
 			// if delete is never called then the autoclear flag will never
 			// get restored.and remounted
-			// TODO; Add the above note in a documentation for storage
+			// TODO: Add the above note in a documentation for storage
 			// handling
 			cleared, err := setLoopAutoclear(mInfo.Source, false)
 			if err != nil {
 				return nil, err
 			}
 			mInfo.LoopAutoclear = cleared
-			err = mount.Unmount(mInfo.MountPoint)
+			err = unmount(mInfo.MountPoint)
 			if err != nil {
 				return nil, err
 			}
@@ -262,7 +262,24 @@ func restoreBlockVolumes(blockArgs []types.BlockDevParams) error {
 			continue
 		}
 
-		flags, _ := splitMountOptions(strings.Split(b.MountOptions, ","))
+		// restoring block volumes is a simple mount operation, but using
+		// containerd can lead to errors because the mount options parser of
+		// containerd might not handle some VFS flags correctly and misplace
+		// them in the options argument of mount system call.
+		// Therefore, do not use containerd for such mounts and handle them
+		// directly.
+		var flags uintptr
+		for _, o := range strings.Split(b.MountOptions, ",") {
+			flag, clearFlag, err := mapVFSFlag(o)
+			if err != nil {
+				continue
+			}
+			if clearFlag {
+				flags &^= flag
+			} else {
+				flags |= flag
+			}
+		}
 		err = unix.Mount(b.Source, b.HostMountPoint, b.FsType, flags, "")
 		if err != nil {
 			return fmt.Errorf("failed to remount %s at %s: %w", b.Source, b.HostMountPoint, err)
@@ -362,7 +379,7 @@ func (b blockRootfs) preSetup() error {
 		return fmt.Errorf("failed to extract boot files from rootfs: %w", err)
 	}
 
-	err = mount.Unmount(b.mountedPath)
+	err = unmount(b.mountedPath)
 	if err != nil {
 		return fmt.Errorf("failed to unmount rootfs: %w", err)
 	}
@@ -411,4 +428,24 @@ func (b blockRootfs) getSharedDirs() (types.SharedfsParams, error) {
 
 func (b blockRootfs) preStart() error {
 	return nil
+}
+
+// Taken from https://github.com/containerd/containerd/blob/v1.7.34/mount/mount_linux.go#L203
+// and we simply change the timeout period to max 200 ms, then EBUSY is returned.
+func unmount(target string) error {
+	for i := 0; i < 10; i++ {
+		// Always aim for strict unmount
+		err := unix.Unmount(target, 0)
+		if err != nil {
+			switch err {
+			case unix.EBUSY:
+				time.Sleep(20 * time.Millisecond)
+				continue
+			default:
+				return err
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("failed to unmount target %s: %w", target, unix.EBUSY)
 }

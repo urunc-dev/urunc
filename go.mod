@@ -11,10 +11,10 @@ require (
 	github.com/containerd/log v0.1.0
 	github.com/containerd/ttrpc v1.2.9
 	github.com/creack/pty v1.1.24
+	github.com/cyphar/filepath-securejoin v0.5.2
 	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackpal/gateway v1.2.0
-	github.com/moby/sys/mount v0.3.5
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/moby/sys/userns v0.1.0
 	github.com/nubificus/hedge_cli v0.0.3

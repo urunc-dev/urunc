@@ -25,8 +25,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 
+	"github.com/containerd/containerd/mount"
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/moby/sys/userns"
 	"golang.org/x/sys/unix"
 
@@ -34,45 +36,6 @@ import (
 )
 
 var ErrCopyDir = errors.New("can not copy a directory")
-
-type mountFlagStruct struct {
-	clear bool
-	flag  int
-}
-
-// createTmpfs creates a new tmpfs at path inside monRootfs
-// In particular, it is used for the creation of /tmp and /dev.
-// This is necessary to create the required devices for the monitor execution,
-// such as KVM, null, urandom etc.
-func createTmpfs(monRootfs string, path string, flags uintptr, data string) error {
-	dstPath := filepath.Join(monRootfs, path)
-	mountType := "tmpfs"
-
-	err := os.MkdirAll(dstPath, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create %s dir: %w", path, err)
-	}
-
-	err = unix.Mount(mountType, dstPath, mountType, flags, data)
-	if err != nil {
-		return fmt.Errorf("failed to mount %s tmpfs: %w", path, err)
-	}
-
-	// Remove propagation
-	err = unix.Mount("", dstPath, "", unix.MS_PRIVATE, "")
-	if err != nil {
-		return fmt.Errorf("failed to create %s tmpfs: %w", path, err)
-	}
-
-	if strings.Contains(","+data+",", ",mode=1777,") {
-		// sonarcloud:go:S2612 -- This is a tmpfs mount point, sticky bit 1777 is required (like /tmp), controlled path, safe by design
-		err := os.Chmod(dstPath, 01777) // NOSONAR
-		if err != nil {
-			return fmt.Errorf("failed to chmod %s: %w", path, err)
-		}
-	}
-	return nil
-}
 
 // setupDevices creates every device from the list inside monitor's rootfs
 func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) error {
@@ -99,7 +62,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	// In a user namespace, always bind-mount the existing host device node.
 	// Only MS_BIND is used here (no extra flags) to mirror runc's device handling.
 	if userns.RunningInUserNS() {
-		return fileFromHost(monRootfs, dev.Path, "", unix.MS_BIND, false)
+		return applyMount(monRootfs, bindMount(dev.Path, dev.Path, false))
 	}
 
 	var devType uint32
@@ -170,23 +133,24 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	return nil
 }
 
-// fileFromHost set ups a mirror of file from the host's rootfs inside the
-// container's rootfs. Also, it preserves the permissions and ownership of the
-// file in the host's rootfs.
-// if withCopy is set then copy the file, otherwise
-// bind mount it.
-// In the context of monitor binaries a copy is considered safer, since
-// none of the monitor processes will share memory with other processes
-// of the same monitor. On the other hand, a copy is slower and consumes
-// more space.
-func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, withCopy bool) error {
+// fileFromHost copies a file from the host's rootfs into monRootfs, preserving
+// the original file's permissions and ownership. If target is empty, the file
+// is placed at the same path it has on the host.
+// A copy is preferred for monitor binaries: none of the monitor processes share
+// memory with other processes of the same monitor, at the cost of being slower
+// and consuming more space. Copying a directory is not supported and returns
+// ErrCopyDir.
+func fileFromHost(monRootfs string, hostPath string, target string) error {
 	// Get the info of the original file
 	var fileInfo unix.Stat_t
 	err := unix.Stat(hostPath, &fileInfo)
 	if err != nil {
 		return err
 	}
-	mode := fileInfo.Mode
+
+	if (fileInfo.Mode & unix.S_IFMT) == unix.S_IFDIR {
+		return ErrCopyDir
+	}
 
 	if target == "" {
 		// Set the correct path
@@ -195,83 +159,25 @@ func fileFromHost(monRootfs string, hostPath string, target string, mFlags int, 
 			return fmt.Errorf("failed to get relative path of %s to /: %w", hostPath, err)
 		}
 	}
-	dstPath := filepath.Join(monRootfs, target)
-
-	if (mode & unix.S_IFMT) != unix.S_IFDIR {
-		dstDir := filepath.Dir(dstPath)
-		if withCopy {
-			err = copyFile(hostPath, dstPath)
-			if err != nil {
-				return fmt.Errorf("failed to copy file %s: %w", hostPath, err)
-			}
-		} else {
-			err = bindMountFile(hostPath, dstDir, dstPath, fileInfo.Mode, mFlags, false)
-			if err != nil {
-				return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
-			}
-		}
-	} else {
-		if withCopy {
-			return ErrCopyDir
-		}
-		err = bindMountFile(hostPath, dstPath, "", 0, mFlags, true)
-		if err != nil {
-			return fmt.Errorf("failed to bind mount file %s: %w", hostPath, err)
-		}
-	}
-
-	// If a copy is created, set up the permissions and ownership to match the original file.
-	// For bind mounts the host inode attributes remain unchanged.
-	if withCopy {
-		err = unix.Chmod(dstPath, fileInfo.Mode)
-		if err != nil {
-			return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
-		}
-
-		err = os.Chown(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
-		if err != nil {
-			return fmt.Errorf("failed to chown %s: %w", dstPath, err)
-		}
-	}
-
-	// The initial MS_BIND won't change the mount options, we need to do a
-	// separate MS_BIND|MS_REMOUNT to apply the mount options. We skip
-	// doing this if the user has not specified any mount flags at all
-	// (including cleared flags) -- in which case we just keep the original
-	// mount flags.
-	if mFlags & ^(unix.MS_BIND|unix.MS_REC|unix.MS_REMOUNT) != 0 {
-		flags := mFlags | unix.MS_BIND | unix.MS_REMOUNT
-		err = unix.Mount(dstPath, dstPath, "", uintptr(flags), "")
-		if err != nil {
-			return fmt.Errorf("failed to set mount flags for %s: %w", dstPath, err)
-		}
-	}
-
-	return nil
-}
-
-// bindMountFile bind mounts a file/directory to a new path
-func bindMountFile(hostPath string, dstDir string, dstPath string, perm uint32, mFlags int, isDir bool) error {
-	var mountTarget string
-	err := os.MkdirAll(dstDir, 0755)
+	dstPath, err := securejoin.SecureJoin(monRootfs, target)
 	if err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
+		return fmt.Errorf("failed to resolve target %s: %w", target, err)
 	}
 
-	if !isDir {
-		dstFile, err1 := unix.Open(dstPath, unix.O_CREAT, perm)
-		if err1 != nil {
-			return fmt.Errorf("failed to create file %s: %w", dstPath, err1)
-		}
-		unix.Close(dstFile)
-		mountTarget = dstPath
-	} else {
-		mountTarget = dstDir
-	}
-
-	err = unix.Mount(hostPath, mountTarget, "", uintptr(mFlags), "")
+	err = copyFile(hostPath, dstPath)
 	if err != nil {
-		return fmt.Errorf("failed to bind mount %s: %w", mountTarget, err)
+		return fmt.Errorf("failed to copy file %s: %w", hostPath, err)
+	}
+
+	// Set up the permissions and ownership to match the original file.
+	err = unix.Chmod(dstPath, fileInfo.Mode)
+	if err != nil {
+		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
+	}
+
+	err = os.Chown(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
+	if err != nil {
+		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
 	}
 
 	return nil
@@ -297,6 +203,102 @@ func mapRootfsPropagationFlag(value string) (int, error) {
 	}
 
 	return propagation, nil
+}
+
+// mapVFSFlag maps a per-mount VFS mount option to its mount(2) flag bit and
+// whether the option clears the flag rather than setting it (e.g. "rw" clears
+// the read-only flag set by "ro"). It returns an error for options that are not
+// VFS flags.
+func mapVFSFlag(value string) (flag uintptr, clear bool, err error) {
+	vfsFlagMapping := map[string]struct {
+		clear bool
+		flag  uintptr
+	}{
+		"ro":            {false, unix.MS_RDONLY},
+		"rw":            {true, unix.MS_RDONLY},
+		"nosuid":        {false, unix.MS_NOSUID},
+		"suid":          {true, unix.MS_NOSUID},
+		"nodev":         {false, unix.MS_NODEV},
+		"dev":           {true, unix.MS_NODEV},
+		"noexec":        {false, unix.MS_NOEXEC},
+		"exec":          {true, unix.MS_NOEXEC},
+		"noatime":       {false, unix.MS_NOATIME},
+		"atime":         {true, unix.MS_NOATIME},
+		"nodiratime":    {false, unix.MS_NODIRATIME},
+		"diratime":      {true, unix.MS_NODIRATIME},
+		"relatime":      {false, unix.MS_RELATIME},
+		"norelatime":    {true, unix.MS_RELATIME},
+		"strictatime":   {false, unix.MS_STRICTATIME},
+		"nostrictatime": {true, unix.MS_STRICTATIME},
+		"nosymfollow":   {false, unix.MS_NOSYMFOLLOW},
+		"symfollow":     {true, unix.MS_NOSYMFOLLOW},
+		"sync":          {false, unix.MS_SYNCHRONOUS},
+		"async":         {true, unix.MS_SYNCHRONOUS},
+		"dirsync":       {false, unix.MS_DIRSYNC},
+		"mand":          {false, unix.MS_MANDLOCK},
+		"nomand":        {true, unix.MS_MANDLOCK},
+		"silent":        {false, unix.MS_SILENT},
+		"loud":          {true, unix.MS_SILENT},
+		"lazytime":      {false, unix.MS_LAZYTIME},
+		"nolazytime":    {true, unix.MS_LAZYTIME},
+		"iversion":      {false, unix.MS_I_VERSION},
+		"noiversion":    {true, unix.MS_I_VERSION},
+	}
+
+	f, exists := vfsFlagMapping[value]
+	if !exists {
+		return 0, false, fmt.Errorf("%s is not a supported vfs mount flag", value)
+	}
+
+	return f.flag, f.clear, nil
+}
+
+// Get the set of mount flags that are set on the mount that contains the given
+// path and are locked by CL_UNPRIVILEGED. This is necessary to ensure that
+// bind-mounting "with options" will not fail with user namespaces, due to
+// kernel restrictions that require user namespace mounts to preserve
+// CL_UNPRIVILEGED locked flags.
+// Similar to
+// https://github.com/opencontainers/umoci/blob/f5d1219acaf67127ebacf6306776d3ff465735ea/oci/config/convert/utils_linux.go#L33
+// but returns the uintptr to use in mount later.
+func getUnprivilegedMountFlags(path string) (uintptr, error) {
+	var st unix.Statfs_t
+	err := unix.Statfs(path, &st)
+	if err != nil {
+		return 0, err
+	}
+
+	// statfs reports ST_* flags. They match the corresponding MS_* values for
+	// most flags, but ST_RELATIME (0x1000) differs from MS_RELATIME (0x200000),
+	// so map each ST_* bit that statfs reports to the MS_* flag used for the
+	// remount explicitly.
+	lockedFlags := []struct {
+		st, ms uintptr
+	}{
+		{unix.ST_RDONLY, unix.MS_RDONLY},
+		{unix.ST_NODEV, unix.MS_NODEV},
+		{unix.ST_NOEXEC, unix.MS_NOEXEC},
+		{unix.ST_NOSUID, unix.MS_NOSUID},
+		{unix.ST_NOATIME, unix.MS_NOATIME},
+		{unix.ST_RELATIME, unix.MS_RELATIME},
+		{unix.ST_NODIRATIME, unix.MS_NODIRATIME},
+	}
+
+	var flags uintptr
+	for _, f := range lockedFlags {
+		if uintptr(st.Flags)&f.st == f.st {
+			flags |= f.ms
+		}
+	}
+
+	// With neither noatime nor relatime set, the source uses strictatime;
+	// preserve it explicitly so a rootless remount of a strictatime-locked source
+	// is not rejected with EPERM.
+	if flags&(unix.MS_NOATIME|unix.MS_RELATIME) == 0 {
+		flags |= unix.MS_STRICTATIME
+	}
+
+	return flags, nil
 }
 
 // rootfsParentMountPrivate ensures rootfs parent mount is private.
@@ -350,154 +352,166 @@ func prepareRoot(path string, rootfsPropagation string) error {
 	return unix.Mount(path, path, "bind", unix.MS_BIND|unix.MS_REC, "")
 }
 
+// applyMounts sets up every mount specified in the mounts argument inside the
+// directory of rootfsPath.
 func applyMounts(rootfsPath string, mounts []specs.Mount) error {
 	for _, m := range mounts {
-		switch m.Type {
-		case "tmpfs":
-			// TODO: replace createTmpfs with a mount package (e.g.
-			// containerd's). For the time being keep the compatibility
-			// with createTmpfs.
-			flags, data := splitMountOptions(m.Options)
-			err := createTmpfs(rootfsPath, m.Destination, flags, data)
-			if err != nil {
-				return fmt.Errorf("failed to create tmpfs at %s: %w", m.Destination, err)
-			}
-		case "proc", "devpts":
-			err := applySpecialFsMount(rootfsPath, m)
-			if err != nil {
-				return fmt.Errorf("failed to create %s at %s: %w", m.Type, m.Destination, err)
-			}
-		case "bind":
-			err := applyBindMount(rootfsPath, m)
-			if err != nil {
-				return fmt.Errorf("failed to bind mount %s at %s: %w", m.Source, m.Destination, err)
-			}
-		default:
-			// Skip unknown mount types
-			// TODO handle other types of mounts too
-			continue
-		}
-	}
-
-	return nil
-}
-
-// applySpecialFsMount handles pseudo filesystem (e.g. proc, devpts) mounts
-func applySpecialFsMount(rootfsPath string, m specs.Mount) error {
-	dstPath := filepath.Join(rootfsPath, m.Destination)
-	err := os.MkdirAll(dstPath, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create %s dir: %w", m.Destination, err)
-	}
-
-	flags, data := splitMountOptions(m.Options)
-	err = unix.Mount(m.Source, dstPath, m.Type, flags, data)
-	if err != nil {
-		return fmt.Errorf("failed to mount %s: %w", m.Destination, err)
-	}
-
-	return nil
-}
-
-// applyBindMount handles the bind mounts for the monitor rootfs
-func applyBindMount(rootfsPath string, m specs.Mount) error {
-	var mountFlags int
-	var propFlag []int
-	for _, o := range m.Options {
-		f, exists := mapMountFlag(o)
-		if exists {
-			if f.clear {
-				mountFlags &= ^f.flag
-			} else {
-				mountFlags |= f.flag
-			}
-			continue
-		}
-		fprop, err := mapRootfsPropagationFlag(o)
-		if err == nil {
-			propFlag = append(propFlag, fprop)
-		}
-		// Ignore unknown flags
-		// TODO: Handle unknown flags. These can be mount attribute flags
-		// or specific flags for a particular fs type.
-	}
-	err := fileFromHost(rootfsPath, m.Source, m.Destination, mountFlags, false)
-	if err != nil {
-		return err
-	}
-
-	dstPath := filepath.Join(rootfsPath, m.Destination)
-	for _, pFlag := range propFlag {
-		err = unix.Mount(dstPath, dstPath, "", uintptr(pFlag), "")
+		err := applyMount(rootfsPath, m)
 		if err != nil {
-			return fmt.Errorf("failed to set propagation flag for %s: %w", m.Source, err)
+			// NOTE: We do not cleanup here because we assume that
+			// a mount namespace was declared and we are inside one.
+			// Therefore, after a fail, we will exit reexec (the only
+			// process inside the mount namespace and therefore the
+			// namespace will get removed and the kernel will cleanup
+			// the mounts. Revisit this in the future and check if it
+			// is urunc's responsibility to cleanup. If it is we need
+			// to account for cases where a mount namespace was not
+			// specified and therefore we need to manually unmount everything.
+			return fmt.Errorf("failed to apply mount %s: %w", m.Source, err)
 		}
 	}
 
 	return nil
 }
 
-// splitMountOptions separates mount options into the corresponding mount flags
-// and the remaining options, which are returned as a comma-separated data
-// string to be passed to mount(2).
-func splitMountOptions(options []string) (uintptr, string) {
-	var flags int
-	var data []string
-	for _, o := range options {
-		f, exists := mapMountFlag(o)
-		if exists {
-			if f.clear {
-				flags &= ^f.flag
-			} else {
-				flags |= f.flag
-			}
-			continue
-		}
-		data = append(data, o)
+// applyMount mounts a single entry under rootfsPath.
+func applyMount(rootfsPath string, m specs.Mount) error {
+	target, err := securejoin.SecureJoin(rootfsPath, m.Destination)
+	if err != nil {
+		return fmt.Errorf("failed to resolve mount target %s: %w", m.Destination, err)
 	}
 
-	return uintptr(flags), strings.Join(data, ",")
+	err = createMountPoint(target, m)
+	if err != nil {
+		return fmt.Errorf("failed to create mount target %s: %w", target, err)
+	}
+
+	// containerd's parser cannot translate propagation tokens, and the kernel
+	// ignores per-mount VFS flags (nosuid, nodev, ...) when a bind is created, so
+	// parse the options once and apply them manually later.
+	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, m.Type == "bind")
+
+	cm := mount.Mount{
+		Type:    m.Type,
+		Source:  m.Source,
+		Options: containerdOpts,
+	}
+	err = cm.Mount(target)
+	if err != nil {
+		return fmt.Errorf("failed to mount %s at %s: %w", cm.Source, target, err)
+	}
+
+	// The kernel ignores per-mount VFS flags when a bind is created, so re-apply
+	// them with a remount. In a user namespace the remount must preserve the
+	// flags locked on the source mount, otherwise the kernel rejects it with
+	// EPERM (this is what containerd's own bind remount does for us elsewhere).
+	if m.Type == "bind" && vfsFlags != 0 {
+		remount := vfsFlags | unix.MS_BIND | unix.MS_REMOUNT
+		if userns.RunningInUserNS() {
+			locked, err := getUnprivilegedMountFlags(m.Source)
+			if err != nil {
+				return fmt.Errorf("failed to get locked mount flags of %s: %w", m.Source, err)
+			}
+			// Merging the locked flags means a source whose mount is locked
+			// read-only forces the bind read-only even if the spec asked for rw.
+			// We accept that as a trade-off to keep rootless remounts working;
+			// runc instead errors out in this case.
+			remount |= locked
+		}
+		err = unix.Mount("", target, "", remount, "")
+		if err != nil {
+			return fmt.Errorf("failed to apply mount flags for %s: %w", target, err)
+		}
+	}
+
+	for _, pFlag := range propagation {
+		err = unix.Mount("", target, "", uintptr(pFlag), "")
+		if err != nil {
+			return fmt.Errorf("failed to set propagation flag for %s: %w", m.Destination, err)
+		}
+	}
+
+	if m.Type == "tmpfs" && slices.Contains(m.Options, "mode=1777") {
+		err = os.Chmod(target, 0o777|os.ModeSticky)
+		if err != nil {
+			return fmt.Errorf("failed to chmod %s: %w", target, err)
+		}
+	}
+
+	return nil
 }
 
-// mapMountFlag retrieves the mount flags of a mount entry
-// from the container's configuration
-func mapMountFlag(value string) (mountFlagStruct, bool) {
-	mountFlagsMapping := map[string]mountFlagStruct{
-		"async":         {true, unix.MS_SYNCHRONOUS},
-		"atime":         {true, unix.MS_NOATIME},
-		"bind":          {false, unix.MS_BIND},
-		"defaults":      {false, 0},
-		"dev":           {true, unix.MS_NODEV},
-		"diratime":      {true, unix.MS_NODIRATIME},
-		"dirsync":       {false, unix.MS_DIRSYNC},
-		"exec":          {true, unix.MS_NOEXEC},
-		"iversion":      {false, unix.MS_I_VERSION},
-		"lazytime":      {false, unix.MS_LAZYTIME},
-		"loud":          {true, unix.MS_SILENT},
-		"mand":          {false, unix.MS_MANDLOCK},
-		"noatime":       {false, unix.MS_NOATIME},
-		"nodev":         {false, unix.MS_NODEV},
-		"nodiratime":    {false, unix.MS_NODIRATIME},
-		"noexec":        {false, unix.MS_NOEXEC},
-		"noiversion":    {true, unix.MS_I_VERSION},
-		"nolazytime":    {true, unix.MS_LAZYTIME},
-		"nomand":        {true, unix.MS_MANDLOCK},
-		"norelatime":    {true, unix.MS_RELATIME},
-		"nostrictatime": {true, unix.MS_STRICTATIME},
-		"nosuid":        {false, unix.MS_NOSUID},
-		"nosymfollow":   {false, unix.MS_NOSYMFOLLOW}, // since kernel 5.10
-		"rbind":         {false, unix.MS_BIND | unix.MS_REC},
-		"relatime":      {false, unix.MS_RELATIME},
-		"remount":       {false, unix.MS_REMOUNT},
-		"ro":            {false, unix.MS_RDONLY},
-		"rw":            {true, unix.MS_RDONLY},
-		"silent":        {false, unix.MS_SILENT},
-		"strictatime":   {false, unix.MS_STRICTATIME},
-		"suid":          {true, unix.MS_NOSUID},
-		"sync":          {false, unix.MS_SYNCHRONOUS},
-		"symfollow":     {true, unix.MS_NOSYMFOLLOW}, // since kernel 5.10
+// createMountPoint creates the mountpoint of a mount.
+func createMountPoint(target string, m specs.Mount) error {
+	if m.Type == "bind" {
+		var st unix.Stat_t
+		err := unix.Stat(m.Source, &st)
+		if err != nil {
+			return fmt.Errorf("failed to stat mount source %s: %w", m.Source, err)
+		}
+		if st.Mode&unix.S_IFMT != unix.S_IFDIR {
+			dstDir := filepath.Dir(target)
+			err := os.MkdirAll(dstDir, 0755)
+			if err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
+			}
+			fd, err := unix.Open(target, unix.O_CREAT, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", target, err)
+			}
+			err = unix.Close(fd)
+			if err != nil {
+				return fmt.Errorf("failed to close file %s: %w", target, err)
+			}
+
+			return nil
+		}
 	}
 
-	f, e := mountFlagsMapping[value]
-	return f, e
+	err := os.MkdirAll(target, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", target, err)
+	}
+
+	return nil
+}
+
+// splitMountOptions splits a mount's options into three groups: the options
+// for containerd's mount package, the propagation flags, and the per-mount VFS
+// flags. Propagation flags never go to containerd because it cannot parse them
+// and would end up in fs-specific data. The VFS flags are where bind mounts
+// differ. The kernel ignores per-mount VFS flags when a bind mount is created,
+// so with isBind set these options are withheld from containerd and returned
+// as flag bits for the caller to apply. For non-bind mounts the VFS options
+// stay in the containerd options, since the initial mount(2) applies them; the
+// returned flag bits are meaningless in that case and must be ignored.
+func splitMountOptions(options []string, isBind bool) ([]string, []int, uintptr) {
+	var containerdOpts []string
+	var propagation []int
+	var vfsFlags uintptr
+	for _, o := range options {
+		pFlag, err := mapRootfsPropagationFlag(o)
+		if err == nil {
+			propagation = append(propagation, pFlag)
+			continue
+		}
+
+		flag, clear, err := mapVFSFlag(o)
+		if err == nil {
+			if clear {
+				vfsFlags &^= flag
+			} else {
+				vfsFlags |= flag
+			}
+			// For bind mounts keep the VFS flags separate from containerd
+			// and apply them later.
+			if isBind {
+				continue
+			}
+		}
+
+		containerdOpts = append(containerdOpts, o)
+	}
+
+	return containerdOpts, propagation, vfsFlags
 }

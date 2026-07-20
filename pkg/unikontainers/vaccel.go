@@ -20,7 +20,6 @@ import (
 	"regexp"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
-	"golang.org/x/sys/unix"
 )
 
 // ErrVAccelDisabled is returned by resolveVAccelConfig when the vAccel
@@ -123,7 +122,7 @@ func prepareVSockEnvironment(monRootfs string, hypervisor string, vsockSocketPat
 
 	// bind mount the unix socket directory
 	if hypervisor == "firecracker" {
-		err = fileFromHost(monRootfs, vsockSocketPath, "", unix.MS_BIND|unix.MS_PRIVATE, false)
+		err = applyMount(monRootfs, bindMount(vsockSocketPath, vsockSocketPath, true))
 		if err != nil {
 			return nil, err
 		}

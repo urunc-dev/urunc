@@ -63,7 +63,9 @@ func saveMonitorResources(baseDir string, res monitorResources) error {
 
 	path := filepath.Join(baseDir, monitorFilename)
 
-	return os.WriteFile(path, data, 0o644) //nolint: gosec
+	// monitor.json is internal runtime state, written and read back only by the
+	// urunc runtime. Keep it owner-only.
+	return os.WriteFile(path, data, 0o600)
 }
 
 // loadMonitorResources reads the monitor resources file stored by InitialSetup.

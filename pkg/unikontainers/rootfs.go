@@ -55,18 +55,26 @@ func tmpfsMount(target string, size string) specs.Mount {
 			"strictatime",
 			"mode=1777",
 			"size=" + size,
+			"private",
 		},
 	}
 }
 
-// bindMount builds a private, non-recursive bind mount of source at target
-func bindMount(source string, target string) specs.Mount {
-	return specs.Mount{
+// bindMount builds a non-recursive, and private if argument is set, bind mount
+// of source at target
+func bindMount(source string, target string, private bool) specs.Mount {
+	m := specs.Mount{
 		Type:        "bind",
 		Source:      source,
 		Destination: target,
-		Options:     []string{"bind", "private"},
+		Options:     []string{"bind"},
 	}
+
+	if private {
+		m.Options = append(m.Options, "private")
+	}
+
+	return m
 }
 
 // deviceFromHost finds a device in the host from the path and returns its info
@@ -397,6 +405,7 @@ func getMonitorDevices(needsKVM bool) ([]specs.LinuxDevice, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not get host device /dev/urandom: %w", err)
 	}
+	devices := []specs.LinuxDevice{nullDev, randomDev}
 	// The tun device is always included because in urunc create we can not know
 	// if there will be a virtual ethernet device or not, since the CNI hooks
 	// have not executed yet. Therefore, the decision about whether it is actually
@@ -410,8 +419,9 @@ func getMonitorDevices(needsKVM bool) ([]specs.LinuxDevice, error) {
 		} else {
 			return nil, fmt.Errorf("could not get host device /dev/net/tun: %w", err)
 		}
+	} else {
+		devices = append(devices, tunDev)
 	}
-	devices := []specs.LinuxDevice{nullDev, randomDev, tunDev}
 
 	if needsKVM {
 		kvmDev, err := deviceFromHost("/dev/kvm")
@@ -465,7 +475,7 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 		Type:        "tmpfs",
 		Source:      "tmpfs",
 		Destination: "/dev",
-		Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536k"},
+		Options:     []string{"nosuid", "strictatime", "mode=755", "size=65536k", "private"},
 	}
 	devPtsMount := specs.Mount{
 		Type:        "devpts",
@@ -474,21 +484,21 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 		Options:     []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620"},
 	}
 
-	mounts := []specs.Mount{procMount, devMount, devPtsMount, bindMount(monitorPath, monitorPath)}
+	mounts := []specs.Mount{procMount, devMount, devPtsMount, bindMount(monitorPath, monitorPath, true)}
 
 	monitorName := filepath.Base(monitorPath)
 	// TODO: Remove most of these when we switch to static binaries.
 	if monitorName != "firecracker" {
-		mounts = append(mounts, bindMount("/lib", "/lib"))
+		mounts = append(mounts, bindMount("/lib", "/lib", true))
 
 		// If /lib64 does not exist, just ignore it
 		if _, err := os.Stat("/lib64"); err == nil {
-			mounts = append(mounts, bindMount("/lib64", "/lib64"))
+			mounts = append(mounts, bindMount("/lib64", "/lib64", true))
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
 
-		mounts = append(mounts, bindMount("/usr/lib", "/usr/lib"))
+		mounts = append(mounts, bindMount("/usr/lib", "/usr/lib", true))
 	}
 
 	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
@@ -506,12 +516,12 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 			}
 		}
 
-		mounts = append(mounts, bindMount(qDataPath, "/usr/share/qemu"))
+		mounts = append(mounts, bindMount(qDataPath, "/usr/share/qemu", true))
 
 		// In urunc-deploy and in some distros seabios does not exist and
 		// we do not need it. So if we could not find it, just ignore it.
 		if _, err := os.Stat(sBiosPath); err == nil {
-			mounts = append(mounts, bindMount(sBiosPath, "/usr/share/seabios"))
+			mounts = append(mounts, bindMount(sBiosPath, "/usr/share/seabios", true))
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
