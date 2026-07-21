@@ -44,6 +44,8 @@ import (
 const (
 	monitorRootfsDirName     string = "monRootfs"
 	containerRootfsMountPath string = "/cntrRootfs"
+	// libcontainerDirName is the directory under urunc's root used from libcontainer
+	libcontainerDirName string = "libcontainer"
 )
 
 var uniklog = logrus.WithField("subsystem", "unikontainers")

@@ -73,8 +73,20 @@ func bindMount(source string, target string, private bool) specs.Mount {
 	return m
 }
 
+// devPermBits are the permission bits added to every device node the monitor
+// gets. Widening to others lets a monitor running as a non-root user open the
+// node, without urunc having to resolve the kvm/disk group of the host.
+const devPermBits os.FileMode = 0o006
+
+// monitorDeviceMode returns the permission bits to give the monitor's copy of a
+// host device node, widened so any user can read/write it.
+func monitorDeviceMode(hostMode os.FileMode) os.FileMode {
+	return (hostMode & 0o777) | devPermBits
+}
+
 // deviceFromHost finds a device in the host from the path and returns its info
-// in the form of specs.LinuxDevice
+// in the form of specs.LinuxDevice. It also widens the FileMode of the device
+// so non-root users can access the devices.
 func deviceFromHost(path string) (specs.LinuxDevice, error) {
 	var devStat unix.Stat_t
 	err := unix.Stat(path, &devStat)
@@ -92,7 +104,9 @@ func deviceFromHost(path string) (specs.LinuxDevice, error) {
 		return specs.LinuxDevice{}, fmt.Errorf("%s is not a device node", path)
 	}
 
-	mode := os.FileMode(devStat.Mode & 0o777)
+	// TODO: We should make this a configuration option so users can choose if it
+	// the permission bits should widen.
+	mode := monitorDeviceMode(os.FileMode(devStat.Mode))
 	uid := devStat.Uid
 	gid := devStat.Gid
 

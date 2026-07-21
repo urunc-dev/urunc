@@ -73,12 +73,16 @@ var createCommand = &cli.Command{
 		if err := checkArgs(cmd, 1, exactArgs); err != nil {
 			return err
 		}
-		if !cmd.Bool("reexec") {
-			uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.ResolveUruncConfigPath()) // ignore the error and use default config
-			return createUnikontainer(cmd, uruncCfg)
+		if cmd.Bool("reexec") {
+			return reexecUnikontainer(cmd)
 		}
 
-		return reexecUnikontainer(cmd)
+		uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.ResolveUruncConfigPath()) // ignore the error and use default config
+		if uruncCfg.Runtime.Libcontainer {
+			return libcontainerCreate(cmd, uruncCfg)
+		}
+
+		return createUnikontainer(cmd, uruncCfg)
 	},
 }
 

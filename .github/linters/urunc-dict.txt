@@ -434,3 +434,6 @@ Hyperlight
 Odysseas
 Kalaitsidis
 nsexec
+specconv
+Readonlyfs
+capab
