@@ -81,6 +81,14 @@ func TestUnikraftInitSubnetMask(t *testing.T) {
 			gateway:  "10.0.0.14",
 			wantMask: "netdev.ipv4_subnet_mask=255.255.255.240",
 		},
+		{
+			name:     "old version passes invalid mask through compat args",
+			version:  "0.15.0",
+			mask:     "255.255.255",
+			ip:       "10.0.0.1",
+			gateway:  "10.0.0.14",
+			wantMask: "netdev.ipv4_subnet_mask=255.255.255",
+		},
 	}
 
 	for _, tt := range tests {

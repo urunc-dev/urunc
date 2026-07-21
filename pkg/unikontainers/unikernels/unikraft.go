@@ -111,17 +111,6 @@ func (u *Unikraft) Init(data types.UnikernelParams) error {
 }
 
 func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGateway, ethDeviceMask string) error {
-	// Fall back to /24 when no mask is provided (no-network case), to
-	// keep the previous behavior for unikernels spawned without network.
-	maskCIDR := 24
-	if ethDeviceMask != "" {
-		var err error
-		maskCIDR, err = subnetMaskToCIDR(ethDeviceMask)
-		if err != nil {
-			return err
-		}
-	}
-
 	setCompatArgs := func() {
 		u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
 		u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
@@ -135,7 +124,18 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 		}
 	}
 
-	setCurrentArgs := func() {
+	setCurrentArgs := func() error {
+		// Fall back to /24 when no mask is provided (no-network case), to
+		// keep the previous behavior for unikernels spawned without network.
+		maskCIDR := 24
+		if ethDeviceMask != "" {
+			var err error
+			maskCIDR, err = subnetMaskToCIDR(ethDeviceMask)
+			if err != nil {
+				return err
+			}
+		}
+
 		u.Net.Address = fmt.Sprintf("netdev.ip=%s/%d:%s:8.8.8.8", ethDeviceIP, maskCIDR, ethDeviceGateway)
 		switch rootFsType {
 		case "initrd":
@@ -148,16 +148,21 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 		default:
 			u.VFS.RootFS = ""
 		}
+		return nil
 	}
 
 	if u.Version == "" {
-		setCurrentArgs()
+		if err := setCurrentArgs(); err != nil {
+			return err
+		}
 		return ErrUndefinedVersion
 	}
 
 	unikernelVersion, err := version.NewVersion(u.Version)
 	if err != nil {
-		setCurrentArgs()
+		if err := setCurrentArgs(); err != nil {
+			return err
+		}
 		return ErrVersionParsing
 	}
 
@@ -167,7 +172,9 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	}
 
 	if unikernelVersion.GreaterThanOrEqual(targetVersion) {
-		setCurrentArgs()
+		if err := setCurrentArgs(); err != nil {
+			return err
+		}
 	} else {
 		setCompatArgs()
 		// Remove environment variables, since old versions do not
