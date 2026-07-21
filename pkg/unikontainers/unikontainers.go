@@ -222,6 +222,17 @@ func (u *Unikontainer) InitialSetup() error {
 		return fmt.Errorf("failed to store monitor resources: %w", err)
 	}
 
+	// In libcontainer mode the monitor process runs inside a dedicated rootfs and
+	// cannot reach the state directory, so everything it needs is written into that
+	// rootfs now.
+	// TODO: Switch to fifo
+	if u.UruncCfg.Runtime.Libcontainer {
+		err = u.writeMonitorSpec(rootfsParams, monRes)
+		if err != nil {
+			return fmt.Errorf("failed to store the monitor spec: %w", err)
+		}
+	}
+
 	return u.saveContainerState()
 }
 
@@ -521,6 +532,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.MonitorCfg = u.UruncCfg.Monitors[vmmType]
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
+	mSpec.PreStartCmd = monRes.PreStartCmd
 
 	return mSpec
 }
