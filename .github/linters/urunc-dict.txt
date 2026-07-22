@@ -84,6 +84,7 @@ Sharedfs
 Syscalls
 TUNSETGROUP
 TUNSETOWNER
+TUNSETPERSIST
 TUNTAP
 Timestamping
 Tmpfs

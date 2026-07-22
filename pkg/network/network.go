@@ -101,15 +101,34 @@ func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.L
 		return nil, fmt.Errorf("failed to create tap device: %w", err)
 	}
 
+	// LinkAdd opened the tap device's fd and set TUNSETPERSIST, so the
+	// interface survives independently of any open fd. Nothing after the
+	// owner/group ioctl calls uses the fd (the remaining setup goes through
+	// netlink and the monitor attaches to the device by name with its own
+	// open), so close it right away instead of relying on a later exec to
+	// close it (O_CLOEXEC). A single-queue tap device only allows one
+	// attached fd at a time, so holding it open blocks the monitor from
+	// attaching if the caller does not exec away.
 	for _, tapFd := range tapLink.Fds {
 		err = unix.IoctlSetInt(int(tapFd.Fd()), unix.TUNSETOWNER, int(ownerUID))
 		if err != nil {
+			if closeErr := tapFd.Close(); closeErr != nil {
+				netlog.Warnf("failed to close tap %s fd after owner ioctl error: %v", name, closeErr)
+			}
 			return nil, fmt.Errorf("failed to set tap %s owner to uid %d: %w", name, ownerUID, err)
 		}
 
 		err = unix.IoctlSetInt(int(tapFd.Fd()), unix.TUNSETGROUP, int(ownerGID))
 		if err != nil {
+			if closeErr := tapFd.Close(); closeErr != nil {
+				netlog.Warnf("failed to close tap %s fd after group ioctl error: %v", name, closeErr)
+			}
 			return nil, fmt.Errorf("failed to set tap %s group to gid %d: %w", name, ownerGID, err)
+		}
+
+		err = tapFd.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to close the fd of tap %s: %w", name, err)
 		}
 	}
 
