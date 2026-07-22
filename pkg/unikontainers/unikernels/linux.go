@@ -203,7 +203,7 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 			extraCliArgs.ExtraInitrd = urunitConfPath
 		}
 		return extraCliArgs
-	case "firecracker":
+	case "firecracker", "cloud-hypervisor":
 		if l.InitrdConf && l.RootFsType != "initrd" {
 			return types.MonitorCliArgs{
 				ExtraInitrd: urunitConfPath,
