@@ -73,3 +73,25 @@ func TestMirageInitSubnetMask(t *testing.T) {
 		})
 	}
 }
+
+func TestMirageNetDevName(t *testing.T) {
+	t.Run("uses net device name from annotation", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{Monitor: "hvt", NetDevName: "management"})
+		assert.NoError(t, err)
+		cli := m.MonitorNetCli("tap0", "aa:bb:cc:dd:ee:ff")
+		assert.Contains(t, cli, "--net:management=tap0")
+		assert.Contains(t, cli, "--net-mac:management=aa:bb:cc:dd:ee:ff")
+	})
+
+	t.Run("falls back to service when annotation is absent", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{Monitor: "hvt"})
+		assert.NoError(t, err)
+		cli := m.MonitorNetCli("tap0", "aa:bb:cc:dd:ee:ff")
+		assert.Contains(t, cli, "--net:service=tap0")
+		assert.Contains(t, cli, "--net-mac:service=aa:bb:cc:dd:ee:ff")
+	})
+}

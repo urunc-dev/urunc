@@ -24,10 +24,11 @@ import (
 const MirageUnikernel string = "mirage"
 
 type Mirage struct {
-	Command string
-	Monitor string
-	Net     MirageNet
-	Block   []MirageBlock
+	Command    string
+	Monitor    string
+	Net        MirageNet
+	Block      []MirageBlock
+	netDevName string
 }
 
 type MirageNet struct {
@@ -57,8 +58,8 @@ func (m *Mirage) SupportsFS(_ string) bool {
 func (m *Mirage) MonitorNetCli(ifName string, mac string) string {
 	switch m.Monitor {
 	case "hvt", "spt":
-		netOption := "--net:service=" + ifName
-		netOption += " --net-mac:service=" + mac
+		netOption := "--net:" + m.netDevName + "=" + ifName
+		netOption += " --net-mac:" + m.netDevName + "=" + mac
 		return netOption
 	default:
 		return ""
@@ -103,8 +104,18 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 		if err != nil {
 			return err
 		}
-		m.Net.Address = fmt.Sprintf("--ipv4=%s/%d", data.Net.IP, mask)
-		m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
+		// Mirage groups a network device's command line options under a prefix,
+		// and that prefix is the device name. The default device "service" uses
+		// the plain --ipv4 and --ipv4-gateway flags, but any other device needs
+		// its name as the prefix, like --management-ipv4 for a device called
+		// "management". So we only add the prefix when the device is not "service".
+		if data.NetDevName != "" && data.NetDevName != "service" {
+			m.Net.Address = fmt.Sprintf("--%s-ipv4=%s/%d", data.NetDevName, data.Net.IP, mask)
+			m.Net.Gateway = "--" + data.NetDevName + "-ipv4-gateway=" + data.Net.Gateway
+		} else {
+			m.Net.Address = fmt.Sprintf("--ipv4=%s/%d", data.Net.IP, mask)
+			m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
+		}
 	}
 	m.Block = make([]MirageBlock, 0, len(data.Block))
 	for _, blk := range data.Block {
@@ -117,6 +128,12 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 
 	m.Command = strings.Join(data.CmdLine, " ")
 	m.Monitor = data.Monitor
+
+	if data.NetDevName != "" {
+		m.netDevName = data.NetDevName
+	} else {
+		m.netDevName = "service"
+	}
 
 	return nil
 }

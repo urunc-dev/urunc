@@ -86,6 +86,7 @@ type UnikernelParams struct {
 	Monitor    string   // The monitor where guest will execute
 	Version    string   // The version of the unikernel
 	InitrdPath string   // The path to the initrd of the unikernel
+	NetDevName string   // The name of the guest network device declared at build time
 	Net        NetDevParams
 	Block      []BlockDevParams
 	Rootfs     RootfsParams  // Information about rootfs

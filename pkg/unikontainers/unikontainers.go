@@ -439,11 +439,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// UnikernelParams
 	// populate unikernel params
 	unikernelParams := types.UnikernelParams{
-		CmdLine:  u.Spec.Process.Args,
-		EnvVars:  u.Spec.Process.Env,
-		Monitor:  vmmType,
-		Version:  unikernelVersion,
-		ProcConf: procAttrs,
+		CmdLine:    u.Spec.Process.Args,
+		EnvVars:    u.Spec.Process.Env,
+		Monitor:    vmmType,
+		Version:    unikernelVersion,
+		ProcConf:   procAttrs,
+		NetDevName: u.State.Annotations[annotNetDev],
 	}
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
