@@ -29,6 +29,7 @@ type Mirage struct {
 	Net        MirageNet
 	Block      []MirageBlock
 	netDevName string
+	blkDevName string
 }
 
 type MirageNet struct {
@@ -84,7 +85,7 @@ func (m *Mirage) MonitorBlockCli() []types.MonitorBlockArgs {
 		// how MirageOS handles/configures them.
 		return []types.MonitorBlockArgs{
 			{
-				ID:   "storage",
+				ID:   m.blkDevName,
 				Path: m.Block[0].HostPath,
 			},
 		}
@@ -133,6 +134,11 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 		m.netDevName = data.NetDevName
 	} else {
 		m.netDevName = "service"
+	}
+	if data.BlkDevName != "" {
+		m.blkDevName = data.BlkDevName
+	} else {
+		m.blkDevName = "storage"
 	}
 
 	return nil

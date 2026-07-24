@@ -95,3 +95,33 @@ func TestMirageNetDevName(t *testing.T) {
 		assert.Contains(t, cli, "--net-mac:service=aa:bb:cc:dd:ee:ff")
 	})
 }
+
+func TestMirageBlkDevName(t *testing.T) {
+	t.Run("uses block device name from annotation", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{
+			Monitor:    "hvt",
+			BlkDevName: "database",
+			Block:      []types.BlockDevParams{{Source: "/path/to/img"}},
+		})
+		assert.NoError(t, err)
+		args := m.MonitorBlockCli()
+		assert.Len(t, args, 1)
+		assert.Equal(t, "database", args[0].ID)
+		assert.Equal(t, "/path/to/img", args[0].Path)
+	})
+
+	t.Run("falls back to storage when annotation is absent", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{
+			Monitor: "hvt",
+			Block:   []types.BlockDevParams{{Source: "/path/to/img"}},
+		})
+		assert.NoError(t, err)
+		args := m.MonitorBlockCli()
+		assert.Len(t, args, 1)
+		assert.Equal(t, "storage", args[0].ID)
+	})
+}

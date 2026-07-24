@@ -39,6 +39,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 				annotBlockMntPoint: "point1",
 				annotMountRootfs:   "true",
 				annotNetDev:        "management",
+				annotBlkDev:        "database",
 			},
 		}
 
@@ -52,6 +53,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 			BlkMntPoint:     "point1",
 			MountRootfs:     "true",
 			NetDev:          "management",
+			BlkDev:          "database",
 		}
 
 		config := getConfigFromSpec(spec)
@@ -242,6 +244,7 @@ func TestMap(t *testing.T) {
 			BlkMntPoint:     "point_value",
 			MountRootfs:     "false",
 			NetDev:          "netdev_value",
+			BlkDev:          "blkdev_value",
 		}
 		expectedMap := map[string]string{
 			annotCmdLine:       "cmd_value",
@@ -253,6 +256,7 @@ func TestMap(t *testing.T) {
 			annotBlockMntPoint: "point_value",
 			annotMountRootfs:   "false",
 			annotNetDev:        "netdev_value",
+			annotBlkDev:        "blkdev_value",
 		}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
