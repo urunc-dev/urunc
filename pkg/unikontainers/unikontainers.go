@@ -531,6 +531,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		Version:    unikernelVersion,
 		ProcConf:   procAttrs,
 		NetDevName: u.State.Annotations[annotNetDev],
+		BlkDevName: u.State.Annotations[annotBlkDev],
 	}
 	if len(unikernelParams.CmdLine) == 0 {
 		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])

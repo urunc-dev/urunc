@@ -90,6 +90,7 @@ type UnikernelParams struct {
 	Version    string   // The version of the unikernel
 	InitrdPath string   // The path to the initrd of the unikernel
 	NetDevName string   // The name of the guest network device declared at build time
+	BlkDevName string   // The name of the guest block device declared at build time
 	Net        NetDevParams
 	Block      []BlockDevParams
 	Rootfs     RootfsParams  // Information about rootfs

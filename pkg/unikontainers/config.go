@@ -46,6 +46,7 @@ const (
 	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
 	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
+	annotBlkDev        = "com.urunc.unikernel.solo5BlkDev"
 )
 
 // A UnikernelConfig struct holds the info provided by bima image on how to execute our unikernel
@@ -60,6 +61,7 @@ type UnikernelConfig struct {
 	BlkMntPoint      string `json:"com.urunc.unikernel.blkMntPoint,omitempty"`
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
+	BlkDev           string `json:"com.urunc.unikernel.solo5BlkDev,omitempty"`
 }
 
 // validate checks if the mandatory configuration fields are present.
@@ -122,6 +124,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	netDev := spec.Annotations[annotNetDev]
+	blkDev := spec.Annotations[annotBlkDev]
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    unikernelType,
 		"unikernelVersion": unikernelVersion,
@@ -133,6 +136,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"blkMntPoint":      blkMntPoint,
 		"mountRootfs":      MountRootfs,
 		"netDev":           netDev,
+		"blkDev":           blkDev,
 	}).WithField("source", "spec").Debug("urunc annotations")
 
 	return &UnikernelConfig{
@@ -146,6 +150,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		BlkMntPoint:      blkMntPoint,
 		MountRootfs:      MountRootfs,
 		NetDev:           netDev,
+		BlkDev:           blkDev,
 	}
 }
 
@@ -186,6 +191,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"blkMntPoint":      tryDecode(conf.BlkMntPoint),
 		"mountRootfs":      tryDecode(conf.MountRootfs),
 		"netDev":           tryDecode(conf.NetDev),
+		"blkDev":           tryDecode(conf.BlkDev),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -261,6 +267,11 @@ func (c *UnikernelConfig) decode() error {
 		return fmt.Errorf("failed to decode netDev: %v", err)
 	}
 	c.NetDev = string(decoded)
+	decoded, err = base64.StdEncoding.DecodeString(c.BlkDev)
+	if err != nil {
+		return fmt.Errorf("failed to decode blkDev: %v", err)
+	}
+	c.BlkDev = string(decoded)
 
 	return nil
 }
@@ -297,6 +308,9 @@ func (c *UnikernelConfig) Map() map[string]string {
 	}
 	if c.NetDev != "" {
 		myMap[annotNetDev] = c.NetDev
+	}
+	if c.BlkDev != "" {
+		myMap[annotBlkDev] = c.BlkDev
 	}
 
 	return myMap
