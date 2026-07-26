@@ -16,12 +16,53 @@ package main
 
 import (
 	"context"
+	"io"
+	"os"
+	"sync"
 
-	"github.com/containerd/containerd/runtime/v2/runc/manager"
-	"github.com/containerd/containerd/runtime/v2/shim"
+	bootapi "github.com/containerd/containerd/api/runtime/bootstrap/v1"
+	"github.com/containerd/containerd/v2/cmd/containerd-shim-runc-v2/manager"
+	"github.com/containerd/containerd/v2/pkg/protobuf/proto"
+	"github.com/containerd/containerd/v2/pkg/shim"
 	_ "github.com/urunc-dev/urunc/pkg/containerd-shim"
 )
 
 func main() {
-	shim.RunManager(context.Background(), manager.NewShimManager("io.containerd.urunc.v2"))
+	var isStart bool
+	for _, arg := range os.Args {
+		if arg == "start" {
+			isStart = true
+			break
+		}
+	}
+
+	if isStart {
+		r, w, err := os.Pipe()
+		if err == nil {
+			oldStdout := os.Stdout
+			os.Stdout = w
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				data, _ := io.ReadAll(r)
+				var result bootapi.BootstrapResult
+				if err := proto.Unmarshal(data, &result); err == nil && result.Address != "" {
+					oldStdout.WriteString(result.Address)
+				} else {
+					oldStdout.Write(data)
+				}
+			}()
+
+			shim.RunShim(context.Background(), manager.NewShimManager("io.containerd.urunc.v2"))
+
+			os.Stdout = oldStdout
+			w.Close()
+			wg.Wait()
+			return
+		}
+	}
+
+	shim.RunShim(context.Background(), manager.NewShimManager("io.containerd.urunc.v2"))
 }
