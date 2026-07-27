@@ -81,6 +81,9 @@ var errToolDoesNotSupport = errors.New("Operation not support")
 
 func commonNewContainerCmd(a containerTestArgs) string {
 	cmdBase := "--runtime io.containerd.urunc.v2 "
+	if strings.Contains(a.Image, "firecracker-freebsd") {
+		cmdBase = "--runtime io.containerd.urunc-fc.v2 "
+	}
 	if a.Devmapper {
 		cmdBase += "--snapshotter devmapper "
 	}

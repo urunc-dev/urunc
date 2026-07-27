@@ -268,6 +268,20 @@ jobs:
         sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker
         rm -fr "release-${SAFE_FC}-${ARCH}"
 
+    - name: Install Firecracker for FreeBSD
+      env:
+        # FreeBSD needs Firecracker >= 1.12 and v1.7 required for Unikraft
+        # cannot boot it Installed under a dedicated name so the stock
+        # Firecracker above stays the default for every other runtime.
+        FC_FREEBSD_VERSION: v1.16.1
+      run: |
+        SAFE_FC="${FC_FREEBSD_VERSION}"
+        ARCH="$(uname -m)"
+        release_url="https://github.com/firecracker-microvm/firecracker/releases"
+        curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
+        sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker-freebsd
+        rm -fr "release-${SAFE_FC}-${ARCH}"
+
     - name: Install Cloud Hypervisor
       env:
         CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
@@ -328,6 +342,25 @@ jobs:
         level = "debug"
         syslog = true
         EOF
+
+    - name: Configure FreeBSD urunc runtime (newer Firecracker)
+      run: |
+        # Dedicated urunc config that points at a different Firecracker binary
+        # for FreeBSD
+        sudo tee /etc/urunc/config-freebsd.toml > /dev/null <<'EOF'
+        [log]
+        level = "debug"
+        syslog = true
+
+        [monitors.firecracker]
+        path = "/usr/local/bin/firecracker-freebsd"
+        EOF
+
+        sudo tee /usr/local/bin/containerd-shim-urunc-fc-v2 > /dev/null <<'EOF'
+        #!/bin/bash
+        URUNC_CONFIG_FILE=/etc/urunc/config-freebsd.toml exec /usr/local/bin/containerd-shim-urunc-v2 "$@"
+        EOF
+        sudo chmod +x /usr/local/bin/containerd-shim-urunc-fc-v2
 
     - name: Add runner user to KVM group
       if: ${{ matrix.arch == 'amd64' }}
