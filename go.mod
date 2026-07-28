@@ -9,7 +9,7 @@ require (
 	github.com/containerd/containerd v1.7.33
 	github.com/containerd/containerd/api v1.10.0
 	github.com/containerd/log v0.1.0
-	github.com/containerd/ttrpc v1.2.8
+	github.com/containerd/ttrpc v1.2.9
 	github.com/creack/pty v1.1.24
 	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/hashicorp/go-version v1.9.0
@@ -17,21 +17,21 @@ require (
 	github.com/moby/sys/mount v0.3.5
 	github.com/moby/sys/userns v0.1.0
 	github.com/nubificus/hedge_cli v0.0.3
-	github.com/onsi/ginkgo/v2 v2.28.1
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/gomega v1.40.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runc v1.3.6
 	github.com/opencontainers/runtime-spec v1.2.1
-	github.com/prometheus-community/pro-bing v0.9.0
+	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/rs/zerolog v1.35.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.10.0
+	github.com/urfave/cli/v3 v3.10.1
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.46.0
-	google.golang.org/grpc v1.81.1
-	k8s.io/cri-api v0.36.2
+	golang.org/x/sys v0.47.0
+	google.golang.org/grpc v1.82.1
+	k8s.io/cri-api v0.36.3
 )
 
 require (
@@ -57,7 +57,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect
+	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
