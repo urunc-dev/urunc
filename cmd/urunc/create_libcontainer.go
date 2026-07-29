@@ -60,7 +60,17 @@ func libcontainerCreate(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 		}
 	}()
 
-	process, err := monitorProcess(cmd, unikontainer)
+	// The write end of the ready pipe. The monitor process inherits the
+	// write end of the ready pipe and reports the outcome of its setup
+	// back to "urunc start" over it.
+
+	readyFile, err := unikontainers.CreateReadyPipe(unikontainer.BaseDir)
+	if err != nil {
+		return err
+	}
+	defer readyFile.Close()
+
+	process, err := monitorProcess(cmd, unikontainer, readyFile)
 	if err != nil {
 		return err
 	}
@@ -99,7 +109,7 @@ func libcontainerCreate(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 // Args[0] is "/proc/self/exe" because libcontainer resolves it after the
 // pivot: /proc is always mounted in the monitor rootfs, so this re-execs the
 // sealed urunc binary without urunc having to be copied into that rootfs.
-func monitorProcess(cmd *cli.Command, u *unikontainers.Unikontainer) (*libcontainer.Process, error) {
+func monitorProcess(cmd *cli.Command, u *unikontainers.Unikontainer, readyFile *os.File) (*libcontainer.Process, error) {
 	process := &libcontainer.Process{
 		Args: []string{"/proc/self/exe", monitorArgv, u.State.ID},
 		Env:  os.Environ(),
@@ -110,6 +120,9 @@ func monitorProcess(cmd *cli.Command, u *unikontainers.Unikontainer) (*libcontai
 		Init:         true,
 		Capabilities: unikontainers.MonitorCapabilities(u.Spec),
 		LogLevel:     strconv.Itoa(int(logrus.GetLevel())),
+		// The ready pipe's write end. It must be the only/first ExtraFile so the
+		// monitor inherits it at unikontainers.ReadyPipeFD:
+		ExtraFiles: []*os.File{readyFile},
 	}
 
 	if !u.Spec.Process.Terminal {

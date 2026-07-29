@@ -63,6 +63,9 @@ type Unikontainer struct {
 	UruncCfg *UruncConfig
 	Listener *net.UnixListener
 	Conn     *net.UnixConn
+	// readyPipe is the read end of the libcontainer-mode ready FIFO, held by
+	// "urunc start" between opening it and reading the monitor's outcome.
+	readyPipe *os.File
 }
 
 // New parses the bundle and creates a new Unikontainer object
@@ -1306,6 +1309,12 @@ func (u *Unikontainer) FormatNsenterInfo() (rdr io.Reader, retErr error) {
 // If it is not the reexec process then the listener will refer to the
 // uruncSock, the socket that holds messages from reexec to urunc instances
 func (u *Unikontainer) CreateListener(isReexec bool) error {
+	// In libcontainer mode the start side reads the monitor's outcome from a FIFO
+	// in the state dir, whose write end the monitor inherited from create.
+	if !isReexec && u.UruncCfg.Runtime.Libcontainer {
+		return u.openReadReadyPipe()
+	}
+
 	sockAddr := getUruncSockAddr(u.BaseDir)
 	if isReexec {
 		sockAddr = getReexecSockAddr(u.BaseDir)
@@ -1324,6 +1333,10 @@ func (u *Unikontainer) CreateListener(isReexec bool) error {
 
 // DestroyListener destroys an existing listener over a socket
 func (u *Unikontainer) DestroyListener(isReexec bool) error {
+	if !isReexec && u.UruncCfg.Runtime.Libcontainer {
+		return u.closeReadReadyPipe()
+	}
+
 	sockAddr := getUruncSockAddr(u.BaseDir)
 	if isReexec {
 		sockAddr = getReexecSockAddr(u.BaseDir)
@@ -1381,6 +1394,10 @@ func (u *Unikontainer) DestroyConn(isReexec bool) error {
 
 // AwaitMessage waits for a specific message in the listener of unikontainer instance
 func (u *Unikontainer) AwaitMsg(msg IPCMessage) error {
+	// In libcontainer mode the monitor reports over the ready FIFO.
+	if u.UruncCfg.Runtime.Libcontainer {
+		return u.awaitReadyPipe()
+	}
 	return AwaitMessage(u.Listener, msg)
 }
 

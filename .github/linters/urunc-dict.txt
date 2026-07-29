@@ -437,3 +437,5 @@ nsexec
 specconv
 Readonlyfs
 capab
+werr
+cerr
