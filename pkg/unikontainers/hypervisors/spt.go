@@ -16,7 +16,6 @@ package hypervisors
 
 import (
 	"os/exec"
-	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -66,21 +65,24 @@ func (s *SPT) Ok() error {
 
 func (s *SPT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	sptMem := BytesToStringMB(args.MemSizeB)
-	cmdString := s.binaryPath + " --mem=" + sptMem
+	exArgs := []string{s.binaryPath, "--mem=" + sptMem}
 	if args.Net.TapDev != "" {
-		cmdString += " "
-		cmdString += ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
+		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
+		exArgs = append(exArgs, netCli...)
 	}
 	bArgs := ukernel.MonitorBlockCli()
 	for _, blockArg := range bArgs {
-		cmdString = appendNonEmpty(cmdString, " --block:"+blockArg.ID+"=",
-			blockArg.Path)
+		if blockArg.Path != "" {
+			exArgs = append(exArgs, "--block:"+blockArg.ID+"="+blockArg.Path)
+		}
 	}
 	extraMonArgs := ukernel.MonitorCli()
-	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
-	cmdString += " " + args.UnikernelPath + " " + args.Command
-	cmdArgs := strings.Split(cmdString, " ")
-	return cmdArgs, nil
+	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
+	exArgs = append(exArgs, solo5ArgsSeparator, args.UnikernelPath)
+	if args.Command != "" {
+		exArgs = append(exArgs, args.Command)
+	}
+	return exArgs, nil
 }
 
 // PreExec performs pre-execution setup. SPT has no special pre-exec requirements.

@@ -27,7 +27,7 @@ import (
 // Qemu.BuildExecCmd. The three Monitor* methods are the ones the function
 // consults; the rest return zero values.
 type fakeUnikernel struct {
-	netCli     string
+	netCli     []string
 	blockCli   []types.MonitorBlockArgs
 	monitorCli types.MonitorCliArgs
 }
@@ -36,7 +36,7 @@ func (f *fakeUnikernel) Init(types.UnikernelParams) error          { return nil 
 func (f *fakeUnikernel) CommandString() (string, error)            { return "", nil }
 func (f *fakeUnikernel) SupportsBlock() bool                       { return true }
 func (f *fakeUnikernel) SupportsFS(string) bool                    { return true }
-func (f *fakeUnikernel) MonitorNetCli(string, string) string       { return f.netCli }
+func (f *fakeUnikernel) MonitorNetCli(string, string) []string     { return f.netCli }
 func (f *fakeUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return f.blockCli }
 func (f *fakeUnikernel) MonitorCli() types.MonitorCliArgs          { return f.monitorCli }
 
@@ -164,7 +164,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				Command:       testCommand,
 				Net:           types.NetDevParams{TapDev: "tap0"},
 			},
-			unikernel:      &fakeUnikernel{netCli: " -netdev user,id=net0 -device e1000,netdev=net0"},
+			unikernel:      &fakeUnikernel{netCli: []string{"-netdev", "user,id=net0", "-device", "e1000,netdev=net0"}},
 			mustContain:    []string{"-netdev user,id=net0", "-device e1000,netdev=net0"},
 			mustNotContain: []string{"-netdev tap"},
 		},
@@ -219,7 +219,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
 			},
-			unikernel:      &fakeUnikernel{blockCli: []types.MonitorBlockArgs{{ExactArgs: " -hda /custom/disk.img"}}},
+			unikernel:      &fakeUnikernel{blockCli: []types.MonitorBlockArgs{{ExactArgs: []string{"-hda", "/custom/disk.img"}}}},
 			mustContain:    []string{"-hda /custom/disk.img"},
 			mustNotContain: []string{"virtio-blk-pci"},
 		},
@@ -238,7 +238,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
 			},
-			unikernel:   &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: " -nographic -no-reboot"}},
+			unikernel:   &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: []string{"-nographic", "-no-reboot"}}},
 			mustContain: []string{"-nographic", "-no-reboot"},
 		},
 		{

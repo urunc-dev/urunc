@@ -50,14 +50,15 @@ func (m *Mewz) SupportsFS(_ string) bool {
 	return false
 }
 
-func (m *Mewz) MonitorNetCli(ifName string, mac string) string {
+func (m *Mewz) MonitorNetCli(ifName string, mac string) []string {
 	switch m.Monitor {
 	case "qemu":
-		ncli := " -device virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off,mac=" + mac
-		ncli += " -netdev tap,script=no,downscript=no,id=net0,ifname=" + ifName
-		return ncli
+		return []string{
+			"-device", "virtio-net-pci,netdev=net0,disable-legacy=on,disable-modern=off,mac=" + mac,
+			"-netdev", "tap,script=no,downscript=no,id=net0,ifname=" + ifName,
+		}
 	default:
-		return ""
+		return nil
 	}
 }
 
@@ -71,7 +72,7 @@ func (m *Mewz) MonitorCli() types.MonitorCliArgs {
 	switch m.Monitor {
 	case "qemu":
 		return types.MonitorCliArgs{
-			OtherArgs: " -no-reboot -device isa-debug-exit,iobase=0x501,iosize=2",
+			OtherArgs: []string{"-no-reboot", "-device", "isa-debug-exit,iobase=0x501,iosize=2"},
 		}
 	default:
 		return types.MonitorCliArgs{}

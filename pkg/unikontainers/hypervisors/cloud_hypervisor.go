@@ -16,7 +16,7 @@ package hypervisors
 
 import (
 	"fmt"
-	"strings"
+	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -72,14 +72,17 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 
 	// Memory configuration
 	if args.Sharedfs.Type == "virtiofs" {
-		exArgs = append(exArgs, "--memory", fmt.Sprintf("size=%sM,shared=on", chMem))
+		memArg := "size=" + chMem + "M,shared=on"
+		exArgs = append(exArgs, "--memory", memArg)
 	} else {
-		exArgs = append(exArgs, "--memory", fmt.Sprintf("size=%sM", chMem))
+		memArg := "size=" + chMem + "M"
+		exArgs = append(exArgs, "--memory", memArg)
 	}
 
 	// CPU configuration
 	if args.VCPUs > 0 {
-		exArgs = append(exArgs, "--cpus", fmt.Sprintf("boot=%d", args.VCPUs))
+		cpuArg := "boot=" + strconv.FormatUint(uint64(args.VCPUs), 10)
+		exArgs = append(exArgs, "--cpus", cpuArg)
 	}
 
 	// Kernel path
@@ -98,23 +101,24 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 	// Network configuration
 	if args.Net.TapDev != "" {
 		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
-		if netCli == "" {
+		if len(netCli) == 0 {
 			// Default network configuration for Cloud Hypervisor
-			exArgs = append(exArgs, "--net", fmt.Sprintf("tap=%s,mac=%s,mtu=%d", args.Net.TapDev, args.Net.MAC, args.Net.MTU))
+			netArg := fmt.Sprintf("tap=%s,mac=%s,mtu=%d", args.Net.TapDev, args.Net.MAC, args.Net.MTU)
+			exArgs = append(exArgs, "--net", netArg)
 		} else {
-			exArgs = append(exArgs, strings.Split(strings.TrimSpace(netCli), " ")...)
+			exArgs = append(exArgs, netCli...)
 		}
 	}
 
 	// Block device configuration
 	blockArgs := ukernel.MonitorBlockCli()
 	for _, blockArg := range blockArgs {
-		if blockArg.ExactArgs != "" {
-			exArgs = append(exArgs, strings.Split(strings.TrimSpace(blockArg.ExactArgs), " ")...)
+		if len(blockArg.ExactArgs) > 0 {
+			exArgs = append(exArgs, blockArg.ExactArgs...)
 		} else if blockArg.Path != "" {
-			diskArg := fmt.Sprintf("path=%s", blockArg.Path)
+			diskArg := "path=" + blockArg.Path
 			if blockArg.ID != "" {
-				diskArg += fmt.Sprintf(",id=%s", blockArg.ID)
+				diskArg += ",id=" + blockArg.ID
 			}
 			exArgs = append(exArgs, "--disk", diskArg)
 		}
@@ -139,12 +143,12 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 	}
 
 	if args.VAccelType == "vsock" {
-		exArgs = append(exArgs, "--vsock", fmt.Sprintf("cid=%d,socket=%s/vaccel.sock",
-			args.VSockDevID, args.VSockDevPath))
+		vsockArg := fmt.Sprintf("cid=%d,socket=%s/vaccel.sock", args.VSockDevID, args.VSockDevPath)
+		exArgs = append(exArgs, "--vsock", vsockArg)
 	}
 
-	if extraMonArgs.OtherArgs != "" {
-		exArgs = append(exArgs, strings.Split(strings.TrimSpace(extraMonArgs.OtherArgs), " ")...)
+	if len(extraMonArgs.OtherArgs) > 0 {
+		exArgs = append(exArgs, extraMonArgs.OtherArgs...)
 	}
 
 	// Add the command line arguments for the kernel

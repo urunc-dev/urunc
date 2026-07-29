@@ -67,28 +67,29 @@ func (h *Hermit) SupportsFS(fsType string) bool {
 	return fsType == "initrd"
 }
 
-func (h *Hermit) MonitorNetCli(ifName string, mac string) string {
+func (h *Hermit) MonitorNetCli(ifName string, mac string) []string {
 	switch h.Monitor {
 	case "qemu":
-		netdev := fmt.Sprintf(" -netdev tap,id=net0,ifname=%s,script=no,downscript=no", ifName)
-
 		var deviceArgs string
 
 		// QEMU on x86_64 typically uses virtio-net-pci.
 		// On arm64 virtio-net-device is the safer default.
 		if runtime.GOARCH == "arm64" {
-			deviceArgs = " -device " + "virtio-net-device" + ",netdev=net0"
+			deviceArgs = "virtio-net-device,netdev=net0"
 		} else {
-			deviceArgs = " -device " + "virtio-net-pci" + ",netdev=net0,disable-legacy=on"
+			deviceArgs = "virtio-net-pci,netdev=net0,disable-legacy=on"
 		}
 
 		if mac != "" {
 			deviceArgs += ",mac=" + mac
 		}
 
-		return netdev + deviceArgs
+		return []string{
+			"-netdev", fmt.Sprintf("tap,id=net0,ifname=%s,script=no,downscript=no", ifName),
+			"-device", deviceArgs,
+		}
 	default:
-		return ""
+		return nil
 	}
 }
 
@@ -98,7 +99,7 @@ func (h *Hermit) MonitorBlockCli() []types.MonitorBlockArgs {
 
 func (h *Hermit) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{
-		OtherArgs: " -no-reboot",
+		OtherArgs: []string{"-no-reboot"},
 	}
 }
 
