@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/opencontainers/runc/libcontainer"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v3"
 	m "github.com/urunc-dev/urunc/internal/metrics"
@@ -70,15 +71,61 @@ func startUnikontainer(cmd *cli.Command) error {
 	defer func() {
 		tmpErr := unikontainer.DestroyListener(!unikontainers.FromReexec)
 		if tmpErr != nil {
-			logrus.WithError(tmpErr).Error("failed to destroy listener on reexec socket")
+			logrus.WithError(tmpErr).Error("failed to destroy the start listener")
 		}
 	}()
 
-	// Send message to reexec to start the monitor
-	err = unikontainer.CreateConn(!unikontainers.FromReexec)
+	// Start the monitor environment setup process. For libcontainer the heavy lifting
+	// has be done from libcontainer and we just need to finalize the setup.
+	// For urunc native way, we need to setup the monitor rootfs too.
+	if unikontainer.UruncCfg.Runtime.Libcontainer {
+		err = startMonitorInit(unikontainer)
+	} else {
+		err = startReexec(unikontainer)
+	}
 	if err != nil {
-		err = fmt.Errorf("failed to create connection with reexec socket: %w", err)
 		return err
+	}
+	metrics.Capture(m.TS13)
+
+	// Wait for the monitor process to report a successful start.
+	err = unikontainer.AwaitMsg(unikontainers.StartSuccess)
+	if err != nil {
+		err = fmt.Errorf("failed to get the success message from the monitor: %w", err)
+		return err
+	}
+
+	err = unikontainer.SetRunningState()
+	if err != nil {
+		err = fmt.Errorf("failed to set the state as running for container: %w", err)
+		return err
+	}
+
+	return unikontainer.ExecuteHooks("Poststart")
+}
+
+// startMonitorInit starts the urunc monitor process, blocked since create from
+// libcontainers, by opening the exec fifo.
+func startMonitorInit(unikontainer *unikontainers.Unikontainer) error {
+	container, err := libcontainer.Load(unikontainer.LibcontainerRoot(), unikontainer.State.ID)
+	if err != nil {
+		return fmt.Errorf("failed to load the monitor's container: %w", err)
+	}
+
+	err = container.Exec()
+	if err != nil {
+		return fmt.Errorf("failed to release the monitor process: %w", err)
+	}
+
+	return nil
+}
+
+// startReexec tells urunc's reexec process to set up the monitor's
+// environment and launch it.
+func startReexec(unikontainer *unikontainers.Unikontainer) error {
+	err := unikontainer.CreateConn(!unikontainers.FromReexec)
+	if err != nil {
+		return fmt.Errorf("failed to create connection with reexec socket: %w", err)
 	}
 	sendErr := unikontainer.SendMessage(unikontainers.StartExecve)
 	if sendErr != nil {
@@ -92,24 +139,6 @@ func startUnikontainer(cmd *cli.Command) error {
 		logrus.WithError(cleanErr).Error("failed to destroy connection to reexec socket")
 		cleanErr = fmt.Errorf("error destroying connection to reexec socket: %w", cleanErr)
 	}
-	err = errors.Join(sendErr, cleanErr)
-	if err != nil {
-		return err
-	}
-	metrics.Capture(m.TS13)
 
-	// wait ContainerStarted message on start.sock from reexec process
-	err = unikontainer.AwaitMsg(unikontainers.StartSuccess)
-	if err != nil {
-		err = fmt.Errorf("failed to get message from successful start from reexec: %w", err)
-		return err
-	}
-
-	err = unikontainer.SetRunningState()
-	if err != nil {
-		err = fmt.Errorf("failed to set the state as running for container: %w", err)
-		return err
-	}
-
-	return unikontainer.ExecuteHooks("Poststart")
+	return errors.Join(sendErr, cleanErr)
 }
