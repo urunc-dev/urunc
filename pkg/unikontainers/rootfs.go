@@ -30,17 +30,13 @@ import (
 // TODO: Find and set the correct size for the tmpfs in the host
 const tmpfsSizeForNoRootfs = "65536k"
 
-// annotRootfsParams holds JSON RootfsParams after shim chooseGuestRootfs.
-// When present in bundle config.json, Exec reuses it; otherwise Exec runs ChooseRootfs.
-const annotRootfsParams = "com.urunc.internal.rootfs.params"
-
 type rootfsBuilder interface {
 	preSetup() error
 	postSetup() error
 	getMounts() ([]specs.Mount, error)
 	getBlockDevs() ([]types.BlockDevParams, error)
 	getSharedDirs() (types.SharedfsParams, error)
-	preStart() error
+	preStartCmd() []string
 }
 
 // tmpfsMount creates a mount for a tmpfs in the form of "/tmp" at target
@@ -162,7 +158,7 @@ func (n noRootfs) getSharedDirs() (types.SharedfsParams, error) {
 	return types.SharedfsParams{}, nil
 }
 
-func (n noRootfs) preStart() error {
+func (n noRootfs) preStartCmd() []string {
 	return nil
 }
 

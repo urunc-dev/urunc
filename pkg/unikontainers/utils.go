@@ -44,12 +44,16 @@ const (
 	rootfsDirName     = "rootfs"
 )
 
-// monitorResources holds the mounts and devices that must be replicated inside
-// the monitor's rootfs, along with the block parameters the guest needs.
+// monitorResources holds the chosen guest rootfs params, the mounts and devices
+// that must be replicated inside the monitor's rootfs, and the block parameters
+// the guest needs.
 type monitorResources struct {
-	Mounts    []specs.Mount          `json:"mounts"`
-	Devices   []specs.LinuxDevice    `json:"devices"`
-	BlockArgs []types.BlockDevParams `json:"blockArgs"`
+	Rootfs      types.RootfsParams     `json:"rootfs"`
+	Mounts      []specs.Mount          `json:"mounts"`
+	Devices     []specs.LinuxDevice    `json:"devices"`
+	BlockArgs   []types.BlockDevParams `json:"blockArgs"`
+	Sharedfs    types.SharedfsParams   `json:"sharedfs"`
+	PreStartCmd []string               `json:"preStartCmd,omitempty"`
 }
 
 // saveMonitorResources stores the monitorResources passed as an argument in a JSON
@@ -243,14 +247,20 @@ func convertUint32ToIntSlice(valSlice []uint32, size int) []int {
 // 	return data.Bytes(), nil
 // }
 
-func spawnProcess(binaryPath string, args []string) error {
-	cmd := exec.Command(binaryPath, args...)
+// spawnProcess starts the process described by argv, whose first element is the
+// binary. An empty argv is a no-op.
+func spawnProcess(argv []string) error {
+	if len(argv) == 0 {
+		return nil
+	}
 
+	// argv is built by urunc, based on its config, not untrusted input
+	cmd := exec.Command(argv[0], argv[1:]...) //nolint:gosec
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("failed to start %s: %w", argv[0], err)
 	}
 
 	return nil

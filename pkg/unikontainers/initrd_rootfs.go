@@ -57,6 +57,6 @@ func (i initrdRootfs) getSharedDirs() (types.SharedfsParams, error) {
 	return types.SharedfsParams{}, nil
 }
 
-func (i initrdRootfs) preStart() error {
+func (i initrdRootfs) preStartCmd() []string {
 	return nil
 }

@@ -426,7 +426,7 @@ func (b blockRootfs) getSharedDirs() (types.SharedfsParams, error) {
 	return types.SharedfsParams{}, nil
 }
 
-func (b blockRootfs) preStart() error {
+func (b blockRootfs) preStartCmd() []string {
 	return nil
 }
 
