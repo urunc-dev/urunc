@@ -245,8 +245,9 @@ func (u *Unikontainer) SetRunningState() error {
 	return u.saveContainerState()
 }
 
-func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
-	networkType := u.getNetworkType()
+// SetupNet creates the sandbox's network device (tap) in the current network
+// namespace and returns its parameters; uid and gid own the tap device.
+func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
 	netArgs := types.NetDevParams{}
 	netManager, err := network.NewNetworkManager(networkType)
@@ -254,7 +255,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
 	}
 
-	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	networkInfo, err := netManager.NetworkSetup(uid, gid)
 	if err != nil {
 		// TODO: Handle this case better. We do not need to show an error
 		// since there was no network in the container. Therefore, we
@@ -596,7 +597,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := u.SetupNet()
+	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
@@ -646,20 +647,11 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// unikernel
-	err = unikernel.Init(unikernelParams)
-	if errors.Is(err, unikernels.ErrUndefinedVersion) ||
-		errors.Is(err, unikernels.ErrVersionParsing) {
-		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
-	} else if err != nil {
-		return err
-	}
-
 	// build the unikernel command
-	unikernelCmd, err := unikernel.CommandString()
+	vmmArgs.Command, err = buildUnikernelCommand(unikernel, unikernelParams)
 	if err != nil {
 		return err
 	}
-	vmmArgs.Command = unikernelCmd
 
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
@@ -697,30 +689,49 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	uniklog.Debug("calling vmm execve")
-	metrics.Capture(m.TS18)
-
-	// Build the VMM command once and verify it can be constructed successfully.
-	// This ensures we don't report the container as started if command building fails.
+	// Build the VMM command once and verify it can be constructed successfully, so
+	// we do not report the container as started if command building fails.
 	execCmd, err := vmm.BuildExecCmd(vmmArgs, unikernel)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to build VMM command")
 		return err
 	}
 
-	// Notify urunc start that the monitor is ready to execute.
-	// We send this after BuildExecCmd succeeds to avoid reporting a container
-	// as started when the VMM command cannot be built.
-	// TODO: The container can still be reported as running if the PreExec step
-	// (e.g., BPF/seccomp filter setup) fails after this point. We should find
-	// a way to handle that case as well.
+	// Notify urunc start that the monitor is ready to execute, only after the
+	// command builds so a container is never reported started when it cannot be.
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
 	}
 
+	return execMonitor(metrics, vmm, vmmArgs, execCmd)
+}
+
+// buildUnikernelCommand initializes the unikernel with the collected parameters
+// and returns its command line.
+func buildUnikernelCommand(unikernel types.Unikernel, params types.UnikernelParams) (string, error) {
+	err := unikernel.Init(params)
+	if errors.Is(err, unikernels.ErrUndefinedVersion) ||
+		errors.Is(err, unikernels.ErrVersionParsing) {
+		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
+	} else if err != nil {
+		return "", err
+	}
+
+	return unikernel.CommandString()
+}
+
+// execMonitor runs the monitor's pre-exec setup and finally execve's the monitor.
+// It does not return on success:
+//
+// TODO: The container can still be reported as running if the PreExec step
+// (e.g., BPF/seccomp filter setup) fails after the caller reported success. We
+// should find a way to handle that case as well.
+func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execCmd []string) error {
+	uniklog.Debug("calling vmm execve")
+	metrics.Capture(m.TS18)
 	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
-	err = vmm.PreExec(vmmArgs)
+	err := vmm.PreExec(execArgs)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to perform pre-exec setup")
 		return err
@@ -728,7 +739,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Execute the VMM using the command we built earlier.
 	uniklog.WithField("command", execCmd).Debug("Ready to execve VMM")
-	return syscall.Exec(vmm.Path(), execCmd, vmmArgs.Environment) //nolint: gosec
+	return syscall.Exec(vmm.Path(), execCmd, execArgs.Environment) //nolint: gosec
 }
 
 func setupUser(user specs.User) error {

@@ -82,16 +82,15 @@ var createCommand = &cli.Command{
 	},
 }
 
-// createUnikontainer creates a Unikernel struct from bundle data,
-// initializes it's base dir and state.json,
-// setups terminal if required and spawns reexec process,
-// waits for reexec process to notify, executes CreateRuntime hooks,
-// sends ACK to reexec process
-func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
-	err = nil
+// newUnikontainer parses the bundle and performs the host-side preparation for
+// the monitor execution environment (Unikontainer, base directory, state and
+// monitor resources). It never returns for a container that is not a urunc
+// container: those are handed over to the real runc with an execve.
+func newUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (*unikontainers.Unikontainer, error) {
 	containerID := cmd.Args().First()
-	if err = validateID(containerID); err != nil {
-		return err
+	err := validateID(containerID)
+	if err != nil {
+		return nil, err
 	}
 	metrics.SetLoggerContainerID(containerID)
 	metrics.Capture(m.TS00)
@@ -105,7 +104,7 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	if bundlePath == "" {
 		bundlePath, err = os.Getwd()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -114,20 +113,32 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	if err != nil {
 		if errors.Is(err, unikontainers.ErrQueueProxy) ||
 			errors.Is(err, unikontainers.ErrNotUnikernel) {
-			// Exec runc to handle non unikernel containers
-			err = runcExec()
-			return err
+			// Exec runc to handle non urunc containers.
+			// It should never return.
+			return nil, runcExec()
 		}
-		return err
+		return nil, err
 	}
 	metrics.Capture(m.TS01)
 
 	err = unikontainer.InitialSetup()
 	if err != nil {
+		return nil, err
+	}
+	metrics.Capture(m.TS02)
+
+	return unikontainer, nil
+}
+
+// createUnikontainer creates a Unikernel struct from bundle data, initializes
+// it's base dir and state.json, setups terminal if required and spawns reexec
+// process, waits for reexec process to notify, executes CreateRuntime hooks,
+// sends ACK to reexec process
+func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
+	unikontainer, err := newUnikontainer(cmd, uruncCfg)
+	if err != nil {
 		return err
 	}
-
-	metrics.Capture(m.TS02)
 
 	// Create socket for nsenter
 	initSockParent, initSockChild, err := newSockPair("init")
