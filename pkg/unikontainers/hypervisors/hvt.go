@@ -17,7 +17,6 @@ package hypervisors
 import (
 	"os/exec"
 	"runtime"
-	"strings"
 
 	seccomp "github.com/elastic/go-seccomp-bpf"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -27,6 +26,8 @@ import (
 const (
 	HvtVmm    VmmType = "hvt"
 	HvtBinary string  = "solo5-hvt"
+	// solo5ArgsSeparator terminates the tender options in a solo5 cli
+	solo5ArgsSeparator = "--"
 )
 
 type HVT struct {
@@ -154,21 +155,24 @@ func (h *HVT) Ok() error {
 
 func (h *HVT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	hvtMem := BytesToStringMB(args.MemSizeB)
-	cmdString := h.binaryPath + " --mem=" + hvtMem
+	exArgs := []string{h.binaryPath, "--mem=" + hvtMem}
 	if args.Net.TapDev != "" {
-		cmdString += " "
-		cmdString += ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
+		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
+		exArgs = append(exArgs, netCli...)
 	}
-	extraMonArgs := ukernel.MonitorCli()
 	bArgs := ukernel.MonitorBlockCli()
 	for _, blockArg := range bArgs {
-		cmdString = appendNonEmpty(cmdString, " --block:"+blockArg.ID+"=",
-			blockArg.Path)
+		if blockArg.Path != "" {
+			exArgs = append(exArgs, "--block:"+blockArg.ID+"="+blockArg.Path)
+		}
 	}
-	cmdString = appendNonEmpty(cmdString, " ", extraMonArgs.OtherArgs)
-	cmdString += " " + args.UnikernelPath + " " + args.Command
-	cmdArgs := strings.Split(cmdString, " ")
-	return cmdArgs, nil
+	extraMonArgs := ukernel.MonitorCli()
+	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
+	exArgs = append(exArgs, solo5ArgsSeparator, args.UnikernelPath)
+	if args.Command != "" {
+		exArgs = append(exArgs, args.Command)
+	}
+	return exArgs, nil
 }
 
 // PreExec performs pre-execution setup for HVT.

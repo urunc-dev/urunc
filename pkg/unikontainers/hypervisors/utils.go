@@ -35,13 +35,6 @@ func cpuArch() string {
 	}
 }
 
-func appendNonEmpty(body, prefix, value string) string {
-	if value != "" {
-		return body + prefix + value
-	}
-	return body
-}
-
 func bytesToMiB(bytes uint64) uint64 {
 	const bytesInMiB = 1024 * 1024
 	return bytes / bytesInMiB

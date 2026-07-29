@@ -17,7 +17,7 @@ package hypervisors
 import (
 	"fmt"
 	"runtime"
-	"strings"
+	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -62,87 +62,103 @@ func (q *Qemu) Path() string {
 
 func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	qemuMem := BytesToStringMB(args.MemSizeB)
-	cmdString := q.binaryPath + " -m " + qemuMem + "M"
-	cmdString += " -L /usr/share/qemu"                                  // Set the path for qemu bios/data
-	cmdString += " -cpu host"                                           // Choose CPU
-	cmdString += " -enable-kvm"                                         // Enable KVM to use CPU virt extensions
-	cmdString += " -display none -vga none -serial stdio -monitor null" // Disable graphic output
+	exArgs := []string{
+		q.binaryPath,
+		"-m", qemuMem + "M",
+		"-L", "/usr/share/qemu", // Set the path for qemu bios/data
+		"-cpu", "host", // Choose CPU
+		"-enable-kvm",      // Enable KVM to use CPU virt extensions
+		"-display", "none", // Disable graphic output
+		"-vga", "none",
+		"-serial", "stdio",
+		"-monitor", "null",
+	}
 
 	if args.VCPUs > 0 {
-		cmdString += fmt.Sprintf(" -smp %d", args.VCPUs)
+		exArgs = append(exArgs, "-smp", strconv.FormatUint(uint64(args.VCPUs), 10))
 	}
 
 	if args.Seccomp {
-		// Enable Seccomp in QEMU
-		cmdString += " --sandbox on"
-		// Allow or Deny Obsolete system calls
-		cmdString += ",obsolete=deny"
-		// Allow or Deny set*uid|gid system calls
-		cmdString += ",elevateprivileges=deny"
-		// Allow or Deny *fork and execve
-		cmdString += ",spawn=deny"
-		// Allow or Deny process affinity and schedular priority
-		cmdString += ",resourcecontrol=deny"
+		// Enable Seccomp in QEMU. The sandbox options below:
+		//   obsolete=deny          - Deny Obsolete system calls
+		//   elevateprivileges=deny - Deny set*uid|gid system calls
+		//   spawn=deny             - Deny *fork and execve
+		//   resourcecontrol=deny   - Deny process affinity and scheduler priority
+		exArgs = append(exArgs,
+			"--sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny",
+		)
 	}
 
-	// TODO: Check if this check causes any performance drop
-	// or explore alternative implementations
+	// TODO: explore alternative implementations
 	if runtime.GOARCH == "arm64" {
-		machineType := " -M virt"
-		cmdString += machineType
+		exArgs = append(exArgs, "-M", "virt")
 	}
 
-	cmdString += " -kernel " + args.UnikernelPath
+	exArgs = append(exArgs, "-kernel", args.UnikernelPath)
 	if args.Net.TapDev != "" {
 		netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
-		if netcli == "" {
-			netcli += " -netdev tap,id=net0,script=no,downscript=no,ifname="
-			netcli += args.Net.TapDev
+		if len(netcli) == 0 {
+			netdevArg := fmt.Sprintf("tap,id=net0,script=no,downscript=no,ifname=%s", args.Net.TapDev)
 			if q.vhost {
-				netcli += ",vhost=on"
+				netdevArg += ",vhost=on"
 			}
-			netcli += fmt.Sprintf(" %s,host_mtu=%d,mac=%s", getVirtioNetArg(), args.Net.MTU, args.Net.MAC)
+			exArgs = append(exArgs, "-netdev", netdevArg)
+
+			devType := "virtio-net-pci"
+			if runtime.GOARCH == "arm64" {
+				devType = "virtio-net-device"
+			}
+			netCliDev := fmt.Sprintf("%s,netdev=net0,host_mtu=%d,mac=%s", devType, args.Net.MTU, args.Net.MAC)
+			exArgs = append(exArgs, "-device", netCliDev)
+		} else {
+			exArgs = append(exArgs, netcli...)
 		}
-		cmdString += netcli
 	} else {
-		cmdString += " -nic none"
+		exArgs = append(exArgs, "-nic", "none")
 	}
+
 	blockArgs := ukernel.MonitorBlockCli()
 	for _, blockArg := range blockArgs {
-		blockCli := blockArg.ExactArgs
-		if blockCli == "" && blockArg.ID != "" && blockArg.Path != "" {
-			blockCli1 := fmt.Sprintf(" -device virtio-blk-pci,serial=%s,drive=%s,scsi=off", blockArg.ID, blockArg.ID)
-			blockCli2 := fmt.Sprintf(" -drive format=raw,if=none,id=%s,file=%s", blockArg.ID, blockArg.Path)
-			blockCli = blockCli1 + blockCli2
+		if blockArg.ID != "" && blockArg.Path != "" {
+			devArg := fmt.Sprintf("virtio-blk-pci,serial=%s,drive=%s,scsi=off", blockArg.ID, blockArg.ID)
+			drvArg := fmt.Sprintf("format=raw,if=none,id=%s,file=%s", blockArg.ID, blockArg.Path)
+			exArgs = append(exArgs, "-device", devArg, "-drive", drvArg)
+		} else if len(blockArg.ExactArgs) > 0 {
+			exArgs = append(exArgs, blockArg.ExactArgs...)
 		}
-		cmdString += blockCli
 	}
+
 	if args.InitrdPath != "" {
-		cmdString += " -initrd " + args.InitrdPath
+		exArgs = append(exArgs, "-initrd", args.InitrdPath)
 	}
+
 	switch args.Sharedfs.Type {
 	case "9pfs":
-		cmdString += " -fsdev local,id=rootfs9p,security_model=none,path=" + args.Sharedfs.Path
-		cmdString += " -device virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0"
+		fsdevArg := fmt.Sprintf("local,id=rootfs9p,security_model=none,path=%s", args.Sharedfs.Path)
+		exArgs = append(exArgs, "-fsdev", fsdevArg, "-device", "virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0")
 	case "virtiofs":
-		cmdString += " -object memory-backend-file,id=mem,size=" + qemuMem + "M,mem-path=/tmp,share=on"
-		cmdString += " -numa node,memdev=mem"
-		cmdString += " -chardev socket,id=char0,path=/tmp/vhostqemu"
-		cmdString += " -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0"
+		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
+		exArgs = append(exArgs,
+			"-object", objArg,
+			"-numa", "node,memdev=mem",
+			"-chardev", "socket,id=char0,path=/tmp/vhostqemu",
+			"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0",
+		)
 	default:
 		// Nothing to add
 	}
+
 	extraMonArgs := ukernel.MonitorCli()
 	if extraMonArgs.ExtraInitrd != "" {
-		cmdString += " -initrd " + extraMonArgs.ExtraInitrd
+		exArgs = append(exArgs, "-initrd", extraMonArgs.ExtraInitrd)
 	}
-	cmdString += extraMonArgs.OtherArgs
+	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
 
 	if args.VAccelType == "vsock" {
-		cmdString += " -device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=" + fmt.Sprintf("%d", args.VSockDevID)
+		vsockArg := fmt.Sprintf("vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=%d", args.VSockDevID)
+		exArgs = append(exArgs, "-device", vsockArg)
 	}
 
-	exArgs := strings.Split(cmdString, " ")
 	exArgs = append(exArgs, "-append", args.Command)
 	return exArgs, nil
 }
@@ -150,12 +166,4 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 // PreExec performs pre-execution setup. QEMU has no special pre-exec requirements.
 func (q *Qemu) PreExec(_ types.ExecArgs) error {
 	return nil
-}
-
-func getVirtioNetArg() string {
-	devType := "virtio-net-pci"
-	if runtime.GOARCH == "arm64" {
-		devType = "virtio-net-device"
-	}
-	return "-device " + devType + ",netdev=net0"
 }
