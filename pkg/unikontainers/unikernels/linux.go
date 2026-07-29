@@ -150,8 +150,8 @@ func (l *Linux) SupportsFS(fsType string) bool {
 	}
 }
 
-func (l *Linux) MonitorNetCli(_ string, _ string) string {
-	return ""
+func (l *Linux) MonitorNetCli(_ string, _ string) []string {
+	return nil
 }
 
 func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
@@ -162,10 +162,11 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 	switch l.Monitor {
 	case "qemu":
 		for _, aBlock := range l.Blk {
-			bcli1 := fmt.Sprintf(" -device virtio-blk-pci,serial=%s,drive=%s", aBlock.ID, aBlock.ID)
-			bcli2 := fmt.Sprintf(" -drive format=raw,if=none,id=%s,file=%s", aBlock.ID, aBlock.Source)
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
-				ExactArgs: bcli1 + bcli2,
+				ExactArgs: []string{
+					"-device", fmt.Sprintf("virtio-blk-pci,serial=%s,drive=%s", aBlock.ID, aBlock.ID),
+					"-drive", fmt.Sprintf("format=raw,if=none,id=%s,file=%s", aBlock.ID, aBlock.Source),
+				},
 			})
 		}
 	case "firecracker":
@@ -197,7 +198,7 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	switch l.Monitor {
 	case "qemu":
 		extraCliArgs := types.MonitorCliArgs{
-			OtherArgs: " -no-reboot -nodefaults",
+			OtherArgs: []string{"-no-reboot", "-nodefaults"},
 		}
 		if l.InitrdConf && l.RootFsType != "initrd" {
 			extraCliArgs.ExtraInitrd = urunitConfPath

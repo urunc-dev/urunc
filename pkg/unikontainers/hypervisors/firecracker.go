@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -108,11 +107,10 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	// options in FC, since the string return value of the Monitor related
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
-	cmdString := fc.Path() + " --no-api --config-file "
 	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
-	cmdString += JSONConfigFile
+	exArgs := []string{fc.Path(), "--no-api", "--config-file", JSONConfigFile}
 	if !args.Seccomp {
-		cmdString += " --no-seccomp"
+		exArgs = append(exArgs, "--no-seccomp")
 	}
 
 	// VM config for Firecracker
@@ -200,7 +198,6 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	}
 	vmmLog.WithField("Json", string(FCConfigJSON)).Debug("Firecracker json config")
 
-	exArgs := strings.Split(cmdString, " ")
 	return exArgs, nil
 }
 

@@ -56,14 +56,15 @@ func (m *Mirage) SupportsFS(_ string) bool {
 	return false
 }
 
-func (m *Mirage) MonitorNetCli(ifName string, mac string) string {
+func (m *Mirage) MonitorNetCli(ifName string, mac string) []string {
 	switch m.Monitor {
 	case "hvt", "spt":
-		netOption := "--net:" + m.netDevName + "=" + ifName
-		netOption += " --net-mac:" + m.netDevName + "=" + mac
-		return netOption
+		return []string{
+			"--net:" + m.netDevName + "=" + ifName,
+			"--net-mac:" + m.netDevName + "=" + mac,
+		}
 	default:
-		return ""
+		return nil
 	}
 }
 
