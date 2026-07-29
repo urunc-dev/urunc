@@ -215,5 +215,5 @@ Go provides the `gofmt` tool, which can be used for formatting your code.
 
 We kindly invite everyone interested in `urunc` to join our
 [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J).
-To directly communicate with the maintainers, feel free to drop an email At
+To directly communicate with the maintainers, feel free to drop an email at
 [`urunc`'s maintainers' mailing list](cncf-urunc-maintainers@lists.cncf.io )

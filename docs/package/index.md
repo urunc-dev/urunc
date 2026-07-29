@@ -59,7 +59,7 @@ required annotations are the following:
 - `com.urunc.unikernel.cmdline`: The application's cmdline to pass to the
   unikernel.
 
-Except of the above, `urunc` accepts the following optional annotations:
+Except for the above, `urunc` accepts the following optional annotations:
 
 - `com.urunc.unikernel.initrd`: The path to the initrd of the unikernel inside
   the container's rootfs.
@@ -88,7 +88,7 @@ package unikernels in OCI images with `urunc`'s annotations.
 ### bunny
 
 In an effort to simplify the process of building various unikernels, we built
-[bunny](https://github.com/nubificus/bunny). Except of building unikernels [bunny](https://github.com/nubificus/bunny)
+[bunny](https://github.com/nubificus/bunny). Except for building unikernels [bunny](https://github.com/nubificus/bunny)
 can also pack existing unikernels (whether locally or from OCI images) as OCI images
 for `urunc`. At its core [bunny](https://github.com/nubificus/bunny) leverages
 [buildkit's LLB](https://github.com/moby/buildkit?tab=readme-ov-file#exploring-llb),
@@ -113,7 +113,7 @@ can handle the following *instructions*:
 To further extend the functionality and provide a common interface to facilitate
 unikernel building, we defined `bunnyfile`. It is a YAML-based special file that
 [bunny](https://github.com/nubificus/bunny) transforms to LLB with all the
-necessary steps to build the respective unikernel. Except of building
+necessary steps to build the respective unikernel. Except for building
 unikernels, [bunny](https://github.com/nubificus/bunny) can also be used to build or append files in the unikernel's
 rootfs.
 

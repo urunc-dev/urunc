@@ -65,12 +65,12 @@ treated as a separate argument.
   parameters. If too many or very long environment variables are passed, the
   boot process will fail once that limit is exceeded. 
 
-Especially, for CLI argument handing, `urunc` follows a simple convention. All
+Especially, for CLI argument handling, `urunc` follows a simple convention. All
 multi-word CLI arguments are wrapped in single quotes and the init process (or
 application) is expected to reconstruct them properly.
 
 For all the above reasons, we strongly recommend using a dedicated init process.
-We provide [urunit](https://github.com/nubificus/urunit#); a lightweight init
+We provide [urunit](https://github.com/nubificus/urunit); a lightweight init
 designed specifically for `urunc`. It performs the following actions:
 
 1. Sets default route through eth0. This is necessary when we deploy

@@ -198,7 +198,7 @@ docker build -f Containerfile -t urunc/prebuilt/redis-rumprun-hvt:test .
 
 ### Using `bunix`
 
-In the case of [bunix](https://github.com/nubificus/bunix) we need the whole repository in the same directly as
+In the case of [bunix](https://github.com/nubificus/bunix) we need the whole repository in the same directory as
 the unikernel. Then, we simply need to edit the `args.nix` file. For our
 pre-built Redis [Rumprun](https://github.com/nubificus/rumprun) unikernel we can define the files as:
 
