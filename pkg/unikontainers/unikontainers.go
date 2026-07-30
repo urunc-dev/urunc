@@ -266,23 +266,23 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 
 	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
-		// TODO: Handle this case better. We do not need to show an error
-		// since there was no network in the container. Therefore, we
-		// need better error handling and specifically check if the container
-		// di not have any network.
-		uniklog.Errorf("Failed to setup network :%v. Possibly due to ctr", err)
+		// No container interface means there is no network to set up (e.g. ctr
+		// without CNI, or --network none). Continue without guest networking.
+		// Any other failure (TAP creation, TC rules, etc.) is fatal.
+		if errors.Is(err, network.ErrNoContainerNetwork) {
+			uniklog.Debugf("no container network interface found, continuing without network: %v", err)
+			return netArgs, nil
+		}
+		return netArgs, fmt.Errorf("failed to setup network: %w", err)
 	}
-	// if network info is nil, we didn't find eth0, so we are running with ctr
-	if networkInfo != nil {
-		netArgs.TapDev = networkInfo.TapDevice
-		netArgs.IP = networkInfo.EthDevice.IP
-		netArgs.Mask = networkInfo.EthDevice.Mask
-		netArgs.Gateway = networkInfo.EthDevice.DefaultGateway
-		// The MAC address for the guest network device is the same as the
-		// virtual ethernet interface inside the namespace
-		netArgs.MAC = networkInfo.EthDevice.MAC
-		netArgs.MTU = networkInfo.EthDevice.MTU
-	}
+	netArgs.TapDev = networkInfo.TapDevice
+	netArgs.IP = networkInfo.EthDevice.IP
+	netArgs.Mask = networkInfo.EthDevice.Mask
+	netArgs.Gateway = networkInfo.EthDevice.DefaultGateway
+	// The MAC address for the guest network device is the same as the
+	// virtual ethernet interface inside the namespace
+	netArgs.MAC = networkInfo.EthDevice.MAC
+	netArgs.MTU = networkInfo.EthDevice.MTU
 
 	return netArgs, nil
 }
