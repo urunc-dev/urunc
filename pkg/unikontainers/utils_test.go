@@ -16,6 +16,7 @@ package unikontainers
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWritePidFile(t *testing.T) {
@@ -238,6 +240,49 @@ func TestRemovePreservesOrder(t *testing.T) {
 	t.Parallel()
 	result := remove([]string{"a", "b", "c", "d"}, 0)
 	assert.Equal(t, []string{"b", "c", "d"}, result)
+}
+
+// TestFindNS checks that findNS lets callers tell apart a namespace type
+// missing from the spec from one that's present but not created yet
+// (empty path). Exec() relies on that distinction to decide when it's
+// safe to pivot_root.
+func TestFindNS(t *testing.T) {
+	t.Parallel()
+
+	t.Run("namespace type missing from spec", func(t *testing.T) {
+		t.Parallel()
+		namespaces := []specs.LinuxNamespace{
+			{Type: specs.NetworkNamespace, Path: "/proc/1/ns/net"},
+		}
+		path, err := findNS(namespaces, specs.MountNamespace)
+		assert.Empty(t, path)
+		assert.Error(t, err)
+		assert.False(t, errors.Is(err, ErrNotExistingNS),
+			"a namespace type absent from the spec must not be reported as ErrNotExistingNS")
+	})
+
+	t.Run("namespace present without a path yet", func(t *testing.T) {
+		t.Parallel()
+		namespaces := []specs.LinuxNamespace{
+			{Type: specs.MountNamespace, Path: ""},
+		}
+		path, err := findNS(namespaces, specs.MountNamespace)
+		assert.Empty(t, path)
+		assert.ErrorIs(t, err, ErrNotExistingNS)
+	})
+
+	t.Run("namespace present with an existing path", func(t *testing.T) {
+		t.Parallel()
+		nsPath := filepath.Join(t.TempDir(), "mnt")
+		require.NoError(t, os.WriteFile(nsPath, []byte{}, 0644))
+
+		namespaces := []specs.LinuxNamespace{
+			{Type: specs.MountNamespace, Path: nsPath},
+		}
+		path, err := findNS(namespaces, specs.MountNamespace)
+		assert.NoError(t, err)
+		assert.Equal(t, nsPath, path)
+	})
 }
 
 func TestLoadSpec(t *testing.T) {

@@ -698,10 +698,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
-	// We just want to check if a mount namespace was define din the list
-	// Therefore, if there was no error and the mount namespace was found
-	// we can pivot.
-	withPivot := err != nil
+	// Only pivot if a mount namespace entry is actually present in the
+	// spec, either to join (err is nil) or to create (err is
+	// ErrNotExistingNS). If the entry is missing entirely, no new mount
+	// namespace gets created and we have to chroot instead, otherwise
+	// pivot_root would run against the caller's own root filesystem.
+	withPivot := err == nil || errors.Is(err, ErrNotExistingNS)
 	err = changeRoot(rootfsParams.MonRootfs, withPivot)
 	if err != nil {
 		return err
