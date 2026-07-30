@@ -24,7 +24,6 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestWritePidFile(t *testing.T) {
@@ -252,13 +251,12 @@ func TestFindNS(t *testing.T) {
 	t.Run("namespace type missing from spec", func(t *testing.T) {
 		t.Parallel()
 		namespaces := []specs.LinuxNamespace{
-			{Type: specs.NetworkNamespace, Path: "/proc/1/ns/net"},
+			{Type: specs.NetworkNamespace, Path: "/dummy/path"},
 		}
 		path, err := findNS(namespaces, specs.MountNamespace)
 		assert.Empty(t, path)
 		assert.Error(t, err)
-		assert.False(t, errors.Is(err, ErrNotExistingNS),
-			"a namespace type absent from the spec must not be reported as ErrNotExistingNS")
+		assert.False(t, errors.Is(err, ErrNotExistingNS), "a namespace type absent from the spec must not be reported as ErrNotExistingNS")
 	})
 
 	t.Run("namespace present without a path yet", func(t *testing.T) {
@@ -273,8 +271,7 @@ func TestFindNS(t *testing.T) {
 
 	t.Run("namespace present with an existing path", func(t *testing.T) {
 		t.Parallel()
-		nsPath := filepath.Join(t.TempDir(), "mnt")
-		require.NoError(t, os.WriteFile(nsPath, []byte{}, 0644))
+		nsPath := t.TempDir()
 
 		namespaces := []specs.LinuxNamespace{
 			{Type: specs.MountNamespace, Path: nsPath},
