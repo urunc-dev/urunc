@@ -212,20 +212,8 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 			return nil, err
 		}
 		if ukernel.SupportsFS(mInfo.FsType) {
-			// So, there was an issue which was manifested from the testing.
-			// If we have a file (e.g. ext2) and mount it, then we use
-			// a loop device for the mount and this is what is shown
-			// in the mount list. However, since we perform the unmount
-			// the device might also get removed. See
-			// https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-block-loop
-			// If the device gets removed, then we attach nothing to the
-			// sandbox. To resolve this we remove the autoclear flag
-			// and therefore the device will persist.
-			// NOTE: Although we restore the autoclear flag in the delete path,
-			// if delete is never called then the autoclear flag will never
-			// get restored.and remounted
-			// TODO; Add the above note in a documentation for storage
-			// handling
+			// Clear loop autoclear before unmount so the loop device survives
+			// and can be attached to the guest. See docs/design/storage.md.
 			cleared, err := setLoopAutoclear(mInfo.Source, false)
 			if err != nil {
 				return nil, err

@@ -1,5 +1,7 @@
 This section describes the high-level architecture of `urunc`, along with the
-design choices and limitations.
+design choices and limitations. For storage-specific runtime behavior (including
+how bind mounts are turned into guest block devices and how loop-device
+autoclear is handled), see [Storage handling](./storage.md).
 
 ## Overview
 
