@@ -107,7 +107,7 @@ jobs:
         shell: bash
 
       - name: Run license-eye
-        uses: apache/skywalking-eyes/header@07a607ff5b0759f5ed47306c865aac50fe9b3985 # main
+        uses: apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817 # main
         with:
           config: .github/linters/licenserc.yml
           token: ${{ secrets.GITHUB_TOKEN }}
