@@ -38,7 +38,7 @@ type UnikernelNetworkInfo struct {
 	EthDevice Interface
 }
 type Manager interface {
-	NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error)
+	NetworkSetup(uid uint32, gid uint32, queues int) (*UnikernelNetworkInfo, error)
 }
 
 type Interface struct {
@@ -79,7 +79,18 @@ func getTapIndex() (int, error) {
 	return tapCount, nil
 }
 
-func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.Link, error) {
+func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32, queues int) (netlink.Link, error) {
+	if queues <= 0 {
+		queues = 1
+	}
+
+	flags := netlink.TUNTAP_VNET_HDR
+	if queues > 1 {
+		flags |= netlink.TUNTAP_MULTI_QUEUE
+	} else {
+		flags |= netlink.TUNTAP_ONE_QUEUE
+	}
+
 	tapLinkAttrs := netlink.NewLinkAttrs()
 	tapLinkAttrs.Name = name
 	tapLink := &netlink.Tuntap{
@@ -88,12 +99,9 @@ func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.L
 		// We want a tap device (L2) as opposed to a tun (L3)
 		Mode: netlink.TUNTAP_MODE_TAP,
 
-		// Firecracker does not support multiqueue tap devices at this time:
-		// https://github.com/firecracker-microvm/firecracker/issues/750
-		Queues: 1,
+		Queues: queues,
 
-		Flags: netlink.TUNTAP_ONE_QUEUE | // single queue tap device
-			netlink.TUNTAP_VNET_HDR, // parse vnet headers added by the vm's virtio_net implementation
+		Flags: flags,
 	}
 
 	err := netlink.LinkAdd(tapLink)
@@ -222,12 +230,12 @@ func addRedirectFilter(source netlink.Link, target netlink.Link) error {
 	})
 }
 
-func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32) (netlink.Link, error) {
-	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v",
-		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
+func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32, queues int) (netlink.Link, error) {
+	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v queues=%d",
+		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules, queues)
 	// Create TAP
-	netlog.Debugf("creating tap device %s (mtu=%d)", tapName, redirectLink.Attrs().MTU)
-	newTapDevice, err := createTapDevice(tapName, redirectLink.Attrs().MTU, uid, gid)
+	netlog.Debugf("creating tap device %s (mtu=%d, queues=%d)", tapName, redirectLink.Attrs().MTU, queues)
+	newTapDevice, err := createTapDevice(tapName, redirectLink.Attrs().MTU, uid, gid, queues)
 	if err != nil {
 		return nil, fmt.Errorf("createTapDevice(%s) failed: %w", tapName, err)
 	}

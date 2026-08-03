@@ -60,6 +60,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuBinaryKey: testQemuBinaryPath,
 			testQemuDataKey:   testQemuDataPath,
 			testQemuVhostKey:  "true",
+			"urunc_config.monitors.qemu.net_queues": "4",
 		}
 
 		config := UruncConfigFromMap(cfgMap)
@@ -72,6 +73,7 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
 		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
 		assert.True(t, qemuConfig.Vhost)
+		assert.Equal(t, 4, qemuConfig.NetQueues)
 	})
 
 	t.Run("multiple monitors", func(t *testing.T) {

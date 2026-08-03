@@ -46,6 +46,8 @@ const (
 	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
 	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
+	annotNetQueues     = "urunc.io/net-queues"
+	annotNetQueuesAlt  = "com.urunc.unikernel.netQueues"
 )
 
 // A UnikernelConfig struct holds the info provided by bima image on how to execute our unikernel
@@ -60,6 +62,7 @@ type UnikernelConfig struct {
 	BlkMntPoint      string `json:"com.urunc.unikernel.blkMntPoint,omitempty"`
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
+	NetQueues        string `json:"urunc.io/net-queues,omitempty"`
 }
 
 // validate checks if the mandatory configuration fields are present.
@@ -122,6 +125,10 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	netDev := spec.Annotations[annotNetDev]
+	netQueues := spec.Annotations[annotNetQueues]
+	if netQueues == "" {
+		netQueues = spec.Annotations[annotNetQueuesAlt]
+	}
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    unikernelType,
 		"unikernelVersion": unikernelVersion,
@@ -133,6 +140,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"blkMntPoint":      blkMntPoint,
 		"mountRootfs":      MountRootfs,
 		"netDev":           netDev,
+		"netQueues":        netQueues,
 	}).WithField("source", "spec").Debug("urunc annotations")
 
 	return &UnikernelConfig{
@@ -146,6 +154,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		BlkMntPoint:      blkMntPoint,
 		MountRootfs:      MountRootfs,
 		NetDev:           netDev,
+		NetQueues:        netQueues,
 	}
 }
 
@@ -186,6 +195,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"blkMntPoint":      tryDecode(conf.BlkMntPoint),
 		"mountRootfs":      tryDecode(conf.MountRootfs),
 		"netDev":           tryDecode(conf.NetDev),
+		"netQueues":        tryDecode(conf.NetQueues),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -262,6 +272,12 @@ func (c *UnikernelConfig) decode() error {
 	}
 	c.NetDev = string(decoded)
 
+	if c.NetQueues != "" {
+		if decoded, err := base64.StdEncoding.DecodeString(c.NetQueues); err == nil {
+			c.NetQueues = string(decoded)
+		}
+	}
+
 	return nil
 }
 
@@ -297,6 +313,9 @@ func (c *UnikernelConfig) Map() map[string]string {
 	}
 	if c.NetDev != "" {
 		myMap[annotNetDev] = c.NetDev
+	}
+	if c.NetQueues != "" {
+		myMap[annotNetQueues] = c.NetQueues
 	}
 
 	return myMap

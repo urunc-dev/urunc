@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -255,6 +256,25 @@ func (u *Unikontainer) SetRunningState() error {
 	return u.saveContainerState()
 }
 
+func (u *Unikontainer) getNetworkQueues() int {
+	queuesStr := u.State.Annotations[annotNetQueues]
+	if queuesStr == "" {
+		queuesStr = u.State.Annotations[annotNetQueuesAlt]
+	}
+	if queuesStr != "" {
+		if q, err := strconv.Atoi(queuesStr); err == nil && q > 0 {
+			return q
+		}
+	}
+	if u.UruncCfg != nil {
+		vmmType := u.State.Annotations[annotHypervisor]
+		if monCfg, exists := u.UruncCfg.Monitors[vmmType]; exists && monCfg.NetQueues > 0 {
+			return monCfg.NetQueues
+		}
+	}
+	return 1
+}
+
 func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 	networkType := u.getNetworkType()
 	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
@@ -264,7 +284,10 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
 	}
 
-	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	queues := u.getNetworkQueues()
+	netArgs.Queues = queues
+
+	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID, queues)
 	if err != nil {
 		// TODO: Handle this case better. We do not need to show an error
 		// since there was no network in the container. Therefore, we

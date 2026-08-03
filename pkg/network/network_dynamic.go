@@ -32,7 +32,7 @@ type DynamicNetwork struct {
 // FIXME: CUrrently only one tap device per netns can provide functional networking. We need to find a proper way to handle networking
 // for multiple unikernels in the same pod/network namespace.
 // See: https://github.com/urunc-dev/urunc/issues/13
-func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
+func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32, queues int) (*UnikernelNetworkInfo, error) {
 	tapIndex, err := getTapIndex()
 	if err != nil {
 		return nil, fmt.Errorf("getTapIndex failed: %w", err)
@@ -50,7 +50,7 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 	newTapName := strings.ReplaceAll(DefaultTap, "X", strconv.Itoa(tapIndex))
 	netlog.Debugf("creating tap device %s", newTapName)
 
-	newTapDevice, err := networkSetup(newTapName, "", redirectLink, true, uid, gid)
+	newTapDevice, err := networkSetup(newTapName, "", redirectLink, true, uid, gid, queues)
 	if err != nil {
 		return nil, fmt.Errorf("networkSetup(%s) failed: %w", newTapName, err)
 	}
