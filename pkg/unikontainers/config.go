@@ -100,13 +100,19 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 		return nil, fmt.Errorf("config not found in spec annotations or in %s: %w", uruncJSONFilename, err)
 	}
 
+	// Decode before validating. The values in urunc.json are base64, and
+	// base64 ignores CR and LF, so a field holding only newlines is
+	// non-empty while encoded but decodes to the empty string. Validating
+	// the encoded form would let such a config through with mandatory
+	// fields that downstream code reads as empty.
+	if err := jsonConf.decode(); err != nil {
+		return nil, err
+	}
+
 	if err := jsonConf.validate(); err != nil {
 		return nil, fmt.Errorf("invalid unikernel config from %s: %w", uruncJSONFilename, err)
 	}
 
-	if err := jsonConf.decode(); err != nil {
-		return nil, err
-	}
 	return jsonConf, nil
 }
 
