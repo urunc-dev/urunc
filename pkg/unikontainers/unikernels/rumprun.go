@@ -31,6 +31,7 @@ type Rumprun struct {
 	Envs    []string
 	Net     RumprunNet
 	Blk     RumprunBlk
+	Block   []types.BlockDevParams
 }
 
 type RumprunCmd struct {
@@ -149,22 +150,39 @@ func (r *Rumprun) MonitorNetCli(ifName string, mac string) string {
 }
 
 func (r *Rumprun) MonitorBlockCli() []types.MonitorBlockArgs {
+	if len(r.Block) == 0 {
+		if r.Blk.HostPath != "" {
+			return []types.MonitorBlockArgs{
+				{
+					ID:   "rootfs",
+					Path: r.Blk.HostPath,
+				},
+			}
+		}
+		return nil
+	}
 	switch r.Monitor {
 	case "hvt", "spt":
-		// TODO: Explore options for multiple block devices in Rumprun
-		// over Solo5-spt and Solo5-hvt. Solo5 expects to use as an ID
-		// a specific name which the guest is also aware of in order to
-		// attach the respective block. As a result, urunc needs to know
-		// the correct ID to set, which is not straightforward. Therefore,
-		// there are two options. Either we read the Solo5 manifest or,
-		// we require specific IDs. Till we decide about that, we will
-		// use a single block device only for the rootfs of Rumprun.
-		return []types.MonitorBlockArgs{
-			{
-				ID:   "rootfs",
-				Path: r.Blk.HostPath,
-			},
+		blkArgs := make([]types.MonitorBlockArgs, 0, len(r.Block))
+		for i, block := range r.Block {
+			id := block.ID
+			if id == "" {
+				if i == 0 {
+					id = "rootfs"
+				} else {
+					id = fmt.Sprintf("vol%d", i)
+				}
+			}
+			path := block.Source
+			if path == "" && i == 0 {
+				path = r.Blk.HostPath
+			}
+			blkArgs = append(blkArgs, types.MonitorBlockArgs{
+				ID:   id,
+				Path: path,
+			})
 		}
+		return blkArgs
 	default:
 		return nil
 	}
@@ -218,6 +236,7 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 	r.Command = strings.Join(data.CmdLine, " ")
 	r.Monitor = data.Monitor
 	r.Envs = data.EnvVars
+	r.Block = data.Block
 
 	return nil
 }
