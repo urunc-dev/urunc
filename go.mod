@@ -19,7 +19,7 @@ require (
 	github.com/moby/sys/userns v0.1.0
 	github.com/nubificus/hedge_cli v0.0.3
 	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.40.0
+	github.com/onsi/gomega v1.42.1
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runc v1.3.6
 	github.com/opencontainers/runtime-spec v1.2.1
@@ -31,7 +31,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.47.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.0
 	k8s.io/cri-api v0.36.3
 )
 
