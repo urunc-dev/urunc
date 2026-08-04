@@ -145,6 +145,7 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
 		cfgMap[prefix+"data_path"] = hvCfg.DataPath
 		cfgMap[prefix+"vhost"] = strconv.FormatBool(hvCfg.Vhost)
+		cfgMap[prefix+"net_queues"] = strconv.Itoa(hvCfg.NetQueues)
 	}
 	for eb, ebCfg := range p.ExtraBins {
 		prefix := "urunc_config.extra_binaries." + eb + "."
@@ -197,6 +198,10 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 				uniklog.Warnf("Invalid vhost value '%s' for monitor '%s': %v. Using default (false).", val, hv, err)
 			} else {
 				hvCfg.Vhost = boolVal
+			}
+		case "net_queues":
+			if intVal, err := strconv.Atoi(val); err == nil && intVal > 0 {
+				hvCfg.NetQueues = intVal
 			}
 		}
 		cfg.Monitors[hv] = hvCfg

@@ -147,6 +147,21 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			mustNotContain: []string{"-nic none", "vhost=on"},
 		},
 		{
+			name: "multiqueue tap renders queues parameter and mq virtio-net flags",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+				Net:           types.NetDevParams{TapDev: "tap0", MAC: "52:54:00:12:34:56", MTU: 1500, Queues: 4},
+			},
+			unikernel: &fakeUnikernel{},
+			mustContain: []string{
+				"-netdev tap",
+				"ifname=tap0,queues=4",
+				"mq=on",
+				"vectors=10",
+			},
+		},
+		{
 			name:  "vhost on emits vhost=on",
 			vhost: true,
 			args: types.ExecArgs{

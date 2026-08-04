@@ -51,6 +51,7 @@ type NetDevParams struct {
 	MAC     string // The MAC address of the guest network device
 	TapDev  string // The tap device name
 	MTU     int    // The MTU value of the tap device
+	Queues  int    // The queue count of the tap device
 }
 
 type BlockDevParams struct {
@@ -140,4 +141,5 @@ type MonitorConfig struct {
 	BinaryPath      string `toml:"path,omitempty"`      // Optional path to the hypervisor binary
 	DataPath        string `toml:"data_path,omitempty"` // Optional path to the hypervisor data files (e.g. qemu bios stuff)
 	Vhost           bool   `toml:"vhost,omitempty"`     // Optional: enable vhost for network performance optimization
+	NetQueues       int    `toml:"net_queues,omitempty"` // Optional: network queue count for multi-queue TAP
 }

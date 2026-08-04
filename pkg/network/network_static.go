@@ -88,7 +88,7 @@ func setNATRule(iface string, sourceIP string) error {
 	return nil
 }
 
-func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
+func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32, queues int) (*UnikernelNetworkInfo, error) {
 	newTapName := strings.ReplaceAll(DefaultTap, "X", "0")
 	addTCRules := false
 	redirectLink, err := discoverContainerIface()
@@ -96,7 +96,7 @@ func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkIn
 		netlog.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %v", err)
 		return nil, err
 	}
-	newTapDevice, err := networkSetup(newTapName, StaticIPAddr, redirectLink, addTCRules, uid, gid)
+	newTapDevice, err := networkSetup(newTapName, StaticIPAddr, redirectLink, addTCRules, uid, gid, queues)
 	if err != nil {
 		return nil, err
 	}

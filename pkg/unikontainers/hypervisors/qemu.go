@@ -98,10 +98,13 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		if netcli == "" {
 			netcli += " -netdev tap,id=net0,script=no,downscript=no,ifname="
 			netcli += args.Net.TapDev
+			if args.Net.Queues > 1 {
+				netcli += fmt.Sprintf(",queues=%d", args.Net.Queues)
+			}
 			if q.vhost {
 				netcli += ",vhost=on"
 			}
-			netcli += fmt.Sprintf(" %s,host_mtu=%d,mac=%s", getVirtioNetArg(), args.Net.MTU, args.Net.MAC)
+			netcli += fmt.Sprintf(" %s,host_mtu=%d,mac=%s", getVirtioNetArg(args.Net.Queues), args.Net.MTU, args.Net.MAC)
 		}
 		cmdString += netcli
 	} else {
@@ -152,10 +155,15 @@ func (q *Qemu) PreExec(_ types.ExecArgs) error {
 	return nil
 }
 
-func getVirtioNetArg() string {
+func getVirtioNetArg(queues int) string {
 	devType := "virtio-net-pci"
 	if runtime.GOARCH == "arm64" {
 		devType = "virtio-net-device"
 	}
-	return "-device " + devType + ",netdev=net0"
+	arg := "-device " + devType + ",netdev=net0"
+	if queues > 1 {
+		vectors := 2*queues + 2
+		arg += fmt.Sprintf(",mq=on,vectors=%d", vectors)
+	}
+	return arg
 }

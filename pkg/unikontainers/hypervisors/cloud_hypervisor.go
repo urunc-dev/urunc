@@ -100,7 +100,11 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 		if netCli == "" {
 			// Default network configuration for Cloud Hypervisor
-			exArgs = append(exArgs, "--net", fmt.Sprintf("tap=%s,mac=%s,mtu=%d", args.Net.TapDev, args.Net.MAC, args.Net.MTU))
+			netStr := fmt.Sprintf("tap=%s,mac=%s,mtu=%d", args.Net.TapDev, args.Net.MAC, args.Net.MTU)
+			if args.Net.Queues > 1 {
+				netStr += fmt.Sprintf(",num_queues=%d", args.Net.Queues)
+			}
+			exArgs = append(exArgs, "--net", netStr)
 		} else {
 			exArgs = append(exArgs, strings.Split(strings.TrimSpace(netCli), " ")...)
 		}
