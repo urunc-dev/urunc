@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -76,4 +77,30 @@ func (u *Unikontainer) writeMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	}
 
 	return nil
+}
+
+// LoadMonitorSpec reads the monitor spec-file from dir
+func LoadMonitorSpec(dir string) (monitorSpec, error) {
+	var ms monitorSpec
+
+	data, err := os.ReadFile(filepath.Join(dir, monitorSpecFilename))
+	if err != nil {
+		return ms, err
+	}
+
+	err = json.Unmarshal(data, &ms)
+	if err != nil {
+		return ms, fmt.Errorf("could not decode the monitor spec: %w", err)
+	}
+
+	return ms, nil
+}
+
+// RemoveMonitorSpec deletes the monitor spec file from dir.
+func RemoveMonitorSpec(dir string) error {
+	path, err := securejoin.SecureJoin(dir, monitorSpecFilename)
+	if err != nil {
+		return fmt.Errorf("could not resolve path for monitor spec: %w", err)
+	}
+	return os.Remove(path)
 }

@@ -159,3 +159,40 @@ func TestWriteMonitorSpec(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	})
 }
+
+func TestMonitorSpecFile(t *testing.T) {
+	t.Run("can be loaded back after being written", func(t *testing.T) {
+		t.Parallel()
+		monRootfs := t.TempDir()
+		u, rootfsParams := newSpecUnikontainer(t, monRootfs)
+
+		err := u.writeMonitorSpec(rootfsParams, monitorResources{})
+		require.NoError(t, err)
+
+		got, err := LoadMonitorSpec(monRootfs)
+		require.NoError(t, err)
+		assert.Equal(t, "test-container", got.ContainerID)
+	})
+
+	t.Run("can be removed once it has been read", func(t *testing.T) {
+		t.Parallel()
+		monRootfs := t.TempDir()
+		u, rootfsParams := newSpecUnikontainer(t, monRootfs)
+
+		err := u.writeMonitorSpec(rootfsParams, monitorResources{})
+		require.NoError(t, err)
+
+		err = RemoveMonitorSpec(monRootfs)
+		require.NoError(t, err)
+
+		_, err = LoadMonitorSpec(monRootfs)
+		assert.ErrorIs(t, err, os.ErrNotExist)
+	})
+
+	t.Run("reports a missing file", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := LoadMonitorSpec(t.TempDir())
+		assert.ErrorIs(t, err, os.ErrNotExist)
+	})
+}

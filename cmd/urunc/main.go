@@ -111,6 +111,7 @@ func main() {
 			createCommand,
 			deleteCommand,
 			killCommand,
+			monitorCommand,
 			runCommand,
 			psCommand,
 			// specCommand,
@@ -118,20 +119,27 @@ func main() {
 			// stateCommand,
 		},
 		Before: func(_ context.Context, cmd *cli.Command) (context.Context, error) {
-			if !cmd.IsSet("root") {
-				xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
-				if xdgRuntimeDir != "" && ShouldHonorXDGRuntimeDir() {
-					root := xdgRuntimeDir + "/urunc"
-					if err := prepareXDGRuntimeDir(root); err != nil {
-						return nil, err
-					}
-					if err := cmd.Set("root", root); err != nil {
-						return nil, err
+			// "urunc monitor" runs inside the monitor rootfs and
+			// never touches urunc's state directory, so it has no
+			// root to resolve. Also the inherited XDG_RUNTIME_DIR
+			// names a directory that does not exist in there, so
+			// preparing it would fail the monitor.
+			if !isMonitorInvocation(cmd) {
+				if !cmd.IsSet("root") {
+					xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
+					if xdgRuntimeDir != "" && ShouldHonorXDGRuntimeDir() {
+						root := xdgRuntimeDir + "/urunc"
+						if err := prepareXDGRuntimeDir(root); err != nil {
+							return nil, err
+						}
+						if err := cmd.Set("root", root); err != nil {
+							return nil, err
+						}
 					}
 				}
-			}
-			if err := reviseRootDir(cmd); err != nil {
-				return nil, err
+				if err := reviseRootDir(cmd); err != nil {
+					return nil, err
+				}
 			}
 			// ignore error since ParseLogMetricsConfig will print a warning and return default values
 			cfg, _ := unikontainers.ParseLogMetricsConfig(unikontainers.ResolveUruncConfigPath())

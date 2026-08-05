@@ -105,13 +105,36 @@ func libcontainerCreate(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	return nil
 }
 
+// buildMonitorArgs assembles the "urunc monitor" argv setting the same log format
+// and enabling debug logs based on the current urunc process.
+// TODO: THe logs will be printed in stdout. We need to pass another fd with the logs
+// in order to store them in the correct file.
+func buildMonitorArgs(id string, logFormat string) []string {
+	args := []string{"/proc/self/exe"}
+	logLevel := logrus.GetLevel()
+	if logLevel >= logrus.DebugLevel {
+		// TODO: We need to pass the log level not just debug.
+		// However, this needs to change the cli args of urunc.
+		// So let's do it in future iteration.
+		args = append(args, "--debug")
+	}
+
+	if logFormat != "" {
+		args = append(args, "--log-format", logFormat)
+	}
+
+	args = append(args, monitorArgv, id)
+
+	return args
+}
+
 // monitorProcess describes the urunc process that libcontainer starts.
 // Args[0] is "/proc/self/exe" because libcontainer resolves it after the
 // pivot: /proc is always mounted in the monitor rootfs, so this re-execs the
 // sealed urunc binary without urunc having to be copied into that rootfs.
 func monitorProcess(cmd *cli.Command, u *unikontainers.Unikontainer, readyFile *os.File) (*libcontainer.Process, error) {
 	process := &libcontainer.Process{
-		Args: []string{"/proc/self/exe", monitorArgv, u.State.ID},
+		Args: buildMonitorArgs(u.State.ID, cmd.String("log-format")),
 		Env:  os.Environ(),
 		// "/" rather than the spec's Cwd: that one is the guest's working
 		// directory
