@@ -140,18 +140,26 @@ func (n noRootfs) getMounts() ([]specs.Mount, error) {
 }
 
 func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
-	blkImgs := []types.BlockDevParams{}
-	blockFromAnnot, err := handleExplicitBlockImage(n.annotBlockPath,
+	blocks, err := handleExplicitBlockImages(n.annotBlockPath,
 		n.annotBlockMountPoint)
 	if err != nil {
 		return nil, err
 	}
 
-	if blockFromAnnot.Source != "" && blockFromAnnot.MountPoint != "/" {
-		// TODO: Add proper support for multiple block Images from the container's
-		// image. This requires adding more annotations too.
-		blockFromAnnot.ID = "annot_vol"
-		blkImgs = append(blkImgs, blockFromAnnot)
+	blkImgs := []types.BlockDevParams{}
+	for i, b := range blocks {
+		if b.Source == "" || b.MountPoint == "/" {
+			continue
+		}
+		// This ID is just a placeholder. MirageOS/Solo5 overrides it with
+		// the solo5BlkDev annotation. We keep it unique so other monitors
+		// don't end up with clashing block device IDs.
+		if len(blocks) == 1 {
+			b.ID = "annot_vol"
+		} else {
+			b.ID = fmt.Sprintf("annot_vol%d", i)
+		}
+		blkImgs = append(blkImgs, b)
 	}
 
 	return blkImgs, nil

@@ -37,3 +37,59 @@ func TestGetBlockDevice(t *testing.T) {
 	assert.Equal(t, tmpMnt.FsType, rootFs.FsType, "Expected filesystem type to be proc")
 	assert.Equal(t, tmpMnt.ID, rootFs.ID, "Expected ID to be empty")
 }
+
+func TestHandleExplicitBlockImages(t *testing.T) {
+	t.Run("parses an ordered list of block images and mount points", func(t *testing.T) {
+		blocks, err := handleExplicitBlockImages("/.boot/disk1, /.boot/disk2", "/data1, /data2")
+		assert.NoError(t, err)
+		assert.Len(t, blocks, 2)
+		assert.Equal(t, "/.boot/disk1", blocks[0].Source)
+		assert.Equal(t, "/data1", blocks[0].MountPoint)
+		assert.Equal(t, "/.boot/disk2", blocks[1].Source)
+		assert.Equal(t, "/data2", blocks[1].MountPoint)
+	})
+
+	t.Run("single image stays backward compatible", func(t *testing.T) {
+		blocks, err := handleExplicitBlockImages("/.boot/rootfs", "/")
+		assert.NoError(t, err)
+		assert.Len(t, blocks, 1)
+		assert.Equal(t, "rootfs", blocks[0].ID)
+	})
+
+	t.Run("empty block image yields no devices", func(t *testing.T) {
+		blocks, err := handleExplicitBlockImages("", "")
+		assert.NoError(t, err)
+		assert.Empty(t, blocks)
+	})
+
+	t.Run("mismatched counts return an error", func(t *testing.T) {
+		_, err := handleExplicitBlockImages("/a,/b", "/data")
+		assert.Error(t, err)
+	})
+
+	t.Run("rootfs combined with other block devices returns an error", func(t *testing.T) {
+		_, err := handleExplicitBlockImages("/.boot/rootfs,/.boot/data", "/,/data")
+		assert.Error(t, err)
+	})
+
+	t.Run("empty entries return an error", func(t *testing.T) {
+		_, err := handleExplicitBlockImages("/a,,/c", "/1,/2,/3")
+		assert.Error(t, err)
+
+		_, err = handleExplicitBlockImages("/a,/b", "/1,")
+		assert.Error(t, err)
+	})
+}
+
+func TestNoRootfsMultipleBlockDevs(t *testing.T) {
+	n := noRootfs{
+		annotBlockPath:       "/.boot/disk1,/.boot/disk2",
+		annotBlockMountPoint: "/data1,/data2",
+	}
+	blocks, err := n.getBlockDevs()
+	assert.NoError(t, err)
+	assert.Len(t, blocks, 2)
+	assert.Equal(t, "/.boot/disk1", blocks[0].Source)
+	assert.Equal(t, "/.boot/disk2", blocks[1].Source)
+	assert.NotEqual(t, blocks[0].ID, blocks[1].ID, "multiple block devices must have unique IDs")
+}
