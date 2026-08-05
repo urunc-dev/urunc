@@ -28,18 +28,24 @@ const (
 	ConsoleEndpoint          = "/proc/vmcons"
 )
 
-type Hedge struct{}
+type Hedge struct {
+	binary     string
+	binaryPath string
+}
 
 func (h *Hedge) Ok() error {
-	return fmt.Errorf("hedge not implemented yet")
+	if err := hedge.Status(); err != nil {
+		return ErrVMMNotInstalled
+	}
+	return nil
 }
 
-func (h *Hedge) Signal(_ int, _ unix.Signal) error {
-	return fmt.Errorf("hedge not implemented yet")
+func (h *Hedge) Signal(pid int, signal unix.Signal) error {
+	return unix.Kill(pid, signal)
 }
 
-func (h *Hedge) Stop(_ int) error {
-	return fmt.Errorf("hedge not implemented yet")
+func (h *Hedge) Stop(pid int) error {
+	return killProcess(pid)
 }
 
 func (h *Hedge) UsesKVM() bool {
@@ -52,16 +58,93 @@ func (h *Hedge) SupportsSharedfs(_ string) bool {
 }
 
 func (h *Hedge) Path() string {
-	return ""
+	if h.binaryPath != "" {
+		return h.binaryPath
+	}
+	return hedge.MONITOR_ENDPOINT
 }
 
-func (h *Hedge) BuildExecCmd(_ types.ExecArgs, _ types.Unikernel) ([]string, error) {
-	return nil, fmt.Errorf("hedge not implemented yet")
+func (h *Hedge) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
+	memMB := int(bytesToMB(args.MemSizeB))
+	if memMB <= 0 {
+		memMB = int(DefaultMemory)
+	}
+
+	netDev := ""
+	if args.Net.TapDev != "" {
+		netDev = ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
+	}
+
+	blkDev := ""
+	bArgs := ukernel.MonitorBlockCli()
+	for _, blockArg := range bArgs {
+		if blkDev != "" {
+			blkDev += " "
+		}
+		blkDev += "--block:" + blockArg.ID + "=" + blockArg.Path
+	}
+
+	conf := hedge.VMConfig{
+		Name:    args.ContainerID,
+		Binary:  args.UnikernelPath,
+		CPU:     int(args.VCPUs),
+		Mem:     memMB,
+		Blk:     blkDev,
+		Net:     netDev,
+		CmdLine: args.Command,
+	}
+
+	if err := conf.Validate(); err != nil {
+		return nil, fmt.Errorf("hedge vm config validation failed: %w", err)
+	}
+
+	execCmd := []string{
+		"hedge",
+		"--name", conf.Name,
+		"--binary", conf.Binary,
+		"--cpu", fmt.Sprintf("%d", conf.CPU),
+		"--mem", fmt.Sprintf("%d", conf.Mem),
+		"--cmdline", conf.CmdLine,
+	}
+	if conf.Net != "" {
+		execCmd = append(execCmd, "--net", conf.Net)
+	}
+	if conf.Blk != "" {
+		execCmd = append(execCmd, "--blk", conf.Blk)
+	}
+
+	return execCmd, nil
 }
 
-// PreExec performs pre-execution setup. Hedge is not fully implemented.
-func (h *Hedge) PreExec(_ types.ExecArgs) error {
-	return fmt.Errorf("hedge not implemented yet")
+// PreExec performs pre-execution setup for Hedge using hedge_api.
+func (h *Hedge) PreExec(args types.ExecArgs) error {
+	memMB := int(bytesToMB(args.MemSizeB))
+	if memMB <= 0 {
+		memMB = int(DefaultMemory)
+	}
+
+	netDev := ""
+	if args.Net.TapDev != "" {
+		netDev = args.Net.TapDev
+	}
+
+	blkDev := ""
+
+	conf := hedge.VMConfig{
+		Name:    args.ContainerID,
+		Binary:  args.UnikernelPath,
+		CPU:     int(args.VCPUs),
+		Mem:     memMB,
+		Blk:     blkDev,
+		Net:     netDev,
+		CmdLine: args.Command,
+	}
+
+	if err := conf.Validate(); err != nil {
+		return fmt.Errorf("hedge vm config validation failed: %w", err)
+	}
+
+	return hedge.StartVM(conf)
 }
 
 func (h *Hedge) VMState(name string) string {
