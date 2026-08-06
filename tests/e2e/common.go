@@ -122,6 +122,20 @@ func commonCmdExec(command string) (output string, err error) {
 	return output, nil
 }
 
+func commonCmdExecStderr(command string) (string, string, error) {
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+
+	params := strings.Fields(command)
+	cmd := exec.Command(params[0], params[1:]...) //nolint:gosec
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	err := cmd.Run()
+	output := strings.TrimSpace(stdoutBuf.String())
+	errorOut := strings.TrimSpace(stderrBuf.String())
+	return output, errorOut, err
+}
+
 func commonPull(tool string, image string) error {
 	pullCmd := tool + " image pull " + image
 

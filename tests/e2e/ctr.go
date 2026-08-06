@@ -16,6 +16,7 @@ package urunce2etesting
 
 import (
 	"fmt"
+	"strings"
 )
 
 const ctrName = "ctr"
@@ -117,6 +118,12 @@ func (i *ctrInfo) runContainer(detach bool) (string, error) {
 		i.detached = true
 	}
 	cmdBase += ctrNewContainerCmd(i.testArgs)
+	// AN ugly patch for hyperlight, since it prints all output
+	// to stderr
+	if strings.Contains(i.testArgs.Name, "Hyperlight") {
+		out, errOut, err := commonCmdExecStderr(cmdBase)
+		return out + errOut, err
+	}
 	return commonCmdExec(cmdBase)
 }
 
