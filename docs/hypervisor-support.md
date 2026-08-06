@@ -252,6 +252,75 @@ An example unikernel with a block image inside the container's rootfs:
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-block:latest
 ```
 
+### Hyperlight
+
+[Hyperlight](https://github.com/hyperlight-dev/hyperlight) is an open-source,
+lightweight Virtual Machine Monitor (VMM) designed to be embedded directly
+within applications, rather than run as a standalone process. It is a [Cloud
+Native Computing Foundation](https://cncf.io/) sandbox project and creates
+micro-VMs with a minimal device model and no in-VM kernel of its own, which
+allows it to reach very low instantiation latencies. Specifically in the case
+of Unikraft, there is
+[hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft),
+which makes Hyperlight a host-level VMM, able to boot Unikraft unikernels.  In
+contrast with [Qemu](https://www.qemu.org/) and
+[Firecracker](https://firecracker-microvm.github.io/), Hyperlight does not
+provide any VirtIO devices. Both network and file I/O cross the VM boundary as
+typed host function calls, rather than through paravirtual devices.
+
+#### Installing Hyperlight
+
+[Hyperlight](https://github.com/hyperlight-dev/hyperlight) is not available
+through a package manager. The host binary that `urunc` invokes is built from
+the [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
+repository, which requires [Rust](https://rustup.rs/) 1.89 or newer.
+
+```bash
+sudo apt-get install build-essential
+git clone https://github.com/hyperlight-dev/hyperlight-unikraft.git
+cd hyperlight-unikraft/host
+cargo build --release
+```
+
+It is important to note that `urunc` expects to find the `hyperlight-unikraft`
+binary located in the `$PATH` and named `hyperlight-unikraft`. Otherwise, the
+path should be declared in the [urunc
+configuration](../configuration#monitor-configuration). Therefore, to
+install it:
+
+```bash
+sudo cp target/release/hyperlight-unikraft /usr/local/bin
+```
+
+#### Hyperlight and `urunc`
+
+In the case of [Hyperlight](https://github.com/hyperlight-dev/hyperlight),
+`urunc` only supports plain examples. It passes the unikernel image as the
+kernel argument of `hyperlight-unikraft` and uses its initrd option in order to
+provide the unikernel with an initial RamFS (initramfs). Consequently, the
+`binary` and `initrd` annotations keep the same meaning as with the rest of the
+supported VMMs.
+
+[Hyperlight](https://github.com/hyperlight-dev/hyperlight) does not provide any
+VirtIO devices, nor a tap-based network interface. As a result, networking is
+not available for unikernels running on top of Hyperlight and, for the time
+being, initramfs is the only supported storage option. Neither virtio-block nor
+devmapper-backed block storage can be used.
+
+Upstream `hyperlight-unikraft` can preopen a host directory for the guest and
+forward POSIX file operations to it. We plan to add support for this option,
+along with networking as it becomes available.
+
+Supported unikernel frameworks with `urunc`:
+
+- [Unikraft](../unikernel-support#unikraft)
+
+An example unikernel:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 docker.io/urunc/hello-hyperlight-unikraft:latest
+```
+
 ## Software-based isolation monitors
 
 Except for the traditional VM-based isolation solutions, there are other

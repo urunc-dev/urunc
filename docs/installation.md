@@ -27,6 +27,7 @@ with virtiofsd. Specifically:
 - [qemu](https://www.qemu.org/)
 - [firecracker](https://github.com/firecracker-microvm/firecracker)
 - [Cloud-Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
+- [Hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
 - [virtiofsd](https://virtio-fs.gitlab.io/)
 
 **3. Installation and configuration of `urunc`**
@@ -314,6 +315,8 @@ creation of a new release with different versions. More information can be found
 in the [respective section of the repository's README
 file](https://github.com/urunc-dev/monitors-build?tab=readme-ov-file#how-to-use).
 
+> NOTE: Hyperlight-unikraft is not included in this bundle yet.
+
 As an example, the following commands use the
 [`FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e`
 release](https://github.com/urunc-dev/monitors-build/releases/tag/FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e)
@@ -430,6 +433,18 @@ else
 fi
 chmod +x cloud-hypervisor
 sudo mv cloud-hypervisor /usr/local/bin/
+```
+
+### Hyperlight-unikraft
+
+[Hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
+does not provide any pre-built binaries. To build it from source with cargo:
+
+```bash
+VERSION="v0.12.1"
+git clone https://github.com/hyperlight-dev/hyperlight-unikraft.git -b $VERSION
+cd hyperlight-unikraft/host
+cargo build --release
 ```
 
 ### Virtiofsd

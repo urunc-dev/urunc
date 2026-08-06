@@ -46,7 +46,9 @@ and storage I/O over both [Qemu](https://qemu.org) and
 However, for the time being, `urunc` only offers support for the initrd option
 of [Unikraft](https://unikraft.org/) and not for shared-fs. On the other hand,
 the shared-fs option is Work-In-Progress and we will soon provide an update
-about this.
+about this. It is also possible to use unikraft over
+[hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft),
+but with no network support for the time being.
 
 [Unikraft](https://unikraft.org/) maintains a
 [catalog](https://github.com/unikraft/catalog) with available applications as
