@@ -45,6 +45,7 @@ jobs:
       firecracker_version: 'v1.7.0'
       cloud_hypervisor_version: 'v50.0'
       solo5_version: 'v0.9.3'
+      hyperlight_unikraft_version: 'v0.12.1'
       go_version: "1.26.4"
 
   kind_test:
