@@ -63,6 +63,18 @@ type Unikontainer struct {
 	Conn     *net.UnixConn
 }
 
+// requireLinuxAndProcess ensures the OCI spec has the sections create/Exec
+// later dereference (e.g. Spec.Process.Terminal, Process.User, Process.Args).
+func requireLinuxAndProcess(spec *specs.Spec) error {
+	if spec == nil || spec.Linux == nil {
+		return fmt.Errorf("invalid OCI spec: linux section is required")
+	}
+	if spec.Process == nil {
+		return fmt.Errorf("invalid OCI spec: process section is required")
+	}
+	return nil
+}
+
 // New parses the bundle and creates a new Unikontainer object
 func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig) (*Unikontainer, error) {
 	spec, err := loadSpec(bundlePath)
@@ -70,8 +82,8 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 		return nil, err
 	}
 
-	if spec == nil || spec.Linux == nil {
-		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
+	if err := requireLinuxAndProcess(spec); err != nil {
+		return nil, err
 	}
 
 	containerName := spec.Annotations["io.kubernetes.cri.container-name"]
@@ -129,8 +141,8 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if spec == nil || spec.Linux == nil {
-		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
+	if err := requireLinuxAndProcess(spec); err != nil {
+		return nil, err
 	}
 	u.BaseDir = containerDir
 	u.RootDir = rootDir
