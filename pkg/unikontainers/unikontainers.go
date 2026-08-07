@@ -843,6 +843,15 @@ func (u *Unikontainer) Delete() error {
 		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
 	}
 
+	// In libcontainer mode, tear down the monitor's libcontainer state and cgroup.
+	// Like runc.
+	if u.UruncCfg.Runtime.Libcontainer {
+		err := u.destroyLibcontainer()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Restore the block volume mounts that were unmounted during create,
 	// so their sources become discoverable by future containers. Do it in
 	// a best-effort way, since a failure to restore a mount should not
@@ -886,11 +895,17 @@ func (u *Unikontainer) Delete() error {
 		dirs = append(dirs, monitorRootfsDirName)
 		prefPath = bundleDir
 	} else {
-		// Otherwise remove the enw directories we created inside the
-		// container's rootfs.
+		// Otherwise remove the enw directories we created and the monitor spec
+		// file inside the container's rootfs.
 		// We do not need to unmount anything here, since we rely on Linux
 		// to do the cleanup for us. This will happen automatically,
 		// when the mount namespace gets destroyed
+		err = RemoveMonitorSpec(rootfsDir)
+		// Ignore the case where the file does not exist.
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to remove the monitor spec: %w", err)
+		}
+
 		dirs = []string{
 			"/lib",
 			"/lib64",

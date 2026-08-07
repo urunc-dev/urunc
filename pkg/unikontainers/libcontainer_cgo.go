@@ -33,6 +33,7 @@ import (
 	// rules fails with "cgroup manager is not configured to set device rules".
 	_ "github.com/opencontainers/cgroups/devices"
 	devices "github.com/opencontainers/cgroups/devices/config"
+	"github.com/opencontainers/runc/libcontainer"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/specconv"
 )
@@ -82,4 +83,23 @@ func (u *Unikontainer) BuildContainerConfig(systemdCgroup bool) (*configs.Config
 // monitor's process execution environment. It is placed under the root directory
 func (u *Unikontainer) LibcontainerRoot() string {
 	return filepath.Join(u.RootDir, libcontainerDirName)
+}
+
+// destroyLibcontainer removes the monitor's libcontainer state directory and its
+// cgroup. Following runc's delete.
+func (u *Unikontainer) destroyLibcontainer() error {
+	container, err := libcontainer.Load(u.LibcontainerRoot(), u.State.ID)
+	if err != nil {
+		// Nothing to destroy: e.g. a create that failed before
+		// libcontainer.Create, or an already-completed teardown.
+		uniklog.Debugf("no monitor libcontainer state to destroy: %v", err)
+		return nil
+	}
+
+	err = container.Destroy()
+	if err != nil {
+		return fmt.Errorf("failed to destroy the monitor's libcontainer state: %w", err)
+	}
+
+	return nil
 }
