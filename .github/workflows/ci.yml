@@ -67,7 +67,11 @@ jobs:
     name: E2E test
     uses: ./.github/workflows/vm_test.yml
     with:
-      ref: ${{ inputs.ref }}
+      # Run the e2e suite from the base branch, so a PR cannot silently weaken
+      # the tests that gate its own binary. Changes under tests/ are exercised
+      # with the PR's own test code by e2e-test-changes.yml. Falls back to the
+      # caller ref for non-PR runs (nightly/release), where base.sha is empty.
+      ref: ${{ github.event.pull_request.base.sha || inputs.ref }}
       go_version: ${{ inputs.go_version }}
       runner-archs: '["amd64", "arm64"]'
       runc_version: '1.3.0'
