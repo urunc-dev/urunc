@@ -59,6 +59,18 @@ welcome to open a new issue, which is either related to a bug or a request for
 a new feature. Please make sure to read the [LLM
 policy](../developer-guide/llm-policy.md) in cases where an LLM has been used.
 
+Please keep in mind that `urunc` is a community-led open-source project, not
+backed by a specific company. Maintainers review issues on a best-effort basis.
+Therefore, please refrain from @-mentioning maintainers when opening an issue
+or shortly after opening it. The maintainers will get to the issue as soon as
+they can.
+
+When a maintainer goes through an issue, they will label it accordingly. We
+use the labels to track triage, so an issue with no labels on it has not been
+accepted yet. Issues that lack the necessary information to reproduce or
+verify the reported problem will stay unlabeled, until that information shows
+up. If it never does, we will close the issue.
+
 ### Reporting bugs
 
 In order to report a bug or misbehavior in `urunc`, a user can open a new issue explaining the problem.
@@ -76,6 +88,13 @@ In that context, when opening a new issue regarding a bug, we kindly ask you to:
     5. Any particular steps to reproduce the issue.
 - Keep an eye on the issue for possible questions from the maintainers.
 
+Bug reports must describe a problem that the reporter has actually run into
+and reproduced. In that context, the logs and the output of the failing
+commands are required, not optional -- they are the evidence that the problem
+is real. Issues that only describe code the reporter has read, without
+executing it and without the respective output, will stay unlabeled and will
+be closed if the missing information is not provided.
+
 A template for an issue could be the following one:
 ```
 ## Description
@@ -90,6 +109,10 @@ An explanation of the issue
 
 ## Steps to reproduce
 A list of steps that can reproduce the issue.
+
+## Logs / output
+The actual output of the failing commands and the relevant logs
+(eg. containerd logs, urunc debug logs).
 ```
 
 ### Requesting new features
@@ -105,8 +128,13 @@ Anyone should feel free to submit a change or an addition to the codebase of `ur
 Currently, we use GitHub's Pull Requests (PRs) to submit changes to `urunc`'s codebase.
 Before creating a new PR, please follow the rules below:
 
-- Avoid opening PRs for non-existent issues. Please create an issue first.
+- Open PRs only for issues that a maintainer has already labeled. If there is
+  no issue for the change you have in mind, please open one first and wait for
+  the maintainers to go through it.
 - Complete the PR template.
+- Add yourself in
+  [`.github/contributors.yaml`](https://github.com/urunc-dev/urunc/blob/main/.github/contributors.yaml).
+  We use that file to add the proper git trailers in the commits of a PR.
 - In case LLMs have been used, please read the [LLM
   policy](../developer-guide/llm-policy.md).
 - Avoid changes unrelated to the PR/issue.
@@ -122,7 +150,8 @@ Before creating a new PR, please follow the rules below:
 
 The maintainers and admins of the `urunc` project reserve the right to close
 PRs that do not comply with the above rules, with reference to this contribution
-guide.
+guide. In the same context, anyone who keeps ignoring this guide will be
+banned from the project.
 
 A new (draft) PR triggers the following process:
 
@@ -140,6 +169,18 @@ A new (draft) PR triggers the following process:
      main branch. If the PR is external, the maintainer should rebase & merge for
      the action to be triggered. If the PR is internal, the action will be triggered
      automatically.
+
+### A note on mentorship programs
+
+We are always happy to see new contributors, including people who get involved
+through a mentorship program (eg. LFX). If this is your case, please go through
+the [LFX Standards of
+Excellence](https://docs.linuxfoundation.org/lfx/mentorship/standards-of-excellence)
+first.
+
+In case `urunc` takes part in a mentorship term, the relevant issues will be
+explicitly marked with a `mentorship` label. Unless an issue carries that
+label, please avoid opening issues or PRs related to mentorship programs.
 
 ## Labels for the CI
 
