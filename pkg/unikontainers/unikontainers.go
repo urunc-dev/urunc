@@ -87,7 +87,10 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 
 	config, err := GetUnikernelConfig(bundlePath, spec)
 	if err != nil {
-		return nil, ErrNotUnikernel
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrNotUnikernel
+		}
+		return nil, err
 	}
 
 	confMap := config.Map()
