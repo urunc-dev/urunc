@@ -32,7 +32,7 @@ jobs:
             runner: ubuntu-22.04-arm
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40
         with:
           egress-policy: audit
 
