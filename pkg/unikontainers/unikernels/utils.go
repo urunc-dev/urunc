@@ -16,30 +16,28 @@ package unikernels
 
 import (
 	"fmt"
+	"net"
 	"os"
-	"strconv"
-	"strings"
 )
 
 func subnetMaskToCIDR(subnetMask string) (int, error) {
-	maskParts := strings.Split(subnetMask, ".")
-	if len(maskParts) != 4 {
-		return 0, fmt.Errorf("invalid subnet mask format")
+	ip := net.ParseIP(subnetMask)
+	if ip == nil {
+		return 0, fmt.Errorf("invalid subnet mask format: %s", subnetMask)
 	}
 
-	var cidr int
-	for _, part := range maskParts {
-		val, err := strconv.Atoi(part)
-		if err != nil || val < 0 || val > 255 {
-			return 0, fmt.Errorf("invalid subnet mask value: %s", part)
-		}
-
-		// Convert part to binary and count the number of 1 bits
-		binary := fmt.Sprintf("%08b", val)
-		cidr += strings.Count(binary, "1")
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return 0, fmt.Errorf("invalid IPv4 subnet mask: %s", subnetMask)
 	}
 
-	return cidr, nil
+	mask := net.IPMask(ip4)
+	ones, bits := mask.Size()
+	if bits != 32 {
+		return 0, fmt.Errorf("invalid subnet mask: %s", subnetMask)
+	}
+
+	return ones, nil
 }
 
 func createFile(path string, content string) error {
