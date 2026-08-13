@@ -211,7 +211,10 @@ func remove(s []string, i int) []string {
 func checkValidNsPath(path string) error {
 	// only set to join this namespace if it exists
 	if _, err := os.Lstat(path); err != nil {
-		return ErrNotExistingNS
+		if os.IsNotExist(err) {
+			return ErrNotExistingNS
+		}
+		return fmt.Errorf("checking namespace path %s: %w", path, err)
 	}
 	// do not allow namespace path with comma as we use it to separate
 	// the namespace paths
