@@ -55,7 +55,7 @@ env:
   CRICTL_VERSION: ${{ inputs.crictl_version || 'v1.30.0' }}
   FIRECRACKER_VERSION: ${{ inputs.firecracker_version || 'v1.7.0' }}
   CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version || 'v50.0' }}
-  SOLO5_VERSION: ${{ inputs.solo5_version || 'v0.9.3' }}
+  SOLO5_VERSION: ${{ inputs.solo5_version || 'v0.12.1' }}
   HLUK_VERSION: ${{ inputs.hluk_version || 'v0.18.0' }}
 
 jobs:

@@ -930,12 +930,12 @@ func confineBlockSources(blocks []types.BlockDevParams) ([]types.BlockDevParams,
 // It does not return on success:
 //
 // TODO: The container can still be reported as running if the PreExec step
-// (e.g., BPF/seccomp filter setup) fails after the caller reported success. We
+// fails after the caller reported success. We
 // should find a way to handle that case as well.
 func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execCmd []string) error {
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(m.TS18)
-	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
+	// Perform any monitor-specific pre-exec setup.
 	err := vmm.PreExec(execArgs)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to perform pre-exec setup")
