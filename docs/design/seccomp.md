@@ -31,8 +31,8 @@ supported VMM. In particular, in the case of:
   all possible seccomp filters in Qemu.
 - Cloud-Hypervisor, 'urunc' makes use of the `--seccomp true` command line
   options to enable Cloud-Hypervisor's seccomp filters.
-- Solo5-hvt, 'urunc' applies the seccomp filters before executing
-  'Solo5-hvt'.
+- Solo5-hvt, 'urunc' does not have to do anything more, since solo5-hvt makes use
+  of seccomp by itself, as of Solo5 v0.11.0.
 - Solo5-spt, 'urunc' can not do anything since solo5-spt makes use of seccomp by
   itself.
 
@@ -42,21 +42,12 @@ Since 'urunc', in most cases, makes use of the VMM's mechanisms to enforce the
 seccomp filters, 'urunc' heavily relies on the VMM to properly restrict the system
 calls the VMM can use.
 
-In the case of 'Solo5-hvt', since 'urunc' is responsible for applying the seccomp
-filters, proper identification of the required system calls is necessary.
-Unfortunately, due to dynamic linking and Go's runtime, it is
+Up to Solo5 v0.10.x, 'urunc' was the one applying the seccomp filters for
+'Solo5-hvt' and therefore proper identification of the required system calls was
+necessary. Unfortunately, due to dynamic linking and Go's runtime, it is
 impossible to always predict correctly for every system the necessary system
-calls for 'Solo5-hvt' execution.
-
-Nevertheless, 'Solo5-hvt' with seccomp in 'urunc' has been tested in Ubuntu 20.04
-and Ubuntu 22.04. Using 'urunc' and solo5-hvt on different platforms might result
-in failed execution. For that reason, we strongly recommend running the seccomp
-test first, by `make test_nerdctl_Seccomp`. In case the test fails, the seccomp
-profile for 'Solo5-hvt' needs to get updated.
-
-For that reason, we created a toolset to identify the required system calls.
-The toolset, along with instructions on how to use it, can be found in [goscall
-repository](https://github.com/nubificus/goscall).
+calls for 'Solo5-hvt' execution. Since Solo5 v0.11.0, 'Solo5-hvt' makes use of
+seccomp by itself and hence 'urunc' does not have to do anything more.
 
 ## Setting a seccomp profile
 
@@ -64,4 +55,4 @@ Due to its design, 'urunc' does not allow the definition of a seccomp profile ot
 than the default. However, users can totally disable seccomp by using
 the `--security-opt seccomp=unconfined` command line option. In that scenario,
 'urunc' will not make use of any seccomp filters in all the supported VMMs, except
-of 'Solo5-spt'.
+of 'Solo5-hvt' and 'Solo5-spt', which make use of seccomp by themselves.
