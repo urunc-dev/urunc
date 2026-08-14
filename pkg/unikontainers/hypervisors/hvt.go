@@ -32,7 +32,6 @@ type HVT struct {
 	binary     string
 }
 
-
 func (h *HVT) Signal(pid int, signal unix.Signal) error {
 	return unix.Kill(pid, signal)
 }
