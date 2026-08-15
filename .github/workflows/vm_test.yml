@@ -117,7 +117,7 @@ jobs:
     - name: Install base dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system
+        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system jq
         wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
         sudo chmod +x virtiofsd
         sudo mv virtiofsd /usr/libexec/virtiofsd
@@ -350,7 +350,7 @@ jobs:
     - name: Wait for CRI network to be ready
       run: |
         for _ in $(seq 1 30); do
-          ready=$(sudo crictl info -o json | jq -r '.status.conditions[] | select(.type=="NetworkReady") | .status')
+          ready=$(sudo crictl info -o json 2>/dev/null | jq -r '.status.conditions[] | select(.type=="NetworkReady") | .status' || true)
           if [ "$ready" = "true" ]; then
             echo "CRI network is ready"
             exit 0
