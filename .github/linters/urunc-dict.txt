@@ -129,6 +129,7 @@ clis
 cmainas
 cmdline
 cntr
+conflist
 containerdshim
 containerd
 containerd's
@@ -192,6 +193,7 @@ inlinehilite
 inspectp
 iobase
 iosize
+ipam
 isues
 iversion
 jackpal
@@ -220,6 +222,7 @@ logpipe
 logrus
 lseek
 mand
+masq
 mewz
 mkdocs
 mkdocstrings
@@ -265,6 +268,7 @@ osusergo
 paravirtual
 pids
 pluginid
+portmap
 posixacl
 practises
 prctl
