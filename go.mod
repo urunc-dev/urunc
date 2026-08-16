@@ -16,16 +16,16 @@ require (
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackpal/gateway v1.2.0
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/moby/sys/userns v0.1.0
+	github.com/moby/sys/userns v0.2.0
 	github.com/nubificus/hedge_cli v0.0.3
-	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runc v1.3.6
 	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/rs/zerolog v1.35.1
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.0
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/vishvananda/netlink v1.3.1
