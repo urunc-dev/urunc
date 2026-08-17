@@ -318,20 +318,20 @@ file](https://github.com/urunc-dev/monitors-build?tab=readme-ov-file#how-to-use)
 > NOTE: Hyperlight-unikraft is not included in this bundle yet.
 
 As an example, the following commands use the
-[`FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e`
-release](https://github.com/urunc-dev/monitors-build/releases/tag/FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e)
+[`FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS_-v1.13.0_QM-v10.1.1-9a44e`
+release](https://github.com/urunc-dev/monitors-build/releases/tag/FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS_-v1.13.0_QM-v10.1.1-9a44e)
 which contains the following monitors and tools in the specified versions:
 
 - Firecracker v1.7.0
 - Cloud Hypervisor v50.0
-- Solo5 v0.9.3
+- Solo5 v0.12.1
 - Virtiofsd v1.13.0
 - Qemu v10.1.1
 
 To download and install the monitors in `/tmp`:
 ```
 ARCH="$(dpkg --print-architecture)"
-VERSION="FC-v1.7.0_CLH-v50.0_S5-v0.9.3_VFS_-v1.13.0_QM-v10.1.1-9a44e"
+VERSION="FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS_-v1.13.0_QM-v10.1.1-9a44e"
 release_url="https://github.com/urunc-dev/monitors-build/releases/download"
 wget ${release_url}/${VERSION}/release-${ARCH}-${VERSION}.tar.gz
 sudo tar Cxzvf /opt release-${ARCH}-${VERSION}.tar.gz
