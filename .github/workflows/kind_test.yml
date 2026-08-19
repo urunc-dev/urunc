@@ -335,6 +335,48 @@ jobs:
         grep "Hello world" /tmp/logs.txt
         kubectl describe pod hello-spt-rumprun-block || true
 
+      # Re-run the hello-world deployment with urunc's libcontainer runtime
+      # enabled, reusing the same kind cluster and urunc install.
+    - name: Deploy and verify with libcontainer
+      run: |
+        docker exec urunc-test-control-plane bash -c '
+          cat >> /etc/urunc/config.toml <<EOF
+
+        [runtime]
+        libcontainer = true
+        EOF
+        '
+        cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: hello-libcontainer
+              labels:
+                run: hello-libcontainer
+            spec:
+              runtimeClassName: urunc
+              restartPolicy: Never
+              containers:
+                - name: hello-libcontainer
+                  image: harbor.nbfc.io/nubificus/urunc/hello-spt-rumprun-block:latest
+                  imagePullPolicy: Always
+                  ports:
+                  - containerPort: 80
+                    protocol: TCP
+                  resources:
+                    requests:
+                      cpu: 10m
+        EOF
+        kubectl wait --for=condition=Succeeded pod/hello-libcontainer --timeout=180s || true
+        kubectl logs hello-libcontainer | tee /tmp/logs-libcontainer.txt
+        if ! grep "Hello world" /tmp/logs-libcontainer.txt; then
+          echo "=== LOGS (libcontainer) ==="
+          cat /tmp/logs-libcontainer.txt
+          kubectl describe pod hello-libcontainer || true
+          exit 1
+        fi
+        kubectl describe pod hello-libcontainer || true
+
     - name: Debug pod failure
       if: failure()
       run: |

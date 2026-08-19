@@ -376,6 +376,24 @@ jobs:
           sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}
         fi
 
+      # Re-run the same suite with urunc's libcontainer runtime enabled,
+      # changing the configuration.
+    - name: Run ${{ matrix.test }} with libcontainer
+      id: test_libcontainer
+      run: |
+        sudo tee -a /etc/urunc/config.toml > /dev/null <<'EOF'
+
+        [runtime]
+        libcontainer = true
+        EOF
+        export GOROOT=$(go env GOROOT)
+        export PATH="$GOROOT/bin:$PATH"
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}_Spt
+        else
+          sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }} SKIP="Firecracker-unikraft-httpreply-static-net"
+        fi
+
     - name: Dump urunc logs on failure
       if: failure()
       run: |
