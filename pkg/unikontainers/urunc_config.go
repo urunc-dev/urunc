@@ -108,6 +108,27 @@ func defaultUruncConfig() *UruncConfig {
 	}
 }
 
+// ParseUruncConfigBytes parses the urunc configuration from a byte slice (TOML format).
+// If decoding fails, it returns the default configuration alongside the error.
+func ParseUruncConfigBytes(data []byte) (*UruncConfig, error) {
+	cfg := defaultUruncConfig()
+	_, err := toml.Decode(string(data), cfg)
+	if err != nil {
+		return defaultUruncConfig(), err
+	}
+	for name, mon := range cfg.Monitors {
+		if mon.DefaultMemoryMB == 0 {
+			mon.DefaultMemoryMB = defaultMonitorMemoryMB
+		}
+		if mon.DefaultVCPUs == 0 {
+			mon.DefaultVCPUs = defaultMonitorVCPUs
+		}
+		cfg.Monitors[name] = mon
+	}
+
+	return cfg, nil
+}
+
 // LoadUruncConfig loads the urunc configuration from the specified path.
 // If the file does not exist or is malformed, it returns the default configuration.
 func LoadUruncConfig(path string) (*UruncConfig, error) {

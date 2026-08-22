@@ -618,3 +618,54 @@ path = "/usr/bin/mon"
 		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
 	})
 }
+
+func TestParseUruncConfigBytes(t *testing.T) {
+	t.Run("valid toml bytes", func(t *testing.T) {
+		t.Parallel()
+		data := []byte(`
+[log]
+level = "debug"
+syslog = true
+
+[monitors.qemu]
+default_memory_mb = 512
+default_vcpus = 2
+`)
+		config, err := ParseUruncConfigBytes(data)
+		assert.NoError(t, err)
+		assert.Equal(t, "debug", config.Log.Level)
+		assert.True(t, config.Log.Syslog)
+		assert.Equal(t, uint(512), config.Monitors["qemu"].DefaultMemoryMB)
+	})
+
+	t.Run("invalid toml bytes returns default config and error", func(t *testing.T) {
+		t.Parallel()
+		data := []byte(`invalid toml [syntax`)
+		config, err := ParseUruncConfigBytes(data)
+		assert.Error(t, err)
+		assert.NotNil(t, config)
+		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
+	})
+}
+
+func FuzzLoadUruncConfig(f *testing.F) {
+	// Seed corpus with valid TOML configurations and edge cases
+	f.Add([]byte(""))
+	f.Add([]byte("[log]\nlevel = \"debug\"\nsyslog = true\n"))
+	f.Add([]byte("[monitors.qemu]\ndefault_memory_mb = 512\ndefault_vcpus = 2\npath = \"/usr/bin/qemu\"\n"))
+	f.Add([]byte("[extra_binaries.virtiofsd]\npath = \"/usr/libexec/virtiofsd\"\noptions = \"--cache always\"\n"))
+	f.Add([]byte("[monitors.custom]\ndefault_memory_mb = 0\ndefault_vcpus = 0\n"))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		cfg, err := ParseUruncConfigBytes(data)
+		if err != nil {
+			if cfg == nil {
+				t.Fatalf("ParseUruncConfigBytes returned nil config on error")
+			}
+			return
+		}
+		// Invariant: parsed config must produce valid map representation without panics
+		_ = cfg.Map()
+	})
+}
+
