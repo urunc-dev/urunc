@@ -88,7 +88,6 @@ var createCommand = &cli.Command{
 // waits for reexec process to notify, executes CreateRuntime hooks,
 // sends ACK to reexec process
 func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
-	err = nil
 	containerID := cmd.Args().First()
 	if err = validateID(containerID); err != nil {
 		return err
@@ -172,44 +171,13 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 	// The main concern is the nsenter execution before the reexec.
 	// If anything goes wrong and we mess up with nsenter debugging
 	// is extremely hard.
-	if unikontainer.Spec.Process.Terminal {
-		ptm, err := pty.Start(reexecCommand)
-		if err != nil {
-			err = fmt.Errorf("failed to setup pty and start reexec process: %w", err)
-			return err
-		}
-		defer ptm.Close()
-		consoleSocket := cmd.String("console-socket")
-		conn, err := net.Dial("unix", consoleSocket)
-		if err != nil {
-			err = fmt.Errorf("failed to dial console socket: %w", err)
-			return err
-		}
-		defer conn.Close()
-
-		uc, ok := conn.(*net.UnixConn)
-		if !ok {
-			err = fmt.Errorf("failed to cast unix socket")
-			return err
-		}
-		defer uc.Close()
-
-		// Send file descriptor over socket.
-		oob := unix.UnixRights(int(ptm.Fd()))
-		_, _, err = uc.WriteMsgUnix([]byte(ptm.Name()), oob, nil)
-		if err != nil {
-			err = fmt.Errorf("failed to send PTY file descriptor over socket: %w", err)
-			return err
-		}
-	} else {
-		reexecCommand.Stdin = os.Stdin
-		reexecCommand.Stdout = os.Stdout
-		reexecCommand.Stderr = os.Stderr
-		err := reexecCommand.Start()
-		if err != nil {
-			err = fmt.Errorf("failed to start reexec process: %w", err)
-			return err
-		}
+	reexecCommand.Stdin = os.Stdin
+	reexecCommand.Stdout = os.Stdout
+	reexecCommand.Stderr = os.Stderr
+	err = reexecCommand.Start()
+	if err != nil {
+		err = fmt.Errorf("failed to start reexec process: %w", err)
+		return err
 	}
 
 	// Close child ends of sockets and pipes.
@@ -447,7 +415,68 @@ func reexecUnikontainer(cmd *cli.Command) error {
 		}
 	}()
 
-	// execve
+	// terminal setup happens here, not in urunc create, so that nsenter
+	// failures are not swallowed by a prematurely attached PTY. by deferring
+	// this until after nsenter exits cleanly, errors propagate normally.
+	if unikontainer.Spec.Process.Terminal {
+		consoleSocket := cmd.String("console-socket")
+		if consoleSocket != "" {
+			ptm, pts, err := pty.Open()
+			if err != nil {
+				return fmt.Errorf("failed to open pty: %w", err)
+			}
+			defer ptm.Close()
+			defer pts.Close()
+
+			conn, err := net.Dial("unix", consoleSocket)
+			if err != nil {
+				return fmt.Errorf("failed to dial console socket: %w", err)
+			}
+			defer conn.Close()
+
+			uc, ok := conn.(*net.UnixConn)
+			if !ok {
+				return fmt.Errorf("failed to cast unix socket")
+			}
+			defer uc.Close()
+
+			// send the master fd over the socket to containerd
+			oob := unix.UnixRights(int(ptm.Fd()))
+			_, _, err = uc.WriteMsgUnix([]byte(ptm.Name()), oob, nil)
+			if err != nil {
+				return fmt.Errorf("failed to send PTY file descriptor over socket: %w", err)
+			}
+
+			// detach and establish the pty slave as the controlling terminal
+			// before we execve into the vmm payload
+			_, err = unix.Setsid()
+			if err != nil {
+				return fmt.Errorf("failed to setsid: %w", err)
+			}
+
+			err = unix.IoctlSetInt(int(pts.Fd()), unix.TIOCSCTTY, 0)
+			if err != nil {
+				return fmt.Errorf("failed to set controlling terminal: %w", err)
+			}
+
+			// map standard io to the pty slave
+			err = unix.Dup2(int(pts.Fd()), 0)
+			if err != nil {
+				return fmt.Errorf("failed to dup pty to stdin: %w", err)
+			}
+
+			err = unix.Dup2(int(pts.Fd()), 1)
+			if err != nil {
+				return fmt.Errorf("failed to dup pty to stdout: %w", err)
+			}
+
+			err = unix.Dup2(int(pts.Fd()), 2)
+			if err != nil {
+				return fmt.Errorf("failed to dup pty to stderr: %w", err)
+			}
+		}
+	}
+
 	// we need to pass metrics to Exec() function, as the unikontainer
 	// struct does not have the part of urunc config that configures metrics
 	var sockErr error
