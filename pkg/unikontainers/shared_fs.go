@@ -27,6 +27,8 @@ import (
 // TODO: Find and set the correct size for the tmpfs in the host
 const tmpfsSizeFor9pfsRootfs = "65536k"
 
+var spawnProcessHook = spawnProcess
+
 type sharedfsRootfs struct {
 	mounts      []specs.Mount
 	vfsdConfig  types.ExtraBinConfig
@@ -88,7 +90,7 @@ func (s sharedfsRootfs) preStart() error {
 		args = append(args, strings.Fields(s.vfsdConfig.Options)...)
 	}
 
-	err := spawnProcess(s.vfsdConfig.Path, args)
+	err := spawnProcessHook(s.vfsdConfig.Path, args)
 	if err != nil {
 		err = fmt.Errorf("failed to start virtiofsd: %w", err)
 	}

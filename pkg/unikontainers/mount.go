@@ -37,6 +37,25 @@ import (
 
 var ErrCopyDir = errors.New("can not copy a directory")
 
+var (
+	mkdirAllHook        = os.MkdirAll
+	osChmodHook         = os.Chmod
+	runningInUserNSHook = userns.RunningInUserNS
+	statSyscall         = unix.Stat
+	statfsSyscall       = unix.Statfs
+	mknodSyscall        = unix.Mknod
+	chmodSyscall        = unix.Chmod
+	chownSyscall        = os.Chown
+	mountSyscall        = unix.Mount
+	openSyscall         = unix.Open
+	closeSyscall        = unix.Close
+	secureJoinHook      = securejoin.SecureJoin
+	copyFileHook        = copyFile
+	containerdMountHook = func(m *mount.Mount, target string) error {
+		return m.Mount(target)
+	}
+)
+
 // setupDevices creates every device from the list inside monitor's rootfs
 func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) error {
 	for _, dev := range devices {
@@ -61,7 +80,7 @@ func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) 
 func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	// In a user namespace, always bind-mount the existing host device node.
 	// Only MS_BIND is used here (no extra flags) to mirror runc's device handling.
-	if userns.RunningInUserNS() {
+	if runningInUserNSHook() {
 		return applyMount(monRootfs, bindMount(dev.Path, dev.Path, false))
 	}
 
@@ -85,7 +104,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	// the necessary directories
 	if filepath.Dir(dev.Path) != "/dev" {
 		dstDir := filepath.Dir(dstPath)
-		err = os.MkdirAll(dstDir, 0755)
+		err = mkdirAllHook(dstDir, 0755)
 		if err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
 		}
@@ -104,7 +123,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	if newDev > uint64(math.MaxInt) {
 		return fmt.Errorf("device number for %s too large: %d", dstPath, newDev)
 	}
-	err = unix.Mknod(dstPath, devType|permBits, int(newDev)) //#nosec G115 -- device numbers validated previously
+	err = mknodSyscall(dstPath, devType|permBits, int(newDev)) //#nosec G115 -- device numbers validated previously
 	if err != nil {
 		return fmt.Errorf("failed to make device node %s: %w", dstPath, err)
 	}
@@ -113,7 +132,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	// read/write them. This is helpful for non-root monitor execution and
 	// removes the burdain of getting kvm/block group id
 	permBits |= 0o006
-	err = unix.Chmod(dstPath, permBits)
+	err = chmodSyscall(dstPath, permBits)
 	if err != nil {
 		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
 	}
@@ -125,7 +144,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 		return fmt.Errorf("reference of %s GID is nil", dev.Path)
 	}
 	// Set the owner as in the original file
-	err = os.Chown(dstPath, int(*dev.UID), int(*dev.GID))
+	err = chownSyscall(dstPath, int(*dev.UID), int(*dev.GID))
 	if err != nil {
 		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
 	}
@@ -143,7 +162,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 func fileFromHost(monRootfs string, hostPath string, target string) error {
 	// Get the info of the original file
 	var fileInfo unix.Stat_t
-	err := unix.Stat(hostPath, &fileInfo)
+	err := statSyscall(hostPath, &fileInfo)
 	if err != nil {
 		return err
 	}
@@ -159,23 +178,23 @@ func fileFromHost(monRootfs string, hostPath string, target string) error {
 			return fmt.Errorf("failed to get relative path of %s to /: %w", hostPath, err)
 		}
 	}
-	dstPath, err := securejoin.SecureJoin(monRootfs, target)
+	dstPath, err := secureJoinHook(monRootfs, target)
 	if err != nil {
 		return fmt.Errorf("failed to resolve target %s: %w", target, err)
 	}
 
-	err = copyFile(hostPath, dstPath)
+	err = copyFileHook(hostPath, dstPath)
 	if err != nil {
 		return fmt.Errorf("failed to copy file %s: %w", hostPath, err)
 	}
 
 	// Set up the permissions and ownership to match the original file.
-	err = unix.Chmod(dstPath, fileInfo.Mode)
+	err = chmodSyscall(dstPath, fileInfo.Mode)
 	if err != nil {
 		return fmt.Errorf("failed to chmod %s: %w", dstPath, err)
 	}
 
-	err = os.Chown(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
+	err = chownSyscall(dstPath, int(fileInfo.Uid), int(fileInfo.Gid))
 	if err != nil {
 		return fmt.Errorf("failed to chown %s: %w", dstPath, err)
 	}
@@ -263,7 +282,7 @@ func mapVFSFlag(value string) (flag uintptr, clear bool, err error) {
 // but returns the uintptr to use in mount later.
 func getUnprivilegedMountFlags(path string) (uintptr, error) {
 	var st unix.Statfs_t
-	err := unix.Statfs(path, &st)
+	err := statfsSyscall(path, &st)
 	if err != nil {
 		return 0, err
 	}
@@ -313,7 +332,7 @@ func rootfsParentMountPrivate(path string) error {
 	// and EINVAL means this is not a mount point, so traverse up until we
 	// find one.
 	for {
-		err = unix.Mount("", path, "", unix.MS_PRIVATE, "")
+		err = mountSyscall("", path, "", unix.MS_PRIVATE, "")
 		if err == nil {
 			return nil
 		}
@@ -339,7 +358,7 @@ func prepareRoot(path string, rootfsPropagation string) error {
 		}
 	}
 
-	err := unix.Mount("", "/", "", uintptr(flag), "")
+	err := mountSyscall("", "/", "", uintptr(flag), "")
 	if err != nil {
 		return err
 	}
@@ -349,7 +368,7 @@ func prepareRoot(path string, rootfsPropagation string) error {
 		return err
 	}
 
-	return unix.Mount(path, path, "bind", unix.MS_BIND|unix.MS_REC, "")
+	return mountSyscall(path, path, "bind", unix.MS_BIND|unix.MS_REC, "")
 }
 
 // applyMounts sets up every mount specified in the mounts argument inside the
@@ -376,7 +395,7 @@ func applyMounts(rootfsPath string, mounts []specs.Mount) error {
 
 // applyMount mounts a single entry under rootfsPath.
 func applyMount(rootfsPath string, m specs.Mount) error {
-	target, err := securejoin.SecureJoin(rootfsPath, m.Destination)
+	target, err := secureJoinHook(rootfsPath, m.Destination)
 	if err != nil {
 		return fmt.Errorf("failed to resolve mount target %s: %w", m.Destination, err)
 	}
@@ -396,7 +415,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 		Source:  m.Source,
 		Options: containerdOpts,
 	}
-	err = cm.Mount(target)
+	err = containerdMountHook(&cm, target)
 	if err != nil {
 		return fmt.Errorf("failed to mount %s at %s: %w", cm.Source, target, err)
 	}
@@ -407,7 +426,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// EPERM (this is what containerd's own bind remount does for us elsewhere).
 	if m.Type == "bind" && vfsFlags != 0 {
 		remount := vfsFlags | unix.MS_BIND | unix.MS_REMOUNT
-		if userns.RunningInUserNS() {
+		if runningInUserNSHook() {
 			locked, err := getUnprivilegedMountFlags(m.Source)
 			if err != nil {
 				return fmt.Errorf("failed to get locked mount flags of %s: %w", m.Source, err)
@@ -418,21 +437,21 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 			// runc instead errors out in this case.
 			remount |= locked
 		}
-		err = unix.Mount("", target, "", remount, "")
+		err = mountSyscall("", target, "", remount, "")
 		if err != nil {
 			return fmt.Errorf("failed to apply mount flags for %s: %w", target, err)
 		}
 	}
 
 	for _, pFlag := range propagation {
-		err = unix.Mount("", target, "", uintptr(pFlag), "")
+		err = mountSyscall("", target, "", uintptr(pFlag), "")
 		if err != nil {
 			return fmt.Errorf("failed to set propagation flag for %s: %w", m.Destination, err)
 		}
 	}
 
 	if m.Type == "tmpfs" && slices.Contains(m.Options, "mode=1777") {
-		err = os.Chmod(target, 0o777|os.ModeSticky)
+		err = osChmodHook(target, 0o777|os.ModeSticky)
 		if err != nil {
 			return fmt.Errorf("failed to chmod %s: %w", target, err)
 		}
@@ -445,21 +464,21 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 func createMountPoint(target string, m specs.Mount) error {
 	if m.Type == "bind" {
 		var st unix.Stat_t
-		err := unix.Stat(m.Source, &st)
+		err := statSyscall(m.Source, &st)
 		if err != nil {
 			return fmt.Errorf("failed to stat mount source %s: %w", m.Source, err)
 		}
 		if st.Mode&unix.S_IFMT != unix.S_IFDIR {
 			dstDir := filepath.Dir(target)
-			err := os.MkdirAll(dstDir, 0755)
+			err := mkdirAllHook(dstDir, 0755)
 			if err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", dstDir, err)
 			}
-			fd, err := unix.Open(target, unix.O_CREAT, 0644)
+			fd, err := openSyscall(target, unix.O_CREAT, 0644)
 			if err != nil {
 				return fmt.Errorf("failed to create file %s: %w", target, err)
 			}
-			err = unix.Close(fd)
+			err = closeSyscall(fd)
 			if err != nil {
 				return fmt.Errorf("failed to close file %s: %w", target, err)
 			}
@@ -468,7 +487,7 @@ func createMountPoint(target string, m specs.Mount) error {
 		}
 	}
 
-	err := os.MkdirAll(target, 0755)
+	err := mkdirAllHook(target, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", target, err)
 	}
