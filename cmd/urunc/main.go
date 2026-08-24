@@ -135,7 +135,7 @@ func main() {
 				return nil, err
 			}
 			// ignore error since ParseLogMetricsConfig will print a warning and return default values
-			cfg, _ := unikontainers.ParseLogMetricsConfig(unikontainers.UruncConfigPath)
+			cfg, _ := unikontainers.ParseLogMetricsConfig(unikontainers.ResolveUruncConfigPath())
 			err := configLogrus(cmd, cfg.Log)
 			if err != nil {
 				return nil, err

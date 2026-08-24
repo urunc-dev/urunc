@@ -59,7 +59,7 @@ func chooseGuestRootfs(r *taskAPI.CreateTaskRequest) error {
 	}
 
 	annotations := config.Map()
-	uruncCfg, err := unikontainers.LoadUruncConfig(unikontainers.UruncConfigPath)
+	uruncCfg, err := unikontainers.LoadUruncConfig(unikontainers.ResolveUruncConfigPath())
 	if err != nil && uruncCfg == nil {
 		return err
 	}

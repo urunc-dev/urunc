@@ -74,7 +74,7 @@ var createCommand = &cli.Command{
 			return err
 		}
 		if !cmd.Bool("reexec") {
-			uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.UruncConfigPath) // ignore the error and use default config
+			uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.ResolveUruncConfigPath()) // ignore the error and use default config
 			return createUnikontainer(cmd, uruncCfg)
 		}
 

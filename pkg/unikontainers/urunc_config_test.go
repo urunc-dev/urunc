@@ -618,3 +618,17 @@ path = "/usr/bin/mon"
 		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
 	})
 }
+
+// Note: these tests use t.Setenv and therefore must not call t.Parallel().
+func TestResolveUruncConfigPath(t *testing.T) {
+	t.Run("env var unset returns default path", func(t *testing.T) {
+		t.Setenv(UruncConfigFileEnv, "")
+		assert.Equal(t, UruncConfigPath, ResolveUruncConfigPath())
+	})
+
+	t.Run("env var set overrides the path", func(t *testing.T) {
+		customPath := "/var/etc/urunc/config.toml"
+		t.Setenv(UruncConfigFileEnv, customPath)
+		assert.Equal(t, customPath, ResolveUruncConfigPath())
+	})
+}

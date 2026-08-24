@@ -15,6 +15,7 @@
 package unikontainers
 
 import (
+	"os"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,20 @@ import (
 )
 
 const UruncConfigPath = "/etc/urunc/config.toml"
+
+// UruncConfigFileEnv is the environment variable that overrides the default
+// location of the urunc configuration file.
+const UruncConfigFileEnv = "URUNC_CONFIG_FILE"
+
+// ResolveUruncConfigPath returns the path to the urunc configuration file. It
+// uses the URUNC_CONFIG_FILE environment variable when it is set and falls back
+// to UruncConfigPath (/etc/urunc/config.toml) otherwise.
+func ResolveUruncConfigPath() string {
+	if path := os.Getenv(UruncConfigFileEnv); path != "" {
+		return path
+	}
+	return UruncConfigPath
+}
 
 type UruncLog struct {
 	Level  string `toml:"level"`

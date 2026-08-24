@@ -2,7 +2,16 @@
 
 ## Configuration File Location
 
-`urunc` looks for its configuration file at `/etc/urunc/config.toml`. If the file doesn't exist or contains invalid configuration, `urunc` will use sensible defaults and continue to operate normally.
+`urunc` looks for its configuration file at `/etc/urunc/config.toml` by default. The location can be overridden with the `URUNC_CONFIG_FILE` environment variable, for example `URUNC_CONFIG_FILE=/var/etc/urunc/config.toml`. If the file doesn't exist or contains invalid configuration, `urunc` will use sensible defaults and continue to operate normally.
+
+One way to set the variable is to replace the `containerd-shim-urunc-v2` binary that containerd invokes with a small wrapper script that sets it and execs the real shim. For example, move the real shim aside (e.g. to `containerd-shim-urunc-v2.real`) and save the following as `/usr/local/bin/containerd-shim-urunc-v2`:
+
+```bash
+#!/bin/bash
+URUNC_CONFIG_FILE=/some/path/config.toml exec /usr/local/bin/containerd-shim-urunc-v2.real "$@"
+```
+
+where `/some/path/config.toml` is the configuration file to use and `/usr/local/bin/containerd-shim-urunc-v2.real` is the actual shim binary.
 
 ## Configuration File Format
 
