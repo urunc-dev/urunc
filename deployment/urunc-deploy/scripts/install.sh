@@ -305,7 +305,6 @@ function restart_cri_runtime() {
 }
 
 function reset_runtime() {
-    kubectl label node "$NODE_NAME" urunc.io/urunc-runtime-
     restart_cri_runtime "$1"
 
     if [ "$1" == "crio" ] || [ "$1" == "containerd" ]; then
