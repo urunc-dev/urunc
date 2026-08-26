@@ -120,8 +120,10 @@ sudo containerd config default | sudo tee /etc/containerd/config.toml
 sudo systemctl restart containerd
 ```
 
-> To easily migrate containerd's configuration from older to newer versions
-> execute `sudo containerd config migrate > /etc/containerd/config.toml`
+> To migrate containerd's configuration to a newer version, write it to a new
+> file and then replace the old one:
+> `sudo containerd config migrate | sudo tee /etc/containerd/config.toml.new`,
+> then `sudo mv /etc/containerd/config.toml.new /etc/containerd/config.toml`.
 
 ### Block-based snapshotters
 
@@ -347,31 +349,28 @@ file](https://github.com/urunc-dev/monitors-build?tab=readme-ov-file#how-to-use)
 
 Each release provides, for every architecture, an archive with all the
 monitors and tools. The archive is named after their versions, followed by the
-architecture. As an example, the following commands use the
-[`v0.2.0` release](https://github.com/urunc-dev/monitors-build/releases/tag/v0.2.0)
-which contains the following monitors and tools in the specified versions:
+architecture.
 
-- Firecracker v1.7.0
-- Cloud Hypervisor v50.0
-- Hyperlight-unikraft v0.18.0
-- Solo5 v0.12.1
-- Virtiofsd v1.13.0
-- Qemu v10.1.1
-
-To download the archive, verify its SHA-256 checksum and install the monitors
-in `/opt/urunc` (the checksum is taken from the GitHub API, using `jq`):
+To download the archive of the `v[[ versions.monitors_build ]]` release, verify
+its SHA-256 checksum and install the monitors in `/opt/urunc` (the archive's
+URL and checksum are taken from the GitHub API, using `jq`):
 ```
 ARCH="$(dpkg --print-architecture)"
-RELEASE="v0.2.0"
-MONITORS="FC-v1.7.0_CLH-v50.0_HLUK-v0.18.0_S5-v0.12.1_VFS-v1.13.0_QM-v10.1.1-9a44e"
-release_url="https://github.com/urunc-dev/monitors-build/releases/download"
-api_url="https://api.github.com/repos/urunc-dev/monitors-build/releases/tags"
-wget ${release_url}/${RELEASE}/${MONITORS}-${ARCH}.tar.gz
-DIGEST="$(wget -qO- ${api_url}/${RELEASE} | jq -r --arg name ${MONITORS}-${ARCH}.tar.gz '.assets[] | select(.name == $name) | .digest')"
-echo "${DIGEST#sha256:}  ${MONITORS}-${ARCH}.tar.gz" | sha256sum -c && \
-  sudo tar --no-same-owner --no-overwrite-dir -C /opt -xzvf ${MONITORS}-${ARCH}.tar.gz
-rm ${MONITORS}-${ARCH}.tar.gz
+MONITORS_BUILD_VERSION=v[[ versions.monitors_build ]]
+release_url="https://api.github.com/repos/urunc-dev/monitors-build/releases/tags/${MONITORS_BUILD_VERSION}"
+# Pick the archive with all the monitors for this architecture
+ASSET=$(wget -qO- "${release_url}" | jq -c --arg arch "${ARCH}" 'first(.assets[] | select(.name | test("_.*-" + $arch + "\\.tar\\.gz$")))')
+ARCHIVE=$(echo "${ASSET}" | jq -r .name)
+DIGEST=$(echo "${ASSET}" | jq -r .digest)
+wget "$(echo "${ASSET}" | jq -r .browser_download_url)"
+echo "${DIGEST#sha256:}  ${ARCHIVE}" | sha256sum -c && \
+  sudo tar --no-same-owner --no-overwrite-dir -C /opt -xzvf ${ARCHIVE}
+rm ${ARCHIVE}
 ```
+
+Any other [release](https://github.com/urunc-dev/monitors-build/releases) of
+the repository can be used instead, by setting `MONITORS_BUILD_VERSION` to its
+tag.
 
 After downloading all the binaries, we need to instruct `urunc` about the
 location of the binaries. Therefore, in [`urunc`'s
@@ -426,7 +425,7 @@ sudo cp tenders/hvt/solo5-hvt /usr/local/bin
 sudo cp tenders/spt/solo5-spt /usr/local/bin
 ```
 
-> NOTE: For the `solo5-spt` monitor `libseccomp-dev` is necessary.
+> NOTE: For both `solo5-hvt` and `solo5-spt` monitors `libseccomp-dev` is necessary.
 
 ### Qemu
 
