@@ -351,9 +351,10 @@ Each release provides, for every architecture, an archive with all the
 monitors and tools. The archive is named after their versions, followed by the
 architecture.
 
-To download the archive of the `v[[ versions.monitors_build ]]` release, verify
-its SHA-256 checksum and install the monitors in `/opt/urunc` (the archive's
-URL and checksum are taken from the GitHub API, using `jq`):
+The following commands install the monitors of the
+`v[[ versions.monitors_build ]]` release in `/opt/urunc`. They take the URL and
+the SHA-256 checksum of the archive from the GitHub API with `jq`. Then, they
+verify the checksum before the installation:
 ```
 ARCH="$(dpkg --print-architecture)"
 MONITORS_BUILD_VERSION=v[[ versions.monitors_build ]]
@@ -368,8 +369,8 @@ echo "${DIGEST#sha256:}  ${ARCHIVE}" | sha256sum -c && \
 rm ${ARCHIVE}
 ```
 
-Any other [release](https://github.com/urunc-dev/monitors-build/releases) of
-the repository can be used instead, by setting `MONITORS_BUILD_VERSION` to its
+Any other [release](https://github.com/urunc-dev/monitors-build/releases) from
+`v0.1.0` on can be used instead, by setting `MONITORS_BUILD_VERSION` to its
 tag.
 
 After downloading all the binaries, we need to instruct `urunc` about the
@@ -425,7 +426,7 @@ sudo cp tenders/hvt/solo5-hvt /usr/local/bin
 sudo cp tenders/spt/solo5-spt /usr/local/bin
 ```
 
-> NOTE: For both `solo5-hvt` and `solo5-spt` monitors `libseccomp-dev` is necessary.
+> NOTE: Building both `solo5-hvt` and `solo5-spt` requires `libseccomp-dev` and `pkg-config`.
 
 ### Qemu
 
@@ -497,7 +498,7 @@ As an alternative to 9pfs, `urunc` can configure Qemu to use
 [virtiofs](https://virtio-fs.gitlab.io/). To do that, `virtiofsd` is necessary.
 By default `urunc` searches for the `virtiofsd` binary under `/usr/libexec`.
 However, the path for virtiofsd can be set in the respective section of
-[`urunc`'s configuration](../configuration#Extra-binaries-Configuration)
+[`urunc`'s configuration](../configuration#extra-binaries-configuration).
 The following commands download and install the latest
 release from the gitlab [repository of
 virtiofsd](https://gitlab.com/virtio-fs/virtiofsd):
@@ -595,9 +596,12 @@ sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
 ### Add urunc runtime to containerd
 
 At last, `urunc` needs to be configured as a runtime in containerd. Make sure to
-set the chosen snapshotter (`devmapper` or `blockfile`).
+set the chosen snapshotter (`devmapper` or `blockfile`). The name of the urunc
+runtime table depends on the `version` field at the top of containerd's
+configuration:
 
-- In containerd v2.x find and change or append the following lines:
+- If the configuration has `version = 3` or later (the default of containerd
+  v2.x), find and change or append the following lines:
 
 ```toml
 [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.urunc]
@@ -607,7 +611,8 @@ set the chosen snapshotter (`devmapper` or `blockfile`).
     snapshotter = "devmapper"
 ```
 
-- In containerd v1.x find and change or append the following lines:
+- If the configuration has `version = 2` (the default of containerd v1.x),
+  find and change or append the following lines:
 
 ```toml
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.urunc]
