@@ -59,7 +59,7 @@ options = "--sandbox none"
 
 The `[runtime]` section controls runtime-wide behavior.
 
-| Option | Type | Default | Description |
+| Field | Type | Default | Description |
 |--------|------|---------|-------------|
 | `libcontainer` | boolean | `false` | Use libcontainer to set up the monitor's execution environment |
 | `vAccel` | boolean | `false` | Enable the support of vAccel through the `com.urunc.unikernel.vAccel` and `com.urunc.unikernel.RPCAddress` annotations |
@@ -98,7 +98,7 @@ between.
 
 The `[log]` section controls logging behavior for `urunc`:
 
-| Option | Type | Default | Description |
+| Field | Type | Default | Description |
 |--------|------|---------|-------------|
 | `level` | string | `"info"` | Log level. Valid values: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`, `"fatal"`, `"panic"` |
 | `syslog` | boolean | `false` | Enable syslog output in addition to stderr |
@@ -126,7 +126,7 @@ For example:
 
 The `[timestamps]` section controls timestamp logging for performance monitoring:
 
-| Option | Type | Default | Description |
+| Field | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | boolean | `false` | Enable timestamp logging for performance metrics |
 | `destination` | string | `"/var/log/urunc/timestamps.log"` | File path where timestamps will be written |
@@ -156,11 +156,11 @@ values.
 - [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
 - [Hyperlight](./hypervisor-support#hyperlight) - `hyperlight-unikraft`
 
-#### Monitor Options
+#### Monitor Fields
 
-Each monitor subsection supports the following options:
+Each monitor subsection supports the following fields:
 
-| Option | Type | Default | Description |
+| Field | Type | Default | Description |
 |--------|------|---------|-------------|
 | `default_memory_mb` | integer | `256` | Default memory allocation in megabytes |
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
@@ -173,7 +173,7 @@ Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
 Qemu's data files.
 
-The `socket_path` option applies to the monitors that expose a control socket:
+The `socket_path` field applies to the monitors that expose a control socket:
 Firecracker (its API socket), Qemu (a QMP socket) and Cloud Hypervisor (its REST
 API socket). It has no effect on the other monitors. The control socket is
 opt-in: it exists only when `socket_path` is set. If it is not set, the
@@ -222,11 +222,11 @@ extra binary is configured as a subsection with its own default values.
 
 - `virtiofsd` - vhost-user virtio-fs device backend written in Rust
 
-#### Extra binaries Options
+#### Extra binaries Fields
 
-Each extra binary subsection supports the following options:
+Each extra binary subsection supports the following fields:
 
-| Option | Type | Default | Description |
+| Field | Type | Default | Description |
 |--------|------|---------|-------------|
 | `path` | string | (empty) | Optional custom path to the extra binary. If not specified, urunc will search for the binary in PATH |
 | `options` | string | (empty) | Optional custom cli options for the extra binary |
@@ -340,5 +340,5 @@ default_vcpus = 1
 
 ## Notes
 
-- The configuration file is only fully loaded during `urunc create`. The configuration options' values are then stored as Annotations in the `state.json` file inside the respective container's bundle. For subsequent urunc commands (such as `start`, `kill`, etc.), configuration options are loaded from the `state.json` annotations. In that way, all urunc configuration values except logging configuration and timestamping (see below) remain the same throughout the specific container lifecycle.
-- The configuration file is partially loaded every time urunc is invoked to parse the logging configuration and timestamping options. This way, the user has fine-grained control over the logging level and whether to redirect urunc logs to syslog. Similarly, the user can enable and disable timestamping.
+- The configuration file is only fully loaded during `urunc create`. The configuration values are then stored as Annotations in the `state.json` file inside the respective container's bundle. For subsequent urunc commands (such as `start`, `kill`, etc.), configuration values are loaded from the `state.json` annotations. In that way, all urunc configuration values except logging configuration and timestamping (see below) remain the same throughout the specific container lifecycle.
+- The configuration file is partially loaded every time urunc is invoked to parse the logging configuration and timestamping fields. This way, the user has fine-grained control over the logging level and whether to redirect urunc logs to syslog. Similarly, the user can enable and disable timestamping.
