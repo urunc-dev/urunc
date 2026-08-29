@@ -113,6 +113,8 @@ type ExecArgs struct {
 	VSockDevID    int      // The guest-cid
 	Net           NetDevParams
 	Sharedfs      SharedfsParams
+	SocketPath    string // The path of the monitor's control socket (empty means the monitor's default)
+	BootMode      string // Optional boot mode for the monitor. "api" drives the guest's start over the monitor's control socket; any other value boots the monitor from its command line as before.
 }
 
 type MonitorCliArgs struct {
@@ -138,7 +140,9 @@ type ExtraBinConfig struct {
 type MonitorConfig struct {
 	DefaultMemoryMB uint   `toml:"default_memory_mb"`
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
-	BinaryPath      string `toml:"path,omitempty"`      // Optional path to the hypervisor binary
-	DataPath        string `toml:"data_path,omitempty"` // Optional path to the hypervisor data files (e.g. qemu bios stuff)
-	Vhost           bool   `toml:"vhost,omitempty"`     // Optional: enable vhost for network performance optimization
+	BinaryPath      string `toml:"path,omitempty"`        // Optional path to the hypervisor binary
+	DataPath        string `toml:"data_path,omitempty"`   // Optional path to the hypervisor data files (e.g. qemu bios stuff)
+	Vhost           bool   `toml:"vhost,omitempty"`       // Optional: enable vhost for network performance optimization
+	SocketPath      string `toml:"socket_path,omitempty"` // Optional path for the monitor's control socket (falls back to a per-container default)
+	BootMode        string `toml:"boot_mode,omitempty"`   // Optional boot mode for the monitor. "api" drives the guest's start over the monitor's control socket; any other value boots the monitor from its command line as before.
 }

@@ -15,9 +15,15 @@
 package hypervisors
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -67,6 +73,8 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 	cmdString += " -cpu host"                                           // Choose CPU
 	cmdString += " -enable-kvm"                                         // Enable KVM to use CPU virt extensions
 	cmdString += " -display none -vga none -serial stdio -monitor null" // Disable graphic output
+	// server,nowait lets QEMU boot without waiting for a client to connect.
+	cmdString += " -qmp unix:" + ResolveSocketPath(args) + ",server,nowait"
 
 	if args.VCPUs > 0 {
 		cmdString += fmt.Sprintf(" -smp %d", args.VCPUs)
@@ -147,9 +155,104 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 	return exArgs, nil
 }
 
-// PreExec performs pre-execution setup. QEMU has no special pre-exec requirements.
 func (q *Qemu) PreExec(_ types.ExecArgs) error {
 	return nil
+}
+
+// QemuSession is a QEMU child process started with its CPUs frozen (-S) and
+// controlled over its QMP socket.
+type QemuSession struct {
+	cmd    *exec.Cmd
+	client *qmpClient
+}
+
+// SpawnPausedVMM starts QEMU with its CPUs frozen (-S). It must run after
+// changeRoot, so the QMP socket stays inside the monitor rootfs.
+func (q *Qemu) SpawnPausedVMM(args types.ExecArgs, ukernel types.Unikernel, uid, gid uint32) (*QemuSession, error) {
+	execCmd, err := q.BuildExecCmd(args, ukernel)
+	if err != nil {
+		return nil, err
+	}
+	execCmd = append(execCmd, "-S")
+
+	socketPath := ResolveSocketPath(args)
+	// QEMU binds this path, and a leftover file makes the bind fail.
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to remove stale socket %q: %w", socketPath, err)
+	}
+
+	cmd := exec.Command(execCmd[0], execCmd[1:]...) //nolint: gosec
+	cmd.Env = args.Environment
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if uid != 0 || gid != 0 {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{Uid: uid, Gid: gid},
+		}
+	}
+	vmmLog.WithField("command", execCmd).Debug("starting QEMU as a paused supervised child")
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start qemu: %w", err)
+	}
+
+	client, err := connectQMP(socketPath, 5*time.Second)
+	if err != nil {
+		s := &QemuSession{cmd: cmd}
+		s.Kill()
+		return nil, err
+	}
+	return &QemuSession{cmd: cmd, client: client}, nil
+}
+
+// Resume unfreezes the guest CPUs; the guest boots from this moment.
+func (s *QemuSession) Resume() error {
+	vmmLog.Debug("api boot: sending QMP cont")
+	return s.client.execute("cont")
+}
+
+// Kill terminates the child process and reaps it.
+func (s *QemuSession) Kill() {
+	if s.client != nil {
+		s.client.close()
+	}
+	_ = s.cmd.Process.Kill()
+	_, _ = s.cmd.Process.Wait()
+}
+
+// Supervise forwards signals to QEMU and exits with its exit code once it
+// exits. It does not return on success.
+func (s *QemuSession) Supervise() error {
+	// Forward the signals that stop a container. SIGKILL cannot be caught,
+	// so this process dies at once and leaves QEMU running.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		sig, ok := <-sigCh
+		if !ok {
+			return
+		}
+		if sg, ok := sig.(syscall.Signal); ok {
+			_ = s.cmd.Process.Signal(sg)
+		}
+	}()
+
+	waitErr := s.cmd.Wait()
+	signal.Stop(sigCh)
+	close(sigCh)
+
+	exitCode := 0
+	if waitErr != nil {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		} else {
+			vmmLog.WithError(waitErr).Error("qemu exited with an unexpected error")
+			exitCode = 1
+		}
+	}
+	os.Exit(exitCode)
+	return nil // unreachable
 }
 
 func getVirtioNetArg() string {
