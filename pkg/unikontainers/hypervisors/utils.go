@@ -17,11 +17,14 @@ package hypervisors
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func cpuArch() string {
@@ -64,6 +67,17 @@ func BytesToStringMB(argMem uint64) string {
 	}
 
 	return stringMem
+}
+
+// DefaultSocketDir is the directory used for a monitor's control socket when
+// no socket_path is configured. It always exists inside the monitor rootfs.
+const DefaultSocketDir = "/tmp"
+
+func ResolveSocketPath(args types.ExecArgs) string {
+	if args.SocketPath != "" {
+		return args.SocketPath
+	}
+	return filepath.Join(DefaultSocketDir, args.ContainerID+".sock")
 }
 
 func killProcess(pid int) error {

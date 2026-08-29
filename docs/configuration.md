@@ -121,6 +121,8 @@ Each monitor subsection supports the following options:
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
 | `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
+| `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not specified, urunc uses a per-container default under `/tmp`. When a custom path is set, urunc creates its parent directory; setting it to an invalid location (a file already exists on the path) makes the monitor fail to start. Currently only used by Firecracker. |
+| `boot_mode` | string | `api` | Optional: `api` drives the monitor's boot over its control socket, `config-file` lets the monitor boot itself from a config file (socket only used afterward). Currently only used by Firecracker. |
 
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
@@ -139,6 +141,8 @@ data_path = "/usr/local/share/"
 default_memory_mb = 512
 default_vcpus = 2
 path = "/opt/firecracker/firecracker"
+socket_path = "/run/urunc/fc.sock"
+boot_mode = "config-file"
 ```
 
 ### Extra binaries Configuration

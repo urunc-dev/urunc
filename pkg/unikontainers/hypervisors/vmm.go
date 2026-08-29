@@ -27,6 +27,17 @@ const DefaultMemory uint64 = 256 // The default memory for every hypervisor: 256
 
 type VmmType string
 
+// UsesControlSocket reports whether a monitor exposes a control socket whose
+// path (socket_path) urunc must make reachable before the monitor launches.
+func UsesControlSocket(vmmType VmmType) bool {
+	switch vmmType {
+	case FirecrackerVmm:
+		return true
+	default:
+		return false
+	}
+}
+
 var ErrVMMNotInstalled = errors.New("vmm not found")
 var vmmLog = logrus.WithField("subsystem", "monitors")
 

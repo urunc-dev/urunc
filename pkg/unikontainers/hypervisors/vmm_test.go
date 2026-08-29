@@ -69,3 +69,13 @@ func TestVMMFactoryNonQemuIgnoresVhost(t *testing.T) {
 	_, ok = vmm.(*Firecracker)
 	assert.True(t, ok, "factory should return *Firecracker")
 }
+
+func TestUsesControlSocket(t *testing.T) {
+	t.Parallel()
+	if !UsesControlSocket(FirecrackerVmm) {
+		t.Fatal("firecracker should use a control socket")
+	}
+	if UsesControlSocket(HvtVmm) {
+		t.Fatal("hvt should not use a control socket")
+	}
+}
