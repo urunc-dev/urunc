@@ -33,8 +33,8 @@ type VMM interface {
 	// The returned slice contains the command path as the first element followed by arguments.
 	BuildExecCmd(args ExecArgs, ukernel Unikernel) ([]string, error)
 	// PreExec performs any monitor-specific setup that must happen after BuildExecCmd
-	// succeeds but before syscall.Exec is called. For example, HVT applies seccomp
-	// filters here. Most monitors can return nil (no-op).
+	// succeeds but before syscall.Exec is called. Most monitors can return nil
+	// (no-op).
 	PreExec(args ExecArgs) error
 	Stop(int) error
 	Signal(int, unix.Signal) error

@@ -26,8 +26,8 @@ RUN rm -f /var/lib/dpkg/info/libc-bin.* && \
 WORKDIR /app
 
 # Clone Solo5 repository and force static linking
-RUN git -c http.sslVerify=false clone --branch v0.9.3 https://github.com/Solo5/solo5.git . && \
-    sed -i '66 a\HOSTLDFLAGS += -static-pie' tenders/GNUmakefile
+RUN git -c http.sslVerify=false clone --branch v0.12.1 https://github.com/Solo5/solo5.git . && \
+    echo 'HOSTLDFLAGS += -static-pie' >> tenders/GNUmakefile
 
 # Build Solo5 and verify artifacts
 RUN ./configure.sh && make || true && \

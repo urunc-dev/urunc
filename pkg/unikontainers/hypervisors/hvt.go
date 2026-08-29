@@ -16,10 +16,8 @@ package hypervisors
 
 import (
 	"os/exec"
-	"runtime"
 	"strings"
 
-	seccomp "github.com/elastic/go-seccomp-bpf"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
 )
@@ -32,92 +30,6 @@ const (
 type HVT struct {
 	binaryPath string
 	binary     string
-}
-
-// applySeccompFilter applies some secomp filters for the Hvt process.
-// By default all systemcalls will cause a SIGSYS, except the ones that we whitelist
-func applySeccompFilter() error {
-	syscalls := []string{
-		"rt_sigaction",
-		"ioctl",
-		"pread64",
-		"mmap",
-		"recvmsg",
-		"openat",
-		"sendto",
-		"mprotect",
-		"write",
-		"epoll_ctl",
-		"epoll_create1",
-		"read",
-		"close",
-		"fstat",
-		"munmap",
-		"brk",
-		"execve",
-		"timerfd_create",
-		"lseek",
-		"personality",
-		"socket",
-		"bind",
-		"getsockname",
-		"exit",
-		"exit_group",
-		"getpid",
-		"tgkill",
-		"nanosleep",
-		"futex",
-		"epoll_pwait",
-		"rt_sigreturn",
-		"timerfd_settime",
-		"pwrite64",
-		"set_tid_address",
-		"set_robust_list",
-		"rseq",
-		"prlimit64",
-		"getrandom",
-	}
-
-	if runtime.GOARCH == "arm64" {
-		syscalls = append(syscalls, "faccessat", "fstatat")
-	} else {
-		syscalls = append(syscalls, "open", "stat", "access", "arch_prctl", "newfstatat")
-	}
-	// Some of the actions that we can take for accessing non-permitted system calls are:
-	// - seccomp.ActionKillThread will kill the thread that tried to use a non-permitted
-	//	system call, but the rest of the threads can still run
-	// - seccomp.ActionErrno will result to returning EPERM error in all non-permitted
-	//	system calls.
-	// - ActionTrap will cause a SIGSYS trap to the process.
-	//
-	// For the time being, we choose ActionTrap, but we can change this in the future.
-	filter := seccomp.Filter{
-		// Set the threads no_new_privs bit, disabling any new child or execve
-		// system call to grant privileges that the parent does not have.
-		NoNewPrivs: true,
-		// Sync the filter to all threads created by the Go runtime.
-		Flag: seccomp.FilterFlagTSync,
-		Policy: seccomp.Policy{
-			DefaultAction: seccomp.ActionTrap,
-			Syscalls: []seccomp.SyscallGroup{
-				{
-					Action: seccomp.ActionAllow,
-					Names:  syscalls,
-				},
-			},
-		},
-	}
-
-	err := seccomp.LoadFilter(filter)
-	if err != nil {
-		vmmLog.Error("Could not load seccomp filters")
-		return err
-	}
-
-	vmmLog.Debug("Loaded seccomp filters")
-	vmmLog.WithField("allowed syscalls", syscalls).Debug("Whitelisted system calls")
-
-	return nil
 }
 
 func (h *HVT) Signal(pid int, signal unix.Signal) error {
@@ -172,12 +84,7 @@ func (h *HVT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]stri
 }
 
 // PreExec performs pre-execution setup for HVT.
-// HVT requires applying seccomp filters before syscall.Exec if Seccomp is enabled.
-func (h *HVT) PreExec(args types.ExecArgs) error {
-	if args.Seccomp {
-		if err := applySeccompFilter(); err != nil {
-			return err
-		}
-	}
+// Since Solo5 0.11.0, solo5-hvt applies its own seccomp filter internally.
+func (h *HVT) PreExec(_ types.ExecArgs) error {
 	return nil
 }

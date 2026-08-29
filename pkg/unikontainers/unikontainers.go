@@ -748,14 +748,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// We send this after BuildExecCmd succeeds to avoid reporting a container
 	// as started when the VMM command cannot be built.
 	// TODO: The container can still be reported as running if the PreExec step
-	// (e.g., BPF/seccomp filter setup) fails after this point. We should find
-	// a way to handle that case as well.
+	// fails after this point. We should find a way to handle that case as well.
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
 	}
 
-	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
+	// Perform any monitor-specific pre-exec setup.
 	err = vmm.PreExec(vmmArgs)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to perform pre-exec setup")
