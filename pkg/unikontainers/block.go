@@ -209,7 +209,7 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, rollbackBlockVolumes(blkImgs, err)
 		}
 		if ukernel.SupportsFS(mInfo.FsType) {
 			// So, there was an issue which was manifested from the testing.
@@ -228,12 +228,21 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 			// handling
 			cleared, err := setLoopAutoclear(mInfo.Source, false)
 			if err != nil {
-				return nil, err
+				return nil, rollbackBlockVolumes(blkImgs, err)
 			}
 			mInfo.LoopAutoclear = cleared
 			err = unmount(mInfo.MountPoint)
 			if err != nil {
-				return nil, err
+				// The autoclear flag was already cleared on the device,
+				// even though the mount itself is still in place. Restore
+				// it directly, since this entry never made it into blkImgs
+				// for rollbackBlockVolumes to pick up.
+				if cleared {
+					if _, rErr := setLoopAutoclear(mInfo.Source, true); rErr != nil {
+						err = fmt.Errorf("%w (failed to restore autoclear flag on %s: %v)", err, mInfo.Source, rErr)
+					}
+				}
+				return nil, rollbackBlockVolumes(blkImgs, err)
 			}
 			mInfo.ID = fmt.Sprintf("vol%d", i)
 			mInfo.HostMountPoint = mInfo.MountPoint
@@ -243,6 +252,17 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 	}
 
 	return blkImgs, nil
+}
+
+// rollbackBlockVolumes restores any volumes getBlockVolumes already
+// unmounted before hitting err, so a failed create never leaves
+// pre-existing host mounts detached. It always returns the original error,
+// annotated when the rollback itself also fails.
+func rollbackBlockVolumes(blkImgs []types.BlockDevParams, err error) error {
+	if rErr := restoreBlockVolumes(blkImgs); rErr != nil {
+		return fmt.Errorf("%w (rollback of already unmounted volumes also failed: %v)", err, rErr)
+	}
+	return err
 }
 
 // restoreBlockVolumes mounts the block volume sources that were unmounted

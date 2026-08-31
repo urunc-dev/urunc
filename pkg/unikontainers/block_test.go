@@ -15,11 +15,38 @@
 package unikontainers
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
+
+func TestRollbackBlockVolumesNoVolumes(t *testing.T) {
+	// With no already-unmounted volumes to restore, rollbackBlockVolumes
+	// must return the original error unchanged.
+	origErr := errors.New("original failure")
+
+	err := rollbackBlockVolumes(nil, origErr)
+	assert.ErrorIs(t, err, origErr, "Expected the original error to be returned unchanged")
+
+	err = rollbackBlockVolumes([]types.BlockDevParams{}, origErr)
+	assert.ErrorIs(t, err, origErr, "Expected the original error to be returned unchanged")
+}
+
+func TestRollbackBlockVolumesSkipsNonHostMounts(t *testing.T) {
+	// Volumes without a HostMountPoint were never unmounted by
+	// getBlockVolumes (e.g. an explicit block image), so
+	// restoreBlockVolumes must skip them and rollback must still
+	// surface the original error.
+	origErr := errors.New("original failure")
+	blkImgs := []types.BlockDevParams{
+		{Source: "/dev/loop0", MountPoint: "/mnt/vol0"},
+	}
+
+	err := rollbackBlockVolumes(blkImgs, origErr)
+	assert.ErrorIs(t, err, origErr, "Expected the original error to be returned unchanged")
+}
 
 func TestGetBlockDevice(t *testing.T) {
 	// Create a mock partition
