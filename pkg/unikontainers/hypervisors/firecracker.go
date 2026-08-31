@@ -77,6 +77,9 @@ type FirecrackerConfig struct {
 }
 
 func (fc *Firecracker) Signal(pid int, signal unix.Signal) error {
+	if signal == unix.SIGTERM || signal == unix.SIGINT {
+		return fc.Stop(pid)
+	}
 	return unix.Kill(pid, signal)
 }
 
