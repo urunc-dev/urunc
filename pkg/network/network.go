@@ -225,6 +225,16 @@ func addRedirectFilter(source netlink.Link, target netlink.Link) error {
 func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32) (netlink.Link, error) {
 	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v",
 		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
+
+	bridgeName := "br_urunc"
+	br, created, err := createBridge(bridgeName)
+	if err != nil {
+		return nil, fmt.Errorf("createBridge(%s) failed: %w", bridgeName, err)
+	}
+	if err = netlink.LinkSetUp(br); err != nil {
+		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", bridgeName, err)
+	}
+
 	// Create TAP
 	netlog.Debugf("creating tap device %s (mtu=%d)", tapName, redirectLink.Attrs().MTU)
 	newTapDevice, err := createTapDevice(tapName, redirectLink.Attrs().MTU, uid, gid)
@@ -232,6 +242,10 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 		return nil, fmt.Errorf("createTapDevice(%s) failed: %w", tapName, err)
 	}
 	netlog.Debugf("created tap device %s (index=%d)", newTapDevice.Attrs().Name, newTapDevice.Attrs().Index)
+
+	if err = netlink.LinkSetMaster(newTapDevice, br); err != nil {
+		return nil, fmt.Errorf("LinkSetMaster(%s, %s) failed: %w", tapName, bridgeName, err)
+	}
 
 	// Bring TAP up before qdisc
 	if err = netlink.LinkSetUp(newTapDevice); err != nil {
@@ -246,24 +260,20 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	netlog.Debugf("redirectLink %s is UP", redirectLink.Attrs().Name)
 
 	// Add qdisc + redirect filters
-	if addTCRules {
-		netlog.Debug("adding tc ingress qdisc + redirect filters")
+	if addTCRules && created {
+		netlog.Debug("adding tc ingress qdisc + redirect filters between redirectLink and bridge")
 
-		if err = addIngressQdisc(newTapDevice); err != nil {
-			return nil, fmt.Errorf("addIngressQdisc(tap=%s) failed: %w",
-				newTapDevice.Attrs().Name, err)
+		if err = addIngressQdisc(br); err != nil {
+			return nil, fmt.Errorf("addIngressQdisc(br=%s) failed: %w", br.Attrs().Name, err)
 		}
 		if err = addIngressQdisc(redirectLink); err != nil {
-			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
-				redirectLink.Attrs().Name, err)
+			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w", redirectLink.Attrs().Name, err)
 		}
-		if err = addRedirectFilter(newTapDevice, redirectLink); err != nil {
-			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
-				newTapDevice.Attrs().Name, redirectLink.Attrs().Name, err)
+		if err = addRedirectFilter(br, redirectLink); err != nil {
+			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w", br.Attrs().Name, redirectLink.Attrs().Name, err)
 		}
-		if err = addRedirectFilter(redirectLink, newTapDevice); err != nil {
-			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
-				redirectLink.Attrs().Name, newTapDevice.Attrs().Name, err)
+		if err = addRedirectFilter(redirectLink, br); err != nil {
+			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w", redirectLink.Attrs().Name, br.Attrs().Name, err)
 		}
 	}
 
@@ -300,12 +310,17 @@ func CleanupAllUruncTaps() error {
 
 	var retErr error
 	tapRe := regexp.MustCompile(`^tap\d+_urunc$`)
+	var brLink netlink.Link
 	for _, link := range links {
 		attrs := link.Attrs()
 		if attrs == nil {
 			continue
 		}
 		name := attrs.Name
+		if name == "br_urunc" {
+			brLink = link
+			continue
+		}
 		if !tapRe.MatchString(name) {
 			continue
 		}
@@ -328,6 +343,22 @@ func CleanupAllUruncTaps() error {
 			netlog.Debugf("deleted tap device %s", name)
 		}
 		retErr = errors.Join(retErr, devErr)
+	}
+
+	if brLink != nil {
+		netlog.Debugf("cleaning up bridge br_urunc")
+		if err := deleteAllTCFilters(brLink); err != nil {
+			netlog.Errorf("failed to delete TC filters for br_urunc: %v", err)
+			retErr = errors.Join(retErr, err)
+		}
+		if err := deleteAllQDiscs(brLink); err != nil {
+			netlog.Errorf("failed to delete qdiscs for br_urunc: %v", err)
+			retErr = errors.Join(retErr, err)
+		}
+		if err := netlink.LinkDel(brLink); err != nil {
+			netlog.Errorf("failed to delete bridge br_urunc: %v", err)
+			retErr = errors.Join(retErr, err)
+		}
 	}
 
 	return retErr
@@ -460,4 +491,20 @@ func deleteTapDevice(device netlink.Link) error {
 		return err
 	}
 	return nil
+}
+
+func createBridge(bridgeName string) (netlink.Link, bool, error) {
+	link, err := netlink.LinkByName(bridgeName)
+	if err == nil {
+		return link, false, nil
+	}
+	br := &netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}}
+	if err := netlink.LinkAdd(br); err != nil {
+		return nil, false, fmt.Errorf("could not add bridge %s: %w", bridgeName, err)
+	}
+	link, err = netlink.LinkByName(bridgeName)
+	if err != nil {
+		return nil, false, fmt.Errorf("could not get bridge %s: %w", bridgeName, err)
+	}
+	return link, true, nil
 }
