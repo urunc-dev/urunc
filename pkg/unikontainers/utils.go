@@ -212,6 +212,34 @@ func remove(s []string, i int) []string {
 	return append(s[:i], s[i+1:]...)
 }
 
+// getProcStarttime returns the starttime field (field 22) of
+// /proc/<pid>/stat, as a string. The kernel guarantees this value changes
+// whenever a pid number gets reused by a different process, so comparing
+// two starttime readings for the same pid is a reliable way to detect pid
+// reuse.
+func getProcStarttime(pid int) (string, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return "", err
+	}
+	// The comm field is surrounded by parentheses and may itself contain
+	// spaces or parentheses, so locate the fields that follow it by
+	// searching for the last ')' in the line, as recommended by proc(5).
+	line := string(data)
+	closeParen := strings.LastIndexByte(line, ')')
+	if closeParen == -1 || closeParen+2 > len(line) {
+		return "", fmt.Errorf("unexpected format in /proc/%d/stat", pid)
+	}
+	fields := strings.Fields(line[closeParen+2:])
+	// After the comm field, "state" is field 3, so starttime (field 22)
+	// is at index 22-3=19 in the remaining fields.
+	const starttimeFieldIndex = 19
+	if len(fields) <= starttimeFieldIndex {
+		return "", fmt.Errorf("unexpected number of fields in /proc/%d/stat", pid)
+	}
+	return fields[starttimeFieldIndex], nil
+}
+
 func checkValidNsPath(path string) error {
 	// only set to join this namespace if it exists
 	if _, err := os.Lstat(path); err != nil {

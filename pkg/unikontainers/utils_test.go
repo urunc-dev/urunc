@@ -340,3 +340,79 @@ func TestLoadSpec(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
 	})
 }
+
+func TestGetProcStarttime(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns the same value for a live process across calls", func(t *testing.T) {
+		t.Parallel()
+		pid := os.Getpid()
+		first, err := getProcStarttime(pid)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, first)
+
+		second, err := getProcStarttime(pid)
+		assert.NoError(t, err)
+		assert.Equal(t, first, second)
+	})
+
+	t.Run("errors for a pid that does not exist", func(t *testing.T) {
+		t.Parallel()
+		// PID 1 always exists on a normal Linux system, so pick a very
+		// large pid that is extremely unlikely to be in use.
+		_, err := getProcStarttime(999999999)
+		assert.Error(t, err)
+	})
+}
+
+func TestPidIsCurrentVMM(t *testing.T) {
+	t.Parallel()
+
+	t.Run("matches when the recorded starttime is still current", func(t *testing.T) {
+		t.Parallel()
+		pid := os.Getpid()
+		starttime, err := getProcStarttime(pid)
+		assert.NoError(t, err)
+
+		u := &Unikontainer{
+			State: &specs.State{
+				Pid:         pid,
+				Annotations: map[string]string{annotPidStarttime: starttime},
+			},
+		}
+		assert.True(t, u.pidIsCurrentVMM())
+	})
+
+	t.Run("does not match a stale recorded starttime", func(t *testing.T) {
+		t.Parallel()
+		u := &Unikontainer{
+			State: &specs.State{
+				Pid:         os.Getpid(),
+				Annotations: map[string]string{annotPidStarttime: "not-the-real-starttime"},
+			},
+		}
+		assert.False(t, u.pidIsCurrentVMM())
+	})
+
+	t.Run("rejects non-positive pids", func(t *testing.T) {
+		t.Parallel()
+		u := &Unikontainer{
+			State: &specs.State{
+				Pid:         -1,
+				Annotations: map[string]string{},
+			},
+		}
+		assert.False(t, u.pidIsCurrentVMM())
+	})
+
+	t.Run("falls back to a liveness check when no starttime was recorded", func(t *testing.T) {
+		t.Parallel()
+		u := &Unikontainer{
+			State: &specs.State{
+				Pid:         os.Getpid(),
+				Annotations: map[string]string{},
+			},
+		}
+		assert.True(t, u.pidIsCurrentVMM())
+	})
+}

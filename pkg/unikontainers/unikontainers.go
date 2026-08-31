@@ -52,6 +52,11 @@ var ErrQueueProxy = errors.New("this a queue proxy container")
 var ErrNotUnikernel = errors.New("this is not a unikernel container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
 
+// annotPidStarttime holds the /proc/<pid>/stat starttime recorded for
+// State.Pid at Create() time, used to detect pid reuse after the VMM
+// process has exited. See pidIsCurrentVMM.
+const annotPidStarttime = "com.urunc.internal.pid.starttime"
+
 // Unikontainer holds the data necessary to create, manage and delete unikernel containers
 type Unikontainer struct {
 	State    *specs.State
@@ -235,6 +240,11 @@ func (u *Unikontainer) Create(pid int, pidFilePath string) error {
 		return err
 	}
 	u.State.Pid = pid
+	starttime, err := getProcStarttime(pid)
+	if err != nil {
+		return fmt.Errorf("failed to record start time for pid %d: %w", pid, err)
+	}
+	u.State.Annotations[annotPidStarttime] = starttime
 	u.State.Status = specs.StateCreated
 	return u.saveContainerState()
 }
@@ -768,6 +778,15 @@ func setupUser(user specs.User) error {
 
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
+	if !u.pidIsCurrentVMM() {
+		// The recorded pid no longer identifies the VMM process we
+		// launched, either it has already exited, or the pid number has
+		// been reused by an unrelated process. Report it the same way a
+		// signal to a dead process would be reported, instead of
+		// signalling whatever now holds that pid.
+		return unix.ESRCH
+	}
+
 	vmmType := u.State.Annotations[annotHypervisor]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
@@ -780,6 +799,16 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 // Kill stops the VMM process, first by asking the VMM struct to stop
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {
+	if !u.pidIsCurrentVMM() {
+		// The VMM process is already gone, or its pid has been reused by
+		// an unrelated process. There is nothing left to signal or to
+		// join the namespace of; only attempt a best-effort tap cleanup.
+		if err := network.CleanupAllUruncTaps(); err != nil {
+			uniklog.Errorf("failed to cleanup tap devices: %v", err)
+		}
+		return nil
+	}
+
 	// Try to join the Network namespace of the monitor before killing it.
 	// If we kill it there might be no process inside the namespace and hence
 	// the namespace gets destroyed.
@@ -903,6 +932,14 @@ func (u Unikontainer) joinSandboxNetNs() error {
 	// that we had to create a new one and therefore we can join it by
 	// using the pid of the monitor process.
 	if netNsPath == "" {
+		if !u.pidIsCurrentVMM() {
+			// The recorded pid no longer identifies the VMM process we
+			// launched, so /proc/<pid>/ns/net would point to the
+			// namespace of an unrelated process, if the pid was reused,
+			// or would simply fail to exist. Treat it as if there was
+			// no sandbox namespace left to join.
+			return ErrNotExistingNS
+		}
 		netNsPath = fmt.Sprintf("/proc/%d/ns/net", u.State.Pid)
 		err := checkValidNsPath(netNsPath)
 		if err != nil {
@@ -1379,11 +1416,35 @@ func (u *Unikontainer) SendMessage(message IPCMessage) error {
 	return nil
 }
 
+// pidIsCurrentVMM returns true if u.State.Pid is alive and still identifies
+// the same process that was recorded during Create(). Linux recycles pid
+// numbers as soon as a process is reaped, so a plain liveness check (e.g.
+// kill(pid, 0)) can report true for an unrelated process that happens to
+// reuse the VMM's old pid. To detect that, we compare the process's
+// /proc/<pid>/stat starttime against the value recorded at Create() time;
+// the kernel guarantees this value changes across pid reuse.
+func (u *Unikontainer) pidIsCurrentVMM() bool {
+	if u.State.Pid <= 0 {
+		return false
+	}
+	recorded := u.State.Annotations[annotPidStarttime]
+	if recorded == "" {
+		// No starttime was recorded for this container (e.g. state
+		// predates this check); fall back to a plain liveness check.
+		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
+	}
+	current, err := getProcStarttime(u.State.Pid)
+	if err != nil {
+		return false
+	}
+	return current == recorded
+}
+
 // isRunning returns true if the PID is alive or hedge.ListVMs returns our containerID
 func (u *Unikontainer) isRunning() bool {
 	vmmType := hypervisors.VmmType(u.State.Annotations[annotHypervisor])
 	if vmmType != hypervisors.HedgeVmm {
-		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
+		return u.pidIsCurrentVMM()
 	}
 	hedge := hypervisors.Hedge{}
 	state := hedge.VMState(u.State.ID)
