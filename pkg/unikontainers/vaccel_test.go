@@ -30,12 +30,22 @@ func TestIdToGuestCID(t *testing.T) {
 		{
 			name:        "empty string",
 			id:          "",
-			expectedCID: 3,
+			expectedCID: 2166136264,
 		},
 		{
 			name:        "simple id",
 			id:          "container123",
-			expectedCID: 49,
+			expectedCID: 1588278395,
+		},
+		{
+			name:        "anagram id 1",
+			id:          "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+			expectedCID: 4118960264,
+		},
+		{
+			name:        "anagram id 2",
+			id:          "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba",
+			expectedCID: 1919582536,
 		},
 	}
 

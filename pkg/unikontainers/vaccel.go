@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"regexp"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -29,14 +30,13 @@ var ErrVAccelDisabled = errors.New("vaccel is disabled")
 // idToGuestCID generates a deterministic guest CID (Context Identifier)
 // for vsock communication based on a container or VM ID.
 func idToGuestCID(id string) int {
-	sum := 0
-	for _, c := range id {
-		sum += int(c)
-	}
+	h := fnv.New32a()
+	h.Write([]byte(id))
+	hashVal := h.Sum32()
+
 	const minVal = 3
-	const maxVal = 99
-	const valRange = maxVal - minVal + 1
-	val := (sum % valRange) + minVal
+	// Max uint32 is 4294967295. Range size = 4294967295 - 3 + 1 = 4294967293
+	val := int((hashVal % 4294967293) + minVal)
 
 	return val
 }
