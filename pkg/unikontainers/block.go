@@ -15,7 +15,6 @@
 package unikontainers
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -56,55 +55,50 @@ type blockRootfs struct {
 // There are cases (e.g. bind mounts) where mounts use the same underlying
 // source device as the original mount, so they can appear identical to
 // regular mounts when inspecting mount information.
+//
+// We rely on moby/sys/mountinfo to parse /proc/self/mountinfo instead of
+// splitting the raw lines ourselves, because the kernel octal-escapes
+// spaces, tabs, newlines and backslashes in the root and mount point
+// fields (see proc(5)), and mountinfo.GetMounts() already decodes them.
 func getMountInfo(path string) (types.BlockDevParams, error) {
-	selfProcMountInfo := "/proc/self/mountinfo"
-
-	file, err := os.Open(selfProcMountInfo)
+	mounts, err := mountinfo.GetMounts(nil)
 	if err != nil {
-		return types.BlockDevParams{}, fmt.Errorf("failed to open mountinfo: %w", err)
+		return types.BlockDevParams{}, fmt.Errorf("failed to read mountinfo: %w", err)
 	}
-	defer file.Close()
 
+	return findMountInfo(mounts, path)
+}
+
+// findMountInfo scans already-parsed mountinfo entries for the one mounted
+// at path. It is split out from getMountInfo so the matching logic can be
+// unit tested against synthetic mounts, without depending on the real
+// /proc/self/mountinfo of the process running the test.
+func findMountInfo(mounts []*mountinfo.Info, path string) (types.BlockDevParams, error) {
 	blockDev := types.BlockDevParams{}
 	nonSpecialSources := make(map[string]struct{})
-	scanner := bufio.NewScanner(file)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		parts := strings.Split(line, " - ")
-		if len(parts) != 2 {
-			return types.BlockDevParams{}, fmt.Errorf("invalid mountinfo line in /proc/self/mountinfo")
-		}
-
-		preDash := strings.Fields(parts[0])
-		if len(preDash) < 6 {
-			continue
-		}
-		postDash := strings.Fields(parts[1])
-		if len(postDash) < 2 {
-			continue
-		}
-		if preDash[4] == path {
+	for _, m := range mounts {
+		if m.Mountpoint == path {
 			uniklog.WithFields(logrus.Fields{
 				"mounted at": path,
-				"device":     postDash[1],
-				"fstype":     postDash[0],
-				"options":    preDash[5],
+				"device":     m.Source,
+				"fstype":     m.FSType,
+				"options":    m.Options,
 			}).Debug("Found block device")
 
-			blockDev.Source = postDash[1]
-			blockDev.FsType = postDash[0]
+			blockDev.Source = m.Source
+			blockDev.FsType = m.FSType
 			blockDev.MountPoint = path
 			// Keep the mount VFS options (field 6 of mountinfo)
 			// to restore them later in the delete path.
-			blockDev.MountOptions = preDash[5]
+			blockDev.MountOptions = m.Options
 			blockDev.ID = ""
 			continue
 		}
 		// Store the source of all mounts with non-special fs
 		// (e.g. overlay, tmpfs) in a map
-		if postDash[0] != postDash[1] {
-			nonSpecialSources[postDash[1]] = struct{}{}
+		if m.FSType != m.Source {
+			nonSpecialSources[m.Source] = struct{}{}
 		}
 	}
 

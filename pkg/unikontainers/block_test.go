@@ -15,8 +15,10 @@
 package unikontainers
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/moby/sys/mountinfo"
 	"github.com/stretchr/testify/assert"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -36,4 +38,35 @@ func TestGetBlockDevice(t *testing.T) {
 	assert.Equal(t, tmpMnt.MountPoint, rootFs.MountPoint, "Incorrect mountpoint")
 	assert.Equal(t, tmpMnt.FsType, rootFs.FsType, "Expected filesystem type to be proc")
 	assert.Equal(t, tmpMnt.ID, rootFs.ID, "Expected ID to be empty")
+}
+
+// TestFindMountInfoEscapedPath reproduces a bind mount whose source path
+// contains a space, tab, newline or backslash. The kernel octal-escapes
+// these characters in /proc/self/mountinfo (e.g. a space becomes \040), so
+// this exercises that findMountInfo still matches the real, unescaped path
+// against the mountinfo entry once it has been parsed by mountinfo.GetMountsFromReader.
+func TestFindMountInfoEscapedPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		escapedRaw string
+	}{
+		{name: "space", path: "/mnt/my volume", escapedRaw: `/mnt/my\040volume`},
+		{name: "tab", path: "/mnt/my\tvolume", escapedRaw: `/mnt/my\011volume`},
+		{name: "backslash", path: `/mnt/my\volume`, escapedRaw: `/mnt/my\134volume`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			line := "36 35 8:1 / " + tt.escapedRaw + " rw,relatime shared:1 - ext4 /dev/sdb1 rw"
+			mounts, err := mountinfo.GetMountsFromReader(strings.NewReader(line), nil)
+			assert.NoError(t, err, "expected the synthetic mountinfo line to parse")
+
+			blockDev, err := findMountInfo(mounts, tt.path)
+			assert.NoError(t, err, "expected the escaped mount point to match the real path")
+			assert.Equal(t, "/dev/sdb1", blockDev.Source)
+			assert.Equal(t, "ext4", blockDev.FsType)
+			assert.Equal(t, tt.path, blockDev.MountPoint)
+		})
+	}
 }
