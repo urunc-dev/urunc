@@ -222,6 +222,28 @@ func addRedirectFilter(source netlink.Link, target netlink.Link) error {
 	})
 }
 
+// removeTap undoes a partial or complete tap setup performed by networkSetup,
+// so a failed attempt does not leave the netns in a state that blocks the
+// next one. redirectQdiscAdded must only be true when the ingress qdisc on
+// redirectLink was actually added by this attempt: unlike the tap device,
+// redirectLink is the container's real interface and can carry TC config
+// that predates this call, so it must never be removed unless we know we
+// are the ones who put it there. Deleting the tap device removes any qdisc,
+// filter or address that was attached to the tap itself. Failures here are
+// logged rather than returned: they must not shadow the original error that
+// triggered the rollback, and a partial rollback still leaves less behind
+// than no rollback at all.
+func removeTap(tapDevice netlink.Link, redirectLink netlink.Link, redirectQdiscAdded bool) {
+	if redirectQdiscAdded {
+		if err := deleteIngressQdisc(redirectLink); err != nil {
+			netlog.Warnf("rollback: failed to remove ingress qdisc from %s: %v", redirectLink.Attrs().Name, err)
+		}
+	}
+	if err := netlink.LinkDel(tapDevice); err != nil {
+		netlog.Warnf("rollback: failed to remove tap device %s: %v", tapDevice.Attrs().Name, err)
+	}
+}
+
 func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32) (netlink.Link, error) {
 	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v",
 		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
@@ -233,14 +255,22 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	}
 	netlog.Debugf("created tap device %s (index=%d)", newTapDevice.Attrs().Name, newTapDevice.Attrs().Index)
 
+	// From this point on, any failure must delete the tap device we just
+	// created (and any TC rule we managed to add on redirectLink) before
+	// returning, otherwise it is leaked in the netns and blocks the next
+	// setup attempt (see: tap count check in getTapIndex).
+	redirectQdiscAdded := false
+
 	// Bring TAP up before qdisc
 	if err = netlink.LinkSetUp(newTapDevice); err != nil {
+		removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", newTapDevice.Attrs().Name, err)
 	}
 	netlog.Debugf("TAP %s is UP", newTapDevice.Attrs().Name)
 
 	// Bring redirectLink (eth0) up before using it in filters
 	if err = netlink.LinkSetUp(redirectLink); err != nil {
+		removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", redirectLink.Attrs().Name, err)
 	}
 	netlog.Debugf("redirectLink %s is UP", redirectLink.Attrs().Name)
@@ -250,18 +280,23 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 		netlog.Debug("adding tc ingress qdisc + redirect filters")
 
 		if err = addIngressQdisc(newTapDevice); err != nil {
+			removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 			return nil, fmt.Errorf("addIngressQdisc(tap=%s) failed: %w",
 				newTapDevice.Attrs().Name, err)
 		}
 		if err = addIngressQdisc(redirectLink); err != nil {
+			removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
 				redirectLink.Attrs().Name, err)
 		}
+		redirectQdiscAdded = true
 		if err = addRedirectFilter(newTapDevice, redirectLink); err != nil {
+			removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
 				newTapDevice.Attrs().Name, redirectLink.Attrs().Name, err)
 		}
 		if err = addRedirectFilter(redirectLink, newTapDevice); err != nil {
+			removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
 				redirectLink.Attrs().Name, newTapDevice.Attrs().Name, err)
 		}
@@ -272,9 +307,11 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 		netlog.Debugf("assigning IP %s to %s", ipAddress, newTapDevice.Attrs().Name)
 		ipn, err := netlink.ParseAddr(ipAddress)
 		if err != nil {
+			removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 			return nil, fmt.Errorf("ParseAddr(%s) failed: %w", ipAddress, err)
 		}
 		if err = netlink.AddrReplace(newTapDevice, ipn); err != nil {
+			removeTap(newTapDevice, redirectLink, redirectQdiscAdded)
 			return nil, fmt.Errorf("AddrReplace(%s, %s) failed: %w",
 				newTapDevice.Attrs().Name, ipAddress, err)
 		}

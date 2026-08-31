@@ -102,6 +102,11 @@ func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkIn
 	}
 	err = setNATRule(redirectLink.Attrs().Name, StaticIPAddr)
 	if err != nil {
+		// networkSetup succeeded above, so the tap it created is now
+		// leftover in the netns unless we remove it here. addTCRules is
+		// false for the static manager, so no TC rule on redirectLink to
+		// undo, just the tap device itself.
+		removeTap(newTapDevice, redirectLink, addTCRules)
 		return nil, err
 	}
 	return &UnikernelNetworkInfo{
