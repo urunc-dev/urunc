@@ -147,7 +147,7 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	unikernelVersion, err := version.NewVersion(u.Version)
 	if err != nil {
 		setCurrentArgs()
-		return ErrVersionParsing
+		return fmt.Errorf("%w: %w", ErrVersionParsing, err)
 	}
 
 	targetVersion, err := version.NewVersion(UnikraftCompatVersion)
