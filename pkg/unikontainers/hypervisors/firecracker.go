@@ -97,6 +97,12 @@ func (fc *Firecracker) SupportsSharedfs(_ string) bool {
 	return false
 }
 
+// SupportsControlSocket reports that Firecracker exposes a control socket (its API
+// socket).
+func (fc *Firecracker) SupportsControlSocket() bool {
+	return true
+}
+
 func (fc *Firecracker) Path() string {
 	return fc.binaryPath
 }
@@ -108,9 +114,16 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	// options in FC, since the string return value of the Monitor related
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
-	cmdString := fc.Path() + " --no-api --config-file "
 	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
-	cmdString += JSONConfigFile
+	cmdString := fc.Path()
+	// Enable the API socket when a socket_path is configured, otherwise keep the
+	// upstream --no-api. Either way the guest boots from the config file.
+	if args.SocketPath != "" {
+		cmdString += " --api-sock " + args.SocketPath
+	} else {
+		cmdString += " --no-api"
+	}
+	cmdString += " --config-file " + JSONConfigFile
 	if !args.Seccomp {
 		cmdString += " --no-seccomp"
 	}

@@ -139,6 +139,11 @@ func (h *HVT) SupportsSharedfs(_ string) bool {
 	return false
 }
 
+// SupportsControlSocket reports that HVT exposes no control socket.
+func (h *HVT) SupportsControlSocket() bool {
+	return false
+}
+
 // Path returns the path to the hvt binary.
 func (h *HVT) Path() string {
 	return h.binaryPath
