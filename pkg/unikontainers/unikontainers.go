@@ -29,6 +29,7 @@ import (
 	"sync"
 	"syscall"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -93,7 +94,10 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 	confMap := config.Map()
 
 	maps.Copy(confMap, cfg.Map())
-	containerDir := filepath.Join(rootDir, containerID)
+	containerDir, err := securejoin.SecureJoin(rootDir, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve container directory: %w", err)
+	}
 	state := &specs.State{
 		Version:     spec.Version,
 		ID:          containerID,
@@ -114,7 +118,10 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 // Get retrieves unikernel data from disk to create a Unikontainer object
 func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	u := &Unikontainer{}
-	containerDir := filepath.Join(rootDir, containerID)
+	containerDir, err := securejoin.SecureJoin(rootDir, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve container directory: %w", err)
+	}
 	stateFilePath := filepath.Join(containerDir, stateFilename)
 	state, err := loadUnikontainerState(stateFilePath)
 	if err != nil {
