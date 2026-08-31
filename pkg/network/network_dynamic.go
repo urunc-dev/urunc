@@ -18,9 +18,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/urunc-dev/urunc/pkg/network/localhost"
 )
 
 type DynamicNetwork struct {
+	// DNSForwarder when set, is applied on the tap/veth the dynamic NetworkSetup creates
+	// so the guest DNS queries get redirected to the host loopback resolver.
+	DNSForwarder *localhost.Forwarder
 }
 
 // NetworkSetup checks if any tap device is available in the current netns. If it is, it assumes a running unikernel
@@ -62,8 +67,27 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 		return nil, fmt.Errorf("getInterfaceInfo(%s) failed: %w", redirectLink.Attrs().Name, err)
 	}
 
-	return &UnikernelNetworkInfo{
+	info := &UnikernelNetworkInfo{
 		TapDevice: newTapDevice.Attrs().Name,
 		EthDevice: ifInfo,
-	}, nil
+	}
+
+	// DNS forwarding is a good feature, but the unikernel can still run without it.
+	// so we fail open, failure here is only logged and DNSServer stays empty.
+	if n.DNSForwarder != nil {
+		if err := n.DNSForwarder.Apply(newTapDevice, redirectLink); err != nil {
+			netlog.Warnf("failed to apply localhost forwarding rules: %v", err)
+			return info, nil
+		}
+		if err := n.DNSForwarder.RewriteResolvConf(); err != nil {
+			netlog.Warnf("failed to rewrite container's resolv.conf: %v", err)
+			// TODO: If we failed to rewrite localhost nameserver. we should do
+			//  	cleanup for the applied rules, as no benefit from them now
+			return info, nil
+		}
+		info.DNSServer = n.DNSForwarder.VirtIP.String()
+		netlog.Debugf("localhost forwarding applied: virtual resolvIP %s", info.DNSServer)
+	}
+
+	return info, nil
 }

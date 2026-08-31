@@ -66,6 +66,10 @@ func (i *nerdctlInfo) createContainer() (string, error) {
 	return commonCreate(nerdctlName, i.testArgs)
 }
 
+func (i *nerdctlInfo) createNetwork() (string, error) {
+	return commonNetworkCreate(nerdctlName, i.testArgs.Network)
+}
+
 // nolint:unused
 func (i *nerdctlInfo) startPod() (string, error) {
 	// Not supported by nerdctl
@@ -108,6 +112,9 @@ func (i *nerdctlInfo) rmPod() error {
 	return errToolDoesNotSupport
 }
 
+func (i *nerdctlInfo) rmNetwork() error {
+	return commonNetworkRm(nerdctlName, i.testArgs.Network)
+}
 func (i *nerdctlInfo) logContainer() (string, error) {
 	return commonLogs(nerdctlName, i.containerID)
 }

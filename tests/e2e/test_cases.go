@@ -1241,5 +1241,23 @@ func dockerTestCases() []containerTestArgs {
 			Skippable:      false,
 			TestFunc:       namespaceTest,
 		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest",
+			Name:           "Qemu-linux-docker-user-defined-network-external",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "/bin/nslookup google-public-dns-a.google.com",
+			Volumes:        []containerVolume{},
+			Network:        "urunc-dns-test",
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			ExpectOut:      "Address: 8.8.8.8",
+			TestFunc:       matchTest,
+		},
 	}
 }

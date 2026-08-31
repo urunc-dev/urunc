@@ -388,3 +388,14 @@ func executeHook(hook specs.Hook, state []byte) error {
 
 	return nil
 }
+
+// resolvConfSource returns the host file bind-mounted over the container's
+// /etc/resolv.conf, or "" when there is no such mount.
+func resolvConfSource(mounts []specs.Mount) string {
+	for _, m := range mounts {
+		if m.Destination == "/etc/resolv.conf" {
+			return m.Source
+		}
+	}
+	return ""
+}

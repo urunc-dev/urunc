@@ -32,12 +32,14 @@ type testTool interface {
 	setContainerID(string)
 	createPod() (string, error)
 	createContainer() (string, error)
+	createNetwork() (string, error)
 	startContainer(bool) (string, error)
 	runContainer(bool) (string, error)
 	stopContainer() error
 	stopPod() error
 	rmContainer() error
 	rmPod() error
+	rmNetwork() error
 	logContainer() (string, error)
 	searchContainer(string) (bool, error)
 	searchPod(string) (bool, error)
@@ -63,6 +65,7 @@ type containerTestArgs struct {
 	Memory         string
 	Cli            string
 	Volumes        []containerVolume
+	Network        string
 	StaticNet      bool
 	SideContainers []string
 	Skippable      bool
@@ -89,6 +92,9 @@ func commonNewContainerCmd(a containerTestArgs) string {
 	}
 	if a.Memory != "" {
 		cmdBase += fmt.Sprintf("-m %s ", a.Memory)
+	}
+	if a.Network != "" {
+		cmdBase += fmt.Sprintf("--network %s ", a.Network)
 	}
 	if a.UID != 0 && a.GID != 0 {
 		cmdBase += fmt.Sprintf("-u %d:%d ", a.UID, a.GID)
@@ -156,6 +162,17 @@ func commonRmImage(tool string, image string) error {
 	}
 
 	return nil
+}
+
+func commonNetworkCreate(tool string, network string) (string, error) {
+	cmdBase := tool + " network create " + network
+	return commonCmdExec(cmdBase)
+}
+
+func commonNetworkRm(tool string, network string) error {
+	cmdBase := tool + " network rm " + network
+	_, err := commonCmdExec(cmdBase)
+	return err
 }
 
 func commonCreate(tool string, cntrArgs containerTestArgs) (output string, err error) {

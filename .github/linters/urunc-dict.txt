@@ -433,3 +433,15 @@ hyperlight
 Hyperlight
 Odysseas
 Kalaitsidis
+lhlog
+dnat
+PREROUTING
+resolv
+ndots
+clsact
+Sysctls
+localnet
+skbedit
+ptype
+pedit
+nslookup

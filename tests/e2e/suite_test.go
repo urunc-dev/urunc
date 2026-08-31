@@ -97,6 +97,12 @@ func captureContainerLogs(tool testTool) {
 // runDetachedTest runs a container in detached mode: create, start, and
 // verify via TestFunc.
 func runDetachedTest(tool testTool, tc containerTestArgs) {
+	if tc.Network != "" {
+		By("Creating user-defined network")
+		output, err := tool.createNetwork()
+		Expect(err).NotTo(HaveOccurred(), "Failed to create network %s: %s", tc.Network, output)
+	}
+
 	By("Creating container")
 	cID, err := tool.createContainer()
 	Expect(err).NotTo(HaveOccurred(), "Failed to create container: %s", cID)
@@ -120,6 +126,12 @@ func runDetachedTest(tool testTool, tc containerTestArgs) {
 				GinkgoLogr.Error(err, "Failed to verify removal")
 			}
 		}
+		if tc.Network != "" {
+			By("Removing user-defined network")
+			if err := tool.rmNetwork(); err != nil {
+				GinkgoLogr.Error(err, "Failed to remove network "+tc.Network)
+			}
+		}
 	})
 
 	By("Starting container")
@@ -137,11 +149,23 @@ func runDetachedTest(tool testTool, tc containerTestArgs) {
 func runForegroundTest(tool testTool, tc containerTestArgs) {
 	tool.setContainerID(tc.Name)
 
+	if tc.Network != "" {
+		By("Creating user-defined network")
+		output, err := tool.createNetwork()
+		Expect(err).NotTo(HaveOccurred(), "Failed to create network %s: %s", tc.Network, output)
+	}
+
 	DeferCleanup(func() {
 		if tool.getContainerID() != "" {
 			By("Cleaning up container")
 			if err := testCleanup(tool); err != nil {
 				GinkgoLogr.Error(err, "Container cleanup failed")
+			}
+		}
+		if tc.Network != "" {
+			By("Removing user-defined network")
+			if err := tool.rmNetwork(); err != nil {
+				GinkgoLogr.Error(err, "Failed to remove network "+tc.Network)
 			}
 		}
 	})

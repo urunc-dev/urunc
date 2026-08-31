@@ -201,6 +201,11 @@ func (i *crictlInfo) createContainer() (string, error) {
 	return commonCmdExec(cmdBase)
 }
 
+func (i *crictlInfo) createNetwork() (string, error) {
+	// Not supported by crictl
+	return "", errToolDoesNotSupport
+}
+
 func (i *crictlInfo) startContainer(bool) (string, error) {
 	cmdBase := crictlName
 	cmdBase += " start "
@@ -296,6 +301,11 @@ func (i *crictlInfo) rmPod() error {
 		return fmt.Errorf("Could not remove Pod config file: %v", err)
 	}
 	return nil
+}
+
+func (i *crictlInfo) rmNetwork() error {
+	// Not supported by crictl
+	return errToolDoesNotSupport
 }
 
 func (i *crictlInfo) logContainer() (string, error) {

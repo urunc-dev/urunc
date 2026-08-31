@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -49,9 +50,14 @@ type UruncTimestamps struct {
 	Destination string `toml:"destination"` // Used to specify a file for timestamps
 }
 
+type UruncNetwork struct {
+	DNSResolverIP string `toml:"dns_resolver_ip"`
+}
+
 type UruncConfig struct {
 	Log        UruncLog                        `toml:"log"`
 	Timestamps UruncTimestamps                 `toml:"timestamps"`
+	Network    UruncNetwork                    `toml:"network"`
 	Monitors   map[string]types.MonitorConfig  `toml:"monitors"`
 	ExtraBins  map[string]types.ExtraBinConfig `toml:"extra_binaries"`
 }
@@ -98,6 +104,12 @@ const (
 	defaultMonitorVCPUs    uint = 1
 )
 
+func defaultNetworkConfig() UruncNetwork {
+	return UruncNetwork{
+		DNSResolverIP: constants.LocalhostDNSResolverIP,
+	}
+}
+
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
 		"qemu":             {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
@@ -118,6 +130,7 @@ func defaultUruncConfig() *UruncConfig {
 	return &UruncConfig{
 		Log:        defaultLogConfig(),
 		Timestamps: defaultTimestampsConfig(),
+		Network:    defaultNetworkConfig(),
 		Monitors:   defaultMonitorsConfig(),
 		ExtraBins:  defaultExtraBinConfig(),
 	}
@@ -153,6 +166,9 @@ func (p *UruncConfig) Map() map[string]string {
 	// them to this map. this map will be used to save the rest of the urunc config to state.json
 	cfgMap := make(map[string]string)
 
+	if p.Network.DNSResolverIP != "" {
+		cfgMap["urunc_config.network.dns_resolver_ip"] = p.Network.DNSResolverIP
+	}
 	for hv, hvCfg := range p.Monitors {
 		prefix := "urunc_config.monitors." + hv + "."
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
@@ -173,10 +189,14 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 	// since log and timestamps are loaded at the start of urunc, we will not be reading
 	// them from this map. this map will be used to parse the rest of the urunc config from state.json
 	cfg := &UruncConfig{
+		Network:   defaultNetworkConfig(),
 		Monitors:  defaultMonitorsConfig(),
 		ExtraBins: defaultExtraBinConfig(),
 	}
 
+	if val, ok := cfgMap["urunc_config.network.dns_resolver_ip"]; ok && val != "" {
+		cfg.Network.DNSResolverIP = val
+	}
 	for key, val := range cfgMap {
 		if !strings.HasPrefix(key, "urunc_config.monitors.") {
 			continue

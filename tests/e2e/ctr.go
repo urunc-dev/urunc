@@ -97,6 +97,11 @@ func (i *ctrInfo) createContainer() (string, error) {
 	return commonCmdExec(cmdBase)
 }
 
+func (i *ctrInfo) createNetwork() (string, error) {
+	// Not supported by ctr
+	return "", errToolDoesNotSupport
+}
+
 // nolint:unused
 func (i *ctrInfo) startPod() (string, error) {
 	// Not supported by ctr
@@ -162,6 +167,11 @@ func (i *ctrInfo) rmContainer() error {
 }
 
 func (i *ctrInfo) rmPod() error {
+	// Not supported by ctr
+	return errToolDoesNotSupport
+}
+
+func (i *ctrInfo) rmNetwork() error {
 	// Not supported by ctr
 	return errToolDoesNotSupport
 }

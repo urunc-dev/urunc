@@ -66,6 +66,10 @@ func (i *dockerInfo) createContainer() (string, error) {
 	return commonCreate(dockerName, i.testArgs)
 }
 
+func (i *dockerInfo) createNetwork() (string, error) {
+	return commonNetworkCreate(dockerName, i.testArgs.Network)
+}
+
 // nolint:unused
 func (i *dockerInfo) startPod() (string, error) {
 	// Not supported by docker
@@ -106,6 +110,10 @@ func (i *dockerInfo) rmContainer() error {
 func (i *dockerInfo) rmPod() error {
 	// Not supported by docker
 	return errToolDoesNotSupport
+}
+
+func (i *dockerInfo) rmNetwork() error {
+	return commonNetworkRm(dockerName, i.testArgs.Network)
 }
 
 func (i *dockerInfo) logContainer() (string, error) {

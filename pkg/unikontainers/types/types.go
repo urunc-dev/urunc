@@ -45,12 +45,13 @@ type VMM interface {
 }
 
 type NetDevParams struct {
-	IP      string // The veth device IP
-	Mask    string // The veth device mask
-	Gateway string // The veth device gateway
-	MAC     string // The MAC address of the guest network device
-	TapDev  string // The tap device name
-	MTU     int    // The MTU value of the tap device
+	IP        string // The veth device IP
+	Mask      string // The veth device mask
+	Gateway   string // The veth device gateway
+	MAC       string // The MAC address of the guest network device
+	TapDev    string // The tap device name
+	MTU       int    // The MTU value of the tap device
+	DNSServer string // The resolver IP when localhost forwarding is active, empty otherwise
 }
 
 type BlockDevParams struct {

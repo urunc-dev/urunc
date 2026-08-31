@@ -71,6 +71,7 @@ URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/unikernels/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/types/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/unikontainers/initrd/*.go)
 URUNC_SRC      += $(wildcard $(CURDIR)/pkg/network/*.go)
+URUNC_SRC      += $(wildcard $(CURDIR)/pkg/network/localhost/*.go)
 SHIM_SRC       := $(wildcard $(CURDIR)/cmd/containerd-shim-urunc-v2/*.go)
 SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/*.go)
 SHIM_SRC       += $(wildcard $(CURDIR)/pkg/containerd-shim/containerd/*.go)
@@ -233,7 +234,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics test_network test_hypervisors test_unikernels
+unittest: test_unikontainers test_metrics test_network test_localhost test_hypervisors test_unikernels
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -255,6 +256,12 @@ test_metrics:
 test_network:
 	@echo "Unit testing in pkg/network"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/network -v
+	@echo " "
+
+## test_localhost Run unit tests for network/localhost package
+test_localhost:
+	@echo "Unit testing in pkg/network/localhost"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/network/localhost -v
 	@echo " "
 
 ## test_hypervisors Run unit tests for hypervisors package

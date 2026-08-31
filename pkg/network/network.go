@@ -25,6 +25,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+
+	"github.com/urunc-dev/urunc/pkg/network/localhost"
 )
 
 const (
@@ -36,6 +38,9 @@ var netlog = logrus.WithField("subsystem", "network")
 type UnikernelNetworkInfo struct {
 	TapDevice string
 	EthDevice Interface
+	// DNSServer is the virtual resolver IP the guest should be configured
+	// with, set only when localhost DNS forwarding was applied.
+	DNSServer string
 }
 type Manager interface {
 	NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error)
@@ -50,12 +55,12 @@ type Interface struct {
 	MTU            int
 }
 
-func NewNetworkManager(networkType string) (Manager, error) {
+func NewNetworkManager(networkType string, fwd *localhost.Forwarder) (Manager, error) {
 	switch networkType {
 	case "static":
 		return &StaticNetwork{}, nil
 	case "dynamic":
-		return &DynamicNetwork{}, nil
+		return &DynamicNetwork{DNSForwarder: fwd}, nil
 	default:
 		return nil, fmt.Errorf("network manager %s not supported", networkType)
 
