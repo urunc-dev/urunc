@@ -73,7 +73,7 @@ type FirecrackerConfig struct {
 	Machine FirecrackerMachine    `json:"machine-config"`
 	Drives  []FirecrackerDrive    `json:"drives"`
 	NetIfs  []FirecrackerNet      `json:"network-interfaces,omitempty"`
-	VSock   FirecrackerVSockDev   `json:"vsock,omitempty"`
+	VSock   *FirecrackerVSockDev  `json:"vsock,omitempty"`
 }
 
 func (fc *Firecracker) Signal(pid int, signal unix.Signal) error {
@@ -175,9 +175,9 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 		InitrdPath: initrdPath,
 	}
 
-	var FCVSockDev FirecrackerVSockDev
+	var FCVSockDev *FirecrackerVSockDev
 	if args.VAccelType == "vsock" {
-		FCVSockDev = FirecrackerVSockDev{
+		FCVSockDev = &FirecrackerVSockDev{
 			GuestCID: args.VSockDevID,
 			UDSPath:  args.VSockDevPath + "/vaccel.sock",
 			VSockID:  "root",
