@@ -36,6 +36,11 @@ default_memory_mb = 256
 default_vcpus = 1
 path = "/usr/local/bin/firecracker"
 
+[monitors.cloud-hypervisor]
+default_memory_mb = 256
+default_vcpus = 1
+path = "/usr/local/bin/cloud-hypervisor"
+
 [monitors.hvt]
 default_memory_mb = 256
 default_vcpus = 1
@@ -108,8 +113,23 @@ values.
 
 - [QEMU/KVM](./hypervisor-support#qemu) - `qemu`
 - [Firecracker](./hypervisor-support#firecracker) - `firecracker`
+- [Cloud Hypervisor](./hypervisor-support#cloud-hypervisor) - `cloud-hypervisor`
 - [Solo5-hvt](./hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
 - [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
+
+##### Cloud Hypervisor
+
+Cloud Hypervisor can be configured through the
+`[monitors.cloud-hypervisor]` subsection.
+
+Example:
+
+```toml
+[monitors.cloud-hypervisor]
+default_memory_mb = 256
+default_vcpus = 1
+path = "/usr/local/bin/cloud-hypervisor"
+```
 
 #### Monitor Options
 
@@ -139,6 +159,11 @@ data_path = "/usr/local/share/"
 default_memory_mb = 512
 default_vcpus = 2
 path = "/opt/firecracker/firecracker"
+
+[monitors.cloud-hypervisor]
+default_memory_mb = 512
+default_vcpus = 2
+path = "/usr/local/bin/cloud-hypervisor"
 ```
 
 ### Extra binaries Configuration
@@ -203,6 +228,10 @@ To create a configuration file, you can:
    default_memory_mb = 256
    default_vcpus = 1
 
+   [monitors.cloud-hypervisor]
+   default_memory_mb = 256
+   default_vcpus = 1
+
    [monitors.hvt]
    default_memory_mb = 256
    default_vcpus = 1
@@ -240,6 +269,11 @@ default_vcpus = 1
 # path is not set by default - urunc will search in PATH
 
 [monitors.firecracker]
+default_memory_mb = 256
+default_vcpus = 1
+# path is not set by default - urunc will search in PATH
+
+[monitors.cloud-hypervisor]
 default_memory_mb = 256
 default_vcpus = 1
 # path is not set by default - urunc will search in PATH
