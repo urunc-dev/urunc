@@ -940,7 +940,7 @@ func (u *Unikontainer) saveContainerState() error {
 	}
 
 	stateName := filepath.Join(u.BaseDir, stateFilename)
-	return os.WriteFile(stateName, data, 0o644) //nolint: gosec
+	return atomicWriteFile(stateName, data, 0o644)
 }
 
 // getHooksByName returns the hooks for a given lifecycle stage
