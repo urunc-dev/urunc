@@ -119,9 +119,9 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	fcMem := DefaultMemory
 	if args.MemSizeB != 0 {
 		fcMem = bytesToMiB(args.MemSizeB)
-		// Check if memory is too small
-		if fcMem == 0 {
-			fcMem = DefaultMemory
+		if args.MemSizeB < 1024*1024 {
+			fcMem = 1
+			vmmLog.Warnf("Requested memory (%d bytes) is below Firecracker's minimum unit (1 MiB); clamping to 1 MiB", args.MemSizeB)
 		}
 	}
 	// NOTE: Firecracker supports only one initrd.

@@ -153,7 +153,11 @@ func (h *HVT) Ok() error {
 }
 
 func (h *HVT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
-	hvtMem := BytesToStringMB(args.MemSizeB)
+	hvtMem := BytesToMiBString(args.MemSizeB)
+	if args.MemSizeB > 0 && args.MemSizeB < 1024*1024 {
+		hvtMem = "1"
+		vmmLog.Warnf("Requested memory (%d bytes) is below Solo5's minimum unit (1 MiB); clamping to 1 MiB", args.MemSizeB)
+	}
 	cmdString := h.binaryPath + " --mem=" + hvtMem
 	if args.Net.TapDev != "" {
 		cmdString += " "

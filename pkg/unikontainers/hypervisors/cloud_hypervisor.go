@@ -63,18 +63,19 @@ func (ch *CloudHypervisor) Path() string {
 	return ch.binaryPath
 }
 
-// BuildExecCmd builds and validates the Cloud Hypervisor command arguments without executing.
 func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
-	chMem := BytesToStringMB(args.MemSizeB)
-
 	// Start building the command
 	exArgs := []string{ch.binaryPath}
 
 	// Memory configuration
+	memSize := args.MemSizeB
+	if memSize == 0 {
+		memSize = DefaultMemory * 1024 * 1024
+	}
 	if args.Sharedfs.Type == "virtiofs" {
-		exArgs = append(exArgs, "--memory", fmt.Sprintf("size=%sM,shared=on", chMem))
+		exArgs = append(exArgs, "--memory", fmt.Sprintf("size=%d,shared=on", memSize))
 	} else {
-		exArgs = append(exArgs, "--memory", fmt.Sprintf("size=%sM", chMem))
+		exArgs = append(exArgs, "--memory", fmt.Sprintf("size=%d", memSize))
 	}
 
 	// CPU configuration

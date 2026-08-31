@@ -105,7 +105,7 @@ func chooseTmpfsSize(sfsType string, mem uint64) string {
 	// However, since /tmp might be used from the monitors for other
 	// things too, we add one more MB extra.
 	tmpMountMem := mem + (1024 * 1024)
-	tmpMountMemStr := hypervisors.BytesToStringMB(tmpMountMem) + "m"
+	tmpMountMemStr := hypervisors.BytesToMiBString(tmpMountMem) + "m"
 
 	return tmpMountMemStr
 }

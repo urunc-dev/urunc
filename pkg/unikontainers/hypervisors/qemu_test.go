@@ -80,7 +80,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				"-vga none",
 				"-serial stdio",
 				"-monitor null",
-				"-m 256M",
+				"-m 268435456B",
 				"-kernel " + testKernelPath,
 				"-nic none",
 			},
@@ -95,14 +95,14 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			},
 		},
 		{
-			name: "custom MemSizeB renders -m in MB",
+			name: "custom MemSizeB renders -m in Bytes",
 			args: types.ExecArgs{
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
 				MemSizeB:      512 * 1000 * 1000,
 			},
 			unikernel:   &fakeUnikernel{},
-			mustContain: []string{"-m 512M"},
+			mustContain: []string{"-m 512000000B"},
 		},
 		{
 			name: "VCPUs set emits -smp",
