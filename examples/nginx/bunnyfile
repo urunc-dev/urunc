@@ -1,0 +1,13 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+platforms:
+  framework: unikraft
+  monitor: qemu
+  architecture: x86_64
+rootfs:
+  from: local
+  path: rootfs.cpio
+kernel:
+  from: local
+  path: nginx-qemu-x86_64
+cmdline: "nginx -c /nginx/conf/nginx.conf"
