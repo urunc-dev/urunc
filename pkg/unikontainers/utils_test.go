@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -338,5 +339,75 @@ func TestLoadSpec(t *testing.T) {
 		_, err = loadSpec(tempDir)
 		assert.Error(t, err, "Expected an error for invalid "+configFilename+" file")
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
+	})
+}
+
+// TestCheckValidNsPath checks that checkValidNsPath distinguishes between
+// a missing namespace path (returns ErrNotExistingNS) and other filesystem
+// errors (permission denied, I/O errors, etc.) which are wrapped and returned.
+func TestCheckValidNsPath(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing path returns ErrNotExistingNS", func(t *testing.T) {
+		t.Parallel()
+		err := checkValidNsPath("/nonexistent/path/that/does/not/exist")
+		assert.ErrorIs(t, err, ErrNotExistingNS)
+	})
+
+	t.Run("empty path returns ErrNotExistingNS", func(t *testing.T) {
+		t.Parallel()
+		err := checkValidNsPath("")
+		assert.ErrorIs(t, err, ErrNotExistingNS)
+	})
+
+	t.Run("valid path returns nil", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		err := checkValidNsPath(tmpDir)
+		assert.NoError(t, err)
+	})
+
+	t.Run("path with comma returns error", func(t *testing.T) {
+		t.Parallel()
+		tmpDir := t.TempDir()
+		commaPath := filepath.Join(tmpDir, "path,with,comma")
+		// Create the path first so it exists
+		err := os.MkdirAll(commaPath, 0755)
+		assert.NoError(t, err)
+
+		err = checkValidNsPath(commaPath)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid namespace path")
+		assert.NotEqual(t, ErrNotExistingNS, err)
+	})
+
+	t.Run("permission denied returns wrapped error", func(t *testing.T) {
+		t.Parallel()
+		// Skip when running as root since root bypasses directory permissions
+		if os.Geteuid() == 0 {
+			t.Skip("skipping permission-denied test when running as root")
+		}
+		// Create a directory with no permissions and a file inside it
+		// This simulates a real permission-denied error from os.Lstat
+		tmpDir := t.TempDir()
+		restrictedDir := filepath.Join(tmpDir, "restricted")
+		err := os.Mkdir(restrictedDir, 0755)
+		assert.NoError(t, err)
+
+		restrictedFile := filepath.Join(restrictedDir, "file")
+		err = os.WriteFile(restrictedFile, []byte("test"), 0600)
+		assert.NoError(t, err)
+
+		// Now remove all permissions from the directory
+		err = os.Chmod(restrictedDir, 0000)
+		assert.NoError(t, err)
+		t.Cleanup(func() { _ = os.Chmod(restrictedDir, 0755) }) // cleanup
+
+		err = checkValidNsPath(restrictedFile)
+		assert.Error(t, err)
+		assert.NotEqual(t, ErrNotExistingNS, err)
+		assert.Contains(t, err.Error(), "failed to validate namespace path")
+		// Verify the underlying error is a permission error
+		assert.True(t, errors.Is(err, os.ErrPermission) || errors.Is(err, fs.ErrPermission))
 	})
 }

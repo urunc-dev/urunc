@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -213,14 +214,18 @@ func remove(s []string, i int) []string {
 }
 
 func checkValidNsPath(path string) error {
-	// only set to join this namespace if it exists
-	if _, err := os.Lstat(path); err != nil {
-		return ErrNotExistingNS
-	}
 	// do not allow namespace path with comma as we use it to separate
 	// the namespace paths
 	if strings.ContainsRune(path, ',') {
 		return fmt.Errorf("invalid namespace path %s", path)
+	}
+
+	// only set to join this namespace if it exists
+	if _, err := os.Lstat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrNotExistingNS
+		}
+		return fmt.Errorf("failed to validate namespace path %s: %w", path, err)
 	}
 
 	return nil
