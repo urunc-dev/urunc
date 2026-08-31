@@ -46,6 +46,19 @@ func (h *Hyperlight) SupportsSharedfs(_ string) bool {
 	return false
 }
 
+// SupportsControlSocket reports that Hyperlight exposes no control socket.
+func (h *Hyperlight) SupportsControlSocket() bool {
+	return false
+}
+
+func (h *Hyperlight) SupportsGuestShutdown() bool {
+	return false
+}
+
+func (h *Hyperlight) RequestGuestShutdown(_ string) error {
+	return fmt.Errorf("guest shutdown not supported for hyperlight")
+}
+
 // Path returns the path to the hyperlight binary.
 func (h *Hyperlight) Path() string {
 	return h.binaryPath

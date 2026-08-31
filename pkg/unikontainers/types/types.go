@@ -41,7 +41,15 @@ type VMM interface {
 	Path() string
 	UsesKVM() bool
 	SupportsSharedfs(string) bool
+	SupportsControlSocket() bool
 	Ok() error
+	// SupportsGuestShutdown reports whether this monitor can inject a native
+	// guest-shutdown event over its control socket instead of being killed.
+	SupportsGuestShutdown() bool
+	// RequestGuestShutdown asks the monitor to inject its native guest-shutdown
+	// event. socketPath is already resolved and host-reachable, so the monitor
+	// dials it directly and must not re-resolve or re-prefix it.
+	RequestGuestShutdown(socketPath string) error
 }
 
 type NetDevParams struct {
@@ -111,6 +119,7 @@ type ExecArgs struct {
 	VAccelType    string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
 	VSockDevPath  string   // The host directory where the fc unix socket is created
 	VSockDevID    int      // The guest-cid
+	SocketPath    string   // The path of the monitor's control socket (empty means no control socket)
 	Net           NetDevParams
 	Sharedfs      SharedfsParams
 }
@@ -136,9 +145,11 @@ type ExtraBinConfig struct {
 // MonitorConfig struct is used to hold hypervisor specific configuration
 // that is parsed from the urunc config file or state.json annotations
 type MonitorConfig struct {
-	DefaultMemoryMB uint   `toml:"default_memory_mb"`
-	DefaultVCPUs    uint   `toml:"default_vcpus"`
-	BinaryPath      string `toml:"path,omitempty"`      // Optional path to the hypervisor binary
-	DataPath        string `toml:"data_path,omitempty"` // Optional path to the hypervisor data files (e.g. qemu bios stuff)
-	Vhost           bool   `toml:"vhost,omitempty"`     // Optional: enable vhost for network performance optimization
+	DefaultMemoryMB  uint   `toml:"default_memory_mb"`
+	DefaultVCPUs     uint   `toml:"default_vcpus"`
+	BinaryPath       string `toml:"path,omitempty"`              // Optional path to the hypervisor binary
+	DataPath         string `toml:"data_path,omitempty"`         // Optional path to the hypervisor data files (e.g. qemu bios stuff)
+	Vhost            bool   `toml:"vhost,omitempty"`             // Optional: enable vhost for network performance optimization
+	SocketPath       string `toml:"socket_path,omitempty"`       // Optional path for the monitor's control socket (unset means no control socket)
+	GracefulShutdown bool   `toml:"graceful_shutdown,omitempty"` // When true, urunc asks the monitor to shut the guest down gracefully on SIGTERM instead of killing it.
 }

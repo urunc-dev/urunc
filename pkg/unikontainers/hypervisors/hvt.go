@@ -15,6 +15,7 @@
 package hypervisors
 
 import (
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -134,8 +135,21 @@ func (h *HVT) UsesKVM() bool {
 	return true
 }
 
+func (h *HVT) SupportsGuestShutdown() bool {
+	return false
+}
+
+func (h *HVT) RequestGuestShutdown(_ string) error {
+	return fmt.Errorf("guest shutdown not supported for hvt")
+}
+
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
 func (h *HVT) SupportsSharedfs(_ string) bool {
+	return false
+}
+
+// SupportsControlSocket reports that HVT exposes no control socket.
+func (h *HVT) SupportsControlSocket() bool {
 	return false
 }
 

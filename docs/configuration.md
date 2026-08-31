@@ -121,10 +121,34 @@ Each monitor subsection supports the following options:
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
 | `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
+| `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
+| `graceful_shutdown` | boolean | `false` | Optional. When `true`, on SIGTERM urunc asks the monitor to shut the guest down gracefully over its control socket (QEMU and Cloud Hypervisor on all architectures, Firecracker on x86 only) instead of killing it; the container manager still escalates to SIGKILL after its grace period. Defaults to `false` |
 
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
 Qemu's data files.
+
+The `socket_path` option applies to the monitors that expose a control socket:
+Firecracker (its API socket), Qemu (a QMP socket) and Cloud Hypervisor (its REST
+API socket). It has no effect on the other monitors. The control socket is
+opt-in: it exists only when `socket_path` is set. If it is not set, the
+monitor runs with no control socket at all; an operator can leave it unset if
+they do not need the socket, or to keep a smaller attack surface.
+
+When it is set, the monitor creates the socket inside its own (pivoted) rootfs.
+`urunc` creates the directory of `socket_path` inside that rootfs after it drops
+privileges to the monitor's user, so the path is subject to two constraints:
+
+- Its parent directory must be one the monitor's user can create and write. A
+  directory that only `root` can write does not work for a non-root monitor.
+- It must not sit over an existing file or directory. `urunc` creates the
+  directory of `socket_path`; that fails cleanly if a file already exists at one
+  of the directories in the path. The monitor then binds the socket at
+  `socket_path`; that fails if a file already exists at `socket_path` itself.
+
+`urunc` removes the socket when the container is stopped (on a terminating
+signal) and when it is deleted, so a restart that reuses the same `socket_path`
+does not find a stale socket.
 
 **Example:**
 
@@ -139,6 +163,7 @@ data_path = "/usr/local/share/"
 default_memory_mb = 512
 default_vcpus = 2
 path = "/opt/firecracker/firecracker"
+socket_path = "/run/urunc/fc.sock"
 ```
 
 ### Extra binaries Configuration

@@ -16,6 +16,7 @@ package hypervisors
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -44,8 +45,22 @@ func (ch *CloudHypervisor) Ok() error {
 	return nil
 }
 
+func (ch *CloudHypervisor) SupportsGuestShutdown() bool {
+	return true
+}
+
+func (ch *CloudHypervisor) RequestGuestShutdown(socketPath string) error {
+	return unixSocketRequest(socketPath, http.MethodPut, "/api/v1/vm.power-button", nil)
+}
+
 // UsesKVM returns true as Cloud Hypervisor is a KVM-based VMM
 func (ch *CloudHypervisor) UsesKVM() bool {
+	return true
+}
+
+// SupportsControlSocket reports that Cloud Hypervisor exposes a control socket
+// (its REST API socket).
+func (ch *CloudHypervisor) SupportsControlSocket() bool {
 	return true
 }
 
@@ -69,6 +84,12 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 
 	// Start building the command
 	exArgs := []string{ch.binaryPath}
+
+	// Expose the REST API socket only when socket_path is set, so the runtime
+	// can talk to Cloud Hypervisor after boot.
+	if args.SocketPath != "" {
+		exArgs = append(exArgs, "--api-socket", "path="+args.SocketPath)
+	}
 
 	// Memory configuration
 	if args.Sharedfs.Type == "virtiofs" {

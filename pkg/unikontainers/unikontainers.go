@@ -29,6 +29,7 @@ import (
 	"sync"
 	"syscall"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -469,6 +470,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
 
 	vmmArgs := types.ExecArgs{
 		ContainerID:   u.State.ID,
@@ -477,6 +479,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		Seccomp:       true, // Enable Seccomp by default
 		MemSizeB:      monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources),
 		VCPUs:         uint(defaultVCPUs),
+		SocketPath:    socketPath,
 		Environment:   os.Environ(),
 	}
 
@@ -673,6 +676,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// Create the socket directory after setupUser, so the monitor's user owns
+	// it and a non-root monitor can bind there. The monitor creates the socket.
+	if vmm.SupportsControlSocket() && vmmArgs.SocketPath != "" {
+		sockDir := filepath.Dir(vmmArgs.SocketPath)
+		if err = os.MkdirAll(sockDir, 0o700); err != nil {
+			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		}
+	}
+
 	// execute hooks
 	// NOTE: StartContainer hooks are supposed to run right before the init of
 	// the container. However, in the case of a Linux-based container, the init
@@ -766,7 +778,59 @@ func setupUser(user specs.User) error {
 	return nil
 }
 
+// monitorRootfs returns the host path of the monitor's rootfs: the separate
+// one under the bundle if it exists, else the container's own rootfs.
+func (u *Unikontainer) monitorRootfs() string {
+	bundleDir := filepath.Clean(u.State.Bundle)
+	rootfsDir := filepath.Clean(u.Spec.Root.Path)
+	if !filepath.IsAbs(rootfsDir) {
+		rootfsDir = filepath.Join(bundleDir, rootfsDir)
+	}
+	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
+	if _, err := os.Stat(monRootfs); err == nil {
+		return monRootfs
+	}
+	return rootfsDir
+}
+
+// removeControlSocket deletes the monitor's control socket. It skips a missing
+// path and never deletes a non-socket file.
+func (u *Unikontainer) removeControlSocket(socketPath string) error {
+	sockRealPath, err := securejoin.SecureJoin(u.monitorRootfs(), socketPath)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(sockRealPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return nil
+	}
+	return os.Remove(sockRealPath)
+}
+
 // Signal sends a specified signal to container's init.
+func shutdownFailureReason(err error) string {
+	switch {
+	case errors.Is(err, hypervisors.ErrShutdownConnect):
+		return "could not reach the control socket"
+	case errors.Is(err, hypervisors.ErrShutdownGreeting):
+		return "the monitor did not greet us; it is busy or stuck"
+	case errors.Is(err, hypervisors.ErrShutdownHandshake):
+		return "the monitor did not finish the handshake; it is busy or stuck"
+	case errors.Is(err, hypervisors.ErrShutdownCommand):
+		return "the monitor did not answer the command; it is busy or stuck"
+	case errors.Is(err, hypervisors.ErrShutdownRefused):
+		return "the monitor refused the request"
+	default:
+		return "unknown failure"
+	}
+}
+
 func (u *Unikontainer) Signal(signal unix.Signal) error {
 	vmmType := u.State.Annotations[annotHypervisor]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
@@ -774,7 +838,43 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 		return err
 	}
 
-	return vmm.Signal(u.State.Pid, signal)
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+
+	// The socket lives inside the monitor's rootfs, so it is reached through
+	// /proc/<pid>/root.
+	requested := false
+	if signal == unix.SIGTERM &&
+		u.UruncCfg.Monitors[vmmType].GracefulShutdown &&
+		socketPath != "" &&
+		vmm.SupportsGuestShutdown() {
+		hostPath := fmt.Sprintf("/proc/%d/root%s", u.State.Pid, socketPath)
+		if shutErr := vmm.RequestGuestShutdown(hostPath); shutErr != nil {
+			uniklog.WithError(shutErr).
+				WithField("reason", shutdownFailureReason(shutErr)).
+				Warn("graceful shutdown failed, forwarding signal")
+		} else {
+			uniklog.Debug("graceful shutdown requested via control socket")
+			requested = true
+		}
+	} else if signal == unix.SIGTERM && u.UruncCfg.Monitors[vmmType].GracefulShutdown {
+		uniklog.Debug("graceful shutdown enabled but not supported by this monitor, forwarding signal")
+	}
+
+	if !requested {
+		if err = vmm.Signal(u.State.Pid, signal); err != nil {
+			return err
+		}
+	}
+
+	// A stop calls kill with SIGTERM and never runs Delete, so the socket is
+	// removed here too. Best-effort: a failure must not fail the signal.
+	if (signal == unix.SIGKILL || signal == unix.SIGTERM) && socketPath != "" && vmm.SupportsControlSocket() {
+		if rmErr := u.removeControlSocket(socketPath); rmErr != nil {
+			uniklog.Warnf("failed to remove control socket: %v", rmErr)
+		}
+	}
+
+	return nil
 }
 
 // Kill stops the VMM process, first by asking the VMM struct to stop
@@ -881,6 +981,14 @@ func (u *Unikontainer) Delete() error {
 		}
 		dirs = append(dirs, vmm.Path())
 		prefPath = rootfsDir
+	}
+
+	// Remove the control socket so a restart on the same socket_path is clean.
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+	if socketPath != "" && vmm.SupportsControlSocket() {
+		if err = u.removeControlSocket(socketPath); err != nil {
+			return fmt.Errorf("failed to remove control socket: %w", err)
+		}
 	}
 
 	err = rmMultipleDirs(prefPath, dirs)
