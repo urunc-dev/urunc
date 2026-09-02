@@ -73,7 +73,6 @@ FROM scratch
 COPY network.hvt /unikernel/network.hvt
 
 LABEL com.urunc.unikernel.binary=/unikernel/network.hvt
-LABEL "com.urunc.unikernel.cmdline"=""
 LABEL "com.urunc.unikernel.unikernelType"="mirage"
 LABEL "com.urunc.unikernel.hypervisor"="hvt"
 LABEL "com.urunc.unikernel.mountRootfs"="false"

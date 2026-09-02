@@ -175,10 +175,10 @@ COPY redis.hvt /unikernel/redis.hvt
 COPY redis.conf /conf/redis.conf
 
 LABEL com.urunc.unikernel.binary=/unikernel/redis.hvt
-LABEL "com.urunc.unikernel.cmdline"="redis-server /data/conf/redis.conf"
 LABEL "com.urunc.unikernel.unikernelType"="rumprun"
 LABEL "com.urunc.unikernel.hypervisor"="hvt"
 LABEL "com.urunc.unikernel.mountRootfs"="true"
+CMD ["redis-server", "/data/conf/redis.conf"]
 
 ```
 
@@ -314,9 +314,9 @@ COPY rootfs.cpio /unikernel/rootfs.cpio
 
 LABEL "com.urunc.unikernel.binary"=/unikernel/kernel
 LABEL "com.urunc.unikernel.initrd"="/unikernel/rootfs.cpio"
-LABEL "com.urunc.unikernel.cmdline"="/chttp"
 LABEL "com.urunc.unikernel.unikernelType"="unikraft"
 LABEL "com.urunc.unikernel.hypervisor"="qemu"
+CMD ["/chttp"]
 ```
 
 In the above file:
