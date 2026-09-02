@@ -20,6 +20,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 // TODO: Find and set the correct size for the tmpfs in the host
@@ -29,6 +30,7 @@ type initrdRootfs struct {
 	mounts             []specs.Mount
 	monRootfs          string
 	initrdHostFullPath string
+	guestType          string
 }
 
 func (i initrdRootfs) preSetup() error {
@@ -36,7 +38,12 @@ func (i initrdRootfs) preSetup() error {
 }
 
 func (i initrdRootfs) postSetup() error {
-	err := initrd.CopyFileMountsToInitrd(i.initrdHostFullPath, i.mounts)
+	var err error
+	if i.guestType == unikernels.UnikraftUnikernel {
+		err = initrd.MergeFileMountsIntoInitrd(i.initrdHostFullPath, i.mounts)
+	} else {
+		err = initrd.CopyFileMountsToInitrd(i.initrdHostFullPath, i.mounts)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to update guest's initrd: %w", err)
 	}

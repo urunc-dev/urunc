@@ -430,6 +430,7 @@ func (u *Unikontainer) newRootfsBuilder(rootfsParams types.RootfsParams, unikern
 			mounts:             u.Spec.Mounts,
 			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
 			monRootfs:          rootfsParams.MonRootfs,
+			guestType:          u.State.Annotations[annotType],
 		}
 	case "virtiofs", "9pfs":
 		return sharedfsRootfs{

@@ -439,3 +439,5 @@ Readonlyfs
 capab
 werr
 cerr
+inodes
+newc

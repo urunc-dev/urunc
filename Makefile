@@ -237,7 +237,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics test_network test_hypervisors test_unikernels
+unittest: test_unikontainers test_initrd test_metrics test_network test_hypervisors test_unikernels
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -247,6 +247,13 @@ e2etest: test_nerdctl test_ctr test_crictl test_docker
 test_unikontainers:
 	@echo "Unit testing in unikontainers"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers -v
+	@echo " "
+
+## test_initrd Run unit tests for initrd package
+.PHONY: test_initrd
+test_initrd:
+	@echo "Unit testing in initrd"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/initrd -v
 	@echo " "
 
 ## test_metrics Run unit tests for metrics package
