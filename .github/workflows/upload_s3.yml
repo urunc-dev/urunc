@@ -2,24 +2,11 @@ name: Upload to S3
 
 on:
   workflow_call:
-    inputs:
-      ref:
-        required: true
-        type: string
-        default: ''
     secrets:
       AWS_ACCESS_KEY:
         required: true
       AWS_SECRET_ACCESS_KEY:
         required: true
-
-
-  workflow_dispatch:
-    inputs:
-      ref:
-        required: true
-        type: string
-        default: ''
 
 permissions:
   contents: read
@@ -42,36 +29,6 @@ jobs:
       with:
         egress-policy: audit
 
-    - name: Get revision SHA and branch (safe)
-      id: get-rev
-      env:
-        EVENT_NAME: ${{ github.event_name }}
-        IS_MERGED: ${{ github.event.pull_request.merged }}
-        GITHUB_SHA: ${{ github.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-        REF_NAME: ${{ github.ref_name }}
-      run: |
-        if [ "$EVENT_NAME" == "pull_request" ]; then
-          if [ "$IS_MERGED" == "true" ]; then
-            sha="$GITHUB_SHA"
-            branch="$PR_BASE_REF"
-            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
-          else
-            sha="$PR_HEAD_SHA"
-            branch="$PR_HEAD_REF"
-            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
-          fi
-        else
-          sha="$GITHUB_SHA"
-          branch="$REF_NAME"
-          echo "$EVENT_NAME event. SHA: ${sha}, Branch: ${branch}"
-        fi
-
-        echo "sha=${sha}" >> "$GITHUB_ENV"
-        echo "branch=${branch}" >> "$GITHUB_ENV"
-
     - name: Download urunc artifact
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
@@ -91,7 +48,7 @@ jobs:
         access-key: ${{ secrets.AWS_ACCESS_KEY }}
         secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         local-path: urunc_static_${{ matrix.arch }}
-        remote-path: nbfc-assets/github/urunc/dist/${{ env.branch }}/${{ matrix.arch }}/
+        remote-path: nbfc-assets/github/urunc/dist/${{ github.ref_name }}/${{ matrix.arch }}/
         policy: 1
 
     - name: Upload containerd-shim-urunc-v2 to S3
@@ -101,5 +58,5 @@ jobs:
         access-key: ${{ secrets.AWS_ACCESS_KEY }}
         secret-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         local-path: containerd-shim-urunc-v2_static_${{ matrix.arch }}
-        remote-path: nbfc-assets/github/urunc/dist/${{ env.branch }}/${{ matrix.arch }}/
+        remote-path: nbfc-assets/github/urunc/dist/${{ github.ref_name }}/${{ matrix.arch }}/
         policy: 1

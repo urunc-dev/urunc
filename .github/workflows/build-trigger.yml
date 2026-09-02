@@ -60,7 +60,6 @@ jobs:
     uses: ./.github/workflows/build-latest.yml
     secrets: inherit
     with:
-      runner: '["base", "dind", "2204"]'
       runner-archs: '["amd64", "arm64"]'
       dockerfiles: 'deployment/urunc-deploy/Dockerfile'
       version-tag: ${{ needs.get-changed-files.outputs.version == 'true' }}

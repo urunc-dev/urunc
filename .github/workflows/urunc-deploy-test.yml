@@ -5,12 +5,6 @@ on:
       ref:
         type: string
         default: ""
-      runner-archs:
-        type: string
-        default: '["amd64", "arm64"]'
-      runner-arch-map:
-        type: string
-        default: '[{"amd64":"x86_64","arm64":"aarch64"}]'
       runc_version:
         required: true
         type: string

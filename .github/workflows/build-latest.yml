@@ -3,18 +3,12 @@ name: 🍜 Build/publish urunc-deploy image
 on:
   workflow_call:
     inputs:
-      runner:
-        type: string
-        default: '["base", "dind", "2204"]'
       runner-archs:
         type: string
         default: '["amd64", "aarch64"]'
       dockerfiles:
         type: string
         default: '["Dockerfile"]'
-      runner-arch-map:
-        type: string
-        default: '[{"amd64":"x86_64", "aarch64":"aarch64", "armv7l":"armv7l"}]'
       registry:
         type: string
         default: 'ghcr.io'
@@ -57,9 +51,6 @@ jobs:
       - name: Checkout the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set short SHA
-        run: echo "SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
@@ -78,36 +69,6 @@ jobs:
           tags: |
             type=sha,prefix=${{ env.ARCH }}-
 
-      - name: Get revision SHA and branch (safe)
-        id: get-rev
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          IS_MERGED: ${{ github.event.pull_request.merged }}
-          GITHUB_SHA: ${{ github.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [ "$EVENT_NAME" == "pull_request" ]; then
-            if [ "$IS_MERGED" == "true" ]; then
-              sha="$GITHUB_SHA"
-              branch="$PR_BASE_REF"
-              echo "PR merged. SHA: ${sha}, Branch: ${branch}"
-            else
-              sha="$PR_HEAD_SHA"
-              branch="$PR_HEAD_REF"
-              echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
-            fi
-          else
-            sha="$GITHUB_SHA"
-            branch="$REF_NAME"
-            echo "$EVENT_NAME event. SHA: ${sha}, Branch: ${branch}"
-          fi
-
-          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
- 
       - name: Build and push urunc-deploy-${{ matrix.arch}}
         id: build-and-push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # master
@@ -118,15 +79,9 @@ jobs:
           push: true
           file: ${{ inputs.dockerfiles }}
           build-args: |
-            BRANCH=${{ steps.get-rev.outputs.branch }}
+            BRANCH=${{ github.ref_name }}
             REPO=${{ github.repository }}
           provenance: false
- 
-      - name: Get image digest
-        run: |
-          echo "IMAGE_DIGEST=$(docker inspect \
-          ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.ARCH }}-${{ env.SHA_SHORT }} | \
-          jq -r '.[0].Id')" >> $GITHUB_ENV
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # main
