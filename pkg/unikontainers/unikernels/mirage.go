@@ -24,12 +24,12 @@ import (
 const MirageUnikernel string = "mirage"
 
 type Mirage struct {
-	Command    string
-	Monitor    string
-	Net        MirageNet
-	Block      []MirageBlock
-	netDevName string
-	blkDevName string
+	Command     string
+	Monitor     string
+	Net         MirageNet
+	Block       []MirageBlock
+	netDevName  string
+	blkDevNames []string
 }
 
 type MirageNet struct {
@@ -73,22 +73,24 @@ func (m *Mirage) MonitorBlockCli() []types.MonitorBlockArgs {
 	}
 	switch m.Monitor {
 	case "hvt", "spt":
-		// TODO: Explore options for multiple block devices in MirageOS
-		// over Solo5-spt and Solo5-hvt. Solo5 expects to use as an ID
-		// a specific name which the guest is also aware of in order to
-		// attach the respective block. As a result, urunc needs to know
-		// the correct ID to set, which is not straightforward. Therefore,
-		// there are two options. Either we read the Solo5 manifest or,
-		// we require specific IDs. Till we decide about that, we will
-		// use a single block device. We also need to find some use cases
-		// where multiple block devices are configured in MirageOS and check
-		// how MirageOS handles/configures them.
-		return []types.MonitorBlockArgs{
-			{
-				ID:   m.blkDevName,
-				Path: m.Block[0].HostPath,
-			},
+		// Solo5 attaches each block device using an ID that the guest
+		// also knows from its manifest. Image builders declare those IDs
+		// at build time through the solo5BlkDev annotation as an ordered
+		// comma separated list, which we map positionally onto the block
+		// devices here. When no ID is given for a device, we fall back to
+		// the historical default of "storage".
+		args := make([]types.MonitorBlockArgs, 0, len(m.Block))
+		for i, blk := range m.Block {
+			id := "storage"
+			if i < len(m.blkDevNames) {
+				id = m.blkDevNames[i]
+			}
+			args = append(args, types.MonitorBlockArgs{
+				ID:   id,
+				Path: blk.HostPath,
+			})
 		}
+		return args
 	default:
 		return nil
 	}
@@ -136,9 +138,11 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 		m.netDevName = "service"
 	}
 	if data.BlkDevName != "" {
-		m.blkDevName = data.BlkDevName
-	} else {
-		m.blkDevName = "storage"
+		names := strings.Split(data.BlkDevName, ",")
+		for i := range names {
+			names[i] = strings.TrimSpace(names[i])
+		}
+		m.blkDevNames = names
 	}
 
 	return nil

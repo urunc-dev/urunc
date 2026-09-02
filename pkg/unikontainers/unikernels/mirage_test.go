@@ -125,3 +125,60 @@ func TestMirageBlkDevName(t *testing.T) {
 		assert.Equal(t, "storage", args[0].ID)
 	})
 }
+
+func TestMirageMultipleBlkDevs(t *testing.T) {
+	t.Run("maps an ordered id list positionally to block devices", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{
+			Monitor:    "hvt",
+			BlkDevName: "storage,data",
+			Block: []types.BlockDevParams{
+				{Source: "/path/to/rootfs"},
+				{Source: "/path/to/data"},
+			},
+		})
+		assert.NoError(t, err)
+		args := m.MonitorBlockCli()
+		assert.Len(t, args, 2)
+		assert.Equal(t, "storage", args[0].ID)
+		assert.Equal(t, "/path/to/rootfs", args[0].Path)
+		assert.Equal(t, "data", args[1].ID)
+		assert.Equal(t, "/path/to/data", args[1].Path)
+	})
+
+	t.Run("trims whitespace around each id", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{
+			Monitor:    "hvt",
+			BlkDevName: "storage, data",
+			Block: []types.BlockDevParams{
+				{Source: "/a"},
+				{Source: "/b"},
+			},
+		})
+		assert.NoError(t, err)
+		args := m.MonitorBlockCli()
+		assert.Len(t, args, 2)
+		assert.Equal(t, "data", args[1].ID)
+	})
+
+	t.Run("falls back to storage for devices without an id", func(t *testing.T) {
+		t.Parallel()
+		m := &Mirage{}
+		err := m.Init(types.UnikernelParams{
+			Monitor:    "hvt",
+			BlkDevName: "storage",
+			Block: []types.BlockDevParams{
+				{Source: "/a"},
+				{Source: "/b"},
+			},
+		})
+		assert.NoError(t, err)
+		args := m.MonitorBlockCli()
+		assert.Len(t, args, 2)
+		assert.Equal(t, "storage", args[0].ID)
+		assert.Equal(t, "storage", args[1].ID)
+	})
+}

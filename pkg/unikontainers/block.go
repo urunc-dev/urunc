@@ -170,25 +170,62 @@ func copyMountfiles(targetPath string, mounts []specs.Mount) error {
 	return nil
 }
 
-func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDevParams, error) {
-	if blockImg == "" {
-		return types.BlockDevParams{}, nil
+// splitAnnotList splits an ordered comma separated annotation value into
+// trimmed elements. An empty string yields a nil slice.
+func splitAnnotList(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+// handleExplicitBlockImages parses the block image and mountpoint annotations,
+// each of which may hold an ordered comma separated list, into one
+// BlockDevParams per declared block device. Both lists must have the same
+// number of entries. A block mounted at "/" is the guest's rootfs and gets
+// the "rootfs" ID.
+func handleExplicitBlockImages(blockImgs string, mountPoints string) ([]types.BlockDevParams, error) {
+	if blockImgs == "" {
+		return nil, nil
 	}
 
-	if mountPoint == "" {
-		return types.BlockDevParams{}, fmt.Errorf("annotation for block device was set without a mountpoint")
+	paths := splitAnnotList(blockImgs)
+	mounts := splitAnnotList(mountPoints)
+	if len(paths) != len(mounts) {
+		return nil, fmt.Errorf("block images (%d) and mount points (%d) must have the same count",
+			len(paths), len(mounts))
 	}
 
-	id := ""
-	if mountPoint == "/" {
-		id = "rootfs"
+	// A block device mounted at "/" is the guest rootfs, resolved elsewhere
+	// through a path that does not parse lists, so mixing it with others
+	// would silently drop it. Empty entries shift the rest onto wrong IDs.
+	for i, path := range paths {
+		if path == "" || mounts[i] == "" {
+			return nil, fmt.Errorf("block image and mount point entries can not be empty")
+		}
+		if mounts[i] == "/" && len(paths) > 1 {
+			return nil, fmt.Errorf("a block device mounted at / can not be combined with other block devices")
+		}
 	}
 
-	return types.BlockDevParams{
-		Source:     blockImg,
-		MountPoint: mountPoint,
-		ID:         id,
-	}, nil
+	blocks := make([]types.BlockDevParams, 0, len(paths))
+	for i, path := range paths {
+		id := ""
+		if mounts[i] == "/" {
+			id = "rootfs"
+		}
+		blocks = append(blocks, types.BlockDevParams{
+			Source:     path,
+			MountPoint: mounts[i],
+			ID:         id,
+		})
+	}
+
+	return blocks, nil
 }
 
 // Search all the mount entries in the container's config and
