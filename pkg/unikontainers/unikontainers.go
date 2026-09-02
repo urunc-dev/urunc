@@ -521,9 +521,6 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		Rootfs:     rootfsParams,
 		Block:      monRes.BlockArgs,
 	}
-	if len(guest.CmdLine) == 0 {
-		guest.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
-	}
 
 	if rootfsParams.Type == "virtiofs" || rootfsParams.Type == "9pfs" {
 		// Update the paths of the files we need to pass in the monitor process.

@@ -31,7 +31,6 @@ func TestGetConfigFromSpec(t *testing.T) {
 		spec := &specs.Spec{
 			Annotations: map[string]string{
 				annotType:          "type1",
-				annotCmdLine:       "cmd1",
 				annotBinary:        "binary1",
 				annotHypervisor:    "hypervisor1",
 				annotInitrd:        "initrd1",
@@ -46,7 +45,6 @@ func TestGetConfigFromSpec(t *testing.T) {
 		expectedConfig := &UnikernelConfig{
 			UnikernelBinary: "binary1",
 			UnikernelType:   "type1",
-			UnikernelCmd:    "cmd1",
 			Hypervisor:      "hypervisor1",
 			Initrd:          "initrd1",
 			Block:           "block1",
@@ -104,7 +102,6 @@ func TestGetConfigFromJSON(t *testing.T) {
 		expectedConfig := &UnikernelConfig{
 			UnikernelBinary: "binary1",
 			UnikernelType:   "type1",
-			UnikernelCmd:    "cmd1",
 			Hypervisor:      "hypervisor1",
 			Initrd:          "initrd1",
 			Block:           "block1",
@@ -185,14 +182,12 @@ func TestDecode(t *testing.T) {
 	t.Run("decode success", func(t *testing.T) {
 		t.Parallel()
 		// Prepare the encoded values
-		encodedCmd := base64.StdEncoding.EncodeToString([]byte("testCmd"))
 		encodedHypervisor := base64.StdEncoding.EncodeToString([]byte("testHypervisor"))
 		encodedType := base64.StdEncoding.EncodeToString([]byte("testType"))
 		encodedBinary := base64.StdEncoding.EncodeToString([]byte("testBinary"))
 		encodedInitrd := base64.StdEncoding.EncodeToString([]byte("testInitrd"))
 
 		config := &UnikernelConfig{
-			UnikernelCmd:    encodedCmd,
 			Hypervisor:      encodedHypervisor,
 			UnikernelType:   encodedType,
 			UnikernelBinary: encodedBinary,
@@ -204,7 +199,6 @@ func TestDecode(t *testing.T) {
 
 		// Assert that no error occurred and the values are decoded correctly
 		assert.NoError(t, err)
-		assert.Equal(t, "testCmd", config.UnikernelCmd)
 		assert.Equal(t, "testHypervisor", config.Hypervisor)
 		assert.Equal(t, "testType", config.UnikernelType)
 		assert.Equal(t, "testBinary", config.UnikernelBinary)
@@ -217,7 +211,6 @@ func TestDecode(t *testing.T) {
 		invalidBase64 := "invalid-base64"
 
 		config := &UnikernelConfig{
-			UnikernelCmd:    invalidBase64,
 			Hypervisor:      invalidBase64,
 			UnikernelType:   invalidBase64,
 			UnikernelBinary: invalidBase64,
@@ -237,7 +230,6 @@ func TestMap(t *testing.T) {
 		config := &UnikernelConfig{
 			UnikernelBinary: "binary_value",
 			UnikernelType:   "type_value",
-			UnikernelCmd:    "cmd_value",
 			Hypervisor:      "hypervisor_value",
 			Initrd:          "initrd_value",
 			Block:           "block_value",
@@ -247,7 +239,6 @@ func TestMap(t *testing.T) {
 			BlkDev:          "blkdev_value",
 		}
 		expectedMap := map[string]string{
-			annotCmdLine:       "cmd_value",
 			annotType:          "type_value",
 			annotHypervisor:    "hypervisor_value",
 			annotBinary:        "binary_value",
@@ -266,7 +257,6 @@ func TestMap(t *testing.T) {
 		config := &UnikernelConfig{
 			UnikernelBinary: "",
 			UnikernelType:   "",
-			UnikernelCmd:    "",
 			Hypervisor:      "",
 			Initrd:          "",
 			Block:           "",
@@ -282,7 +272,6 @@ func TestMap(t *testing.T) {
 		config := &UnikernelConfig{
 			UnikernelBinary: "binary_value",
 			UnikernelType:   "",
-			UnikernelCmd:    "cmd_value",
 			Hypervisor:      "",
 			Initrd:          "initrd_value",
 			Block:           "",
@@ -290,7 +279,6 @@ func TestMap(t *testing.T) {
 			MountRootfs:     "0",
 		}
 		expectedMap := map[string]string{
-			annotCmdLine:       "cmd_value",
 			annotBinary:        "binary_value",
 			annotInitrd:        "initrd_value",
 			annotBlockMntPoint: "point_value",

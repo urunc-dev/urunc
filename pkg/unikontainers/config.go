@@ -39,7 +39,6 @@ const (
 	annotType          = "com.urunc.unikernel.unikernelType"
 	annotVersion       = "com.urunc.unikernel.unikernelVersion"
 	annotBinary        = "com.urunc.unikernel.binary"
-	annotCmdLine       = "com.urunc.unikernel.cmdline"
 	annotHypervisor    = "com.urunc.unikernel.hypervisor"
 	annotInitrd        = "com.urunc.unikernel.initrd"
 	annotBlock         = "com.urunc.unikernel.block"
@@ -53,7 +52,6 @@ const (
 type UnikernelConfig struct {
 	UnikernelType    string `json:"com.urunc.unikernel.unikernelType"`
 	UnikernelVersion string `json:"com.urunc.unikernel.unikernelVersion"`
-	UnikernelCmd     string `json:"com.urunc.unikernel.cmdline,omitempty"`
 	UnikernelBinary  string `json:"com.urunc.unikernel.binary"`
 	Hypervisor       string `json:"com.urunc.unikernel.hypervisor"`
 	Initrd           string `json:"com.urunc.unikernel.initrd,omitempty"`
@@ -116,7 +114,6 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	unikernelType := spec.Annotations[annotType]
 	unikernelVersion := spec.Annotations[annotVersion]
-	unikernelCmd := spec.Annotations[annotCmdLine]
 	unikernelBinary := spec.Annotations[annotBinary]
 	hypervisor := spec.Annotations[annotHypervisor]
 	initrd := spec.Annotations[annotInitrd]
@@ -128,7 +125,6 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    unikernelType,
 		"unikernelVersion": unikernelVersion,
-		"unikernelCmd":     unikernelCmd,
 		"unikernelBinary":  unikernelBinary,
 		"hypervisor":       hypervisor,
 		"initrd":           initrd,
@@ -143,7 +139,6 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		UnikernelBinary:  unikernelBinary,
 		UnikernelVersion: unikernelVersion,
 		UnikernelType:    unikernelType,
-		UnikernelCmd:     unikernelCmd,
 		Hypervisor:       hypervisor,
 		Initrd:           initrd,
 		Block:            block,
@@ -183,7 +178,6 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    tryDecode(conf.UnikernelType),
 		"unikernelVersion": tryDecode(conf.UnikernelVersion),
-		"unikernelCmd":     tryDecode(conf.UnikernelCmd),
 		"unikernelBinary":  tryDecode(conf.UnikernelBinary),
 		"hypervisor":       tryDecode(conf.Hypervisor),
 		"initrd":           tryDecode(conf.Initrd),
@@ -208,13 +202,7 @@ func tryDecode(s string) string {
 
 // decode decodes the base64 encoded values of the Unikernel config
 func (c *UnikernelConfig) decode() error {
-	decoded, err := base64.StdEncoding.DecodeString(c.UnikernelCmd)
-	if err != nil {
-		return fmt.Errorf("failed to decode UnikernelCmd: %v", err)
-	}
-	c.UnikernelCmd = string(decoded)
-
-	decoded, err = base64.StdEncoding.DecodeString(c.Hypervisor)
+	decoded, err := base64.StdEncoding.DecodeString(c.Hypervisor)
 	if err != nil {
 		return fmt.Errorf("failed to decode Hypervisor: %v", err)
 	}
@@ -279,9 +267,6 @@ func (c *UnikernelConfig) decode() error {
 // Map returns a map containing the Unikernel config data
 func (c *UnikernelConfig) Map() map[string]string {
 	myMap := make(map[string]string)
-	if c.UnikernelCmd != "" {
-		myMap[annotCmdLine] = c.UnikernelCmd
-	}
 	if c.UnikernelType != "" {
 		myMap[annotType] = c.UnikernelType
 	}
