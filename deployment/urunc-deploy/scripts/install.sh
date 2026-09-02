@@ -100,7 +100,7 @@ function install_artifacts() {
 function install_urunc_config() {
     echo "Installing urunc configuration file"
     mkdir -p /host${urunc_config_dir}
-    cp /deployment/config.toml /host${urunc_config_file}
+    sed "s|qemu-system-x86_64|qemu-system-$(uname -m)|" /deployment/config.toml > /host${urunc_config_file}
     echo "urunc configuration file installed at ${urunc_config_file}"
 }
 
