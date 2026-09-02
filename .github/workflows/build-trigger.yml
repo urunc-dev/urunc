@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - 'deployment/urunc-deploy/Dockerfile'
+      - 'deployment/urunc-deploy/config.toml'
       - 'deployment/urunc-deploy/scripts/install.sh'
       - 'cmd/**'
       - 'pkg/**'
