@@ -68,6 +68,19 @@ type Unikontainer struct {
 	readyPipe *os.File
 }
 
+// requireLinuxAndRoot ensures the OCI spec has the sections urunc later
+// dereferences. Matching the shim's Root check keeps create/start validation
+// consistent across entry points.
+func requireLinuxAndRoot(spec *specs.Spec) error {
+	if spec == nil || spec.Linux == nil {
+		return fmt.Errorf("invalid OCI spec: linux section is required")
+	}
+	if spec.Root == nil {
+		return fmt.Errorf("invalid OCI spec: root section is required")
+	}
+	return nil
+}
+
 // New parses the bundle and creates a new Unikontainer object
 func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig) (*Unikontainer, error) {
 	spec, err := loadSpec(bundlePath)
@@ -75,8 +88,8 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 		return nil, err
 	}
 
-	if spec == nil || spec.Linux == nil {
-		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
+	if err := requireLinuxAndRoot(spec); err != nil {
+		return nil, err
 	}
 
 	containerName := spec.Annotations["io.kubernetes.cri.container-name"]
@@ -136,8 +149,8 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if spec == nil || spec.Linux == nil {
-		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
+	if err := requireLinuxAndRoot(spec); err != nil {
+		return nil, err
 	}
 	u.BaseDir = containerDir
 	u.RootDir = rootDir
