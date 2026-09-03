@@ -180,6 +180,17 @@ func LoadUruncConfig(path string) (*UruncConfig, error) {
 		}
 		cfg.Monitors[name] = mon
 	}
+	// Same issue for [extra_binaries.virtiofsd], the only supported extra binary today.
+	if bin, ok := cfg.ExtraBins["virtiofsd"]; ok {
+		def := defaultExtraBinConfig()["virtiofsd"]
+		if bin.Path == "" {
+			bin.Path = def.Path
+		}
+		if bin.Options == "" {
+			bin.Options = def.Options
+		}
+		cfg.ExtraBins["virtiofsd"] = bin
+	}
 
 	return cfg, nil
 }

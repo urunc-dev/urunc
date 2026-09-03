@@ -619,6 +619,20 @@ path = "/usr/bin/mon"
 		assert.Error(t, err)
 		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
 	})
+
+	t.Run("partial extra binary section keeps default options", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[extra_binaries.virtiofsd]
+path = "/opt/urunc/bin/virtiofsd"
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		virtiofsd := config.ExtraBins["virtiofsd"]
+		assert.Equal(t, "/opt/urunc/bin/virtiofsd", virtiofsd.Path)
+		assert.Equal(t, defaultExtraBinConfig()["virtiofsd"].Options, virtiofsd.Options)
+	})
 }
 
 // Note: these tests use t.Setenv and therefore must not call t.Parallel().
