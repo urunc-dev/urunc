@@ -340,3 +340,80 @@ func TestLoadSpec(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
 	})
 }
+
+func TestGetDNSServer(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected string
+	}{
+		{
+			name:     "single nameserver",
+			content:  "nameserver 10.96.0.10\n",
+			expected: "10.96.0.10",
+		},
+		{
+			name:     "first nameserver is used",
+			content:  "search svc.cluster.local\nnameserver 10.96.0.10\nnameserver 8.8.4.4\noptions ndots:5\n",
+			expected: "10.96.0.10",
+		},
+		{
+			name:     "comments are ignored",
+			content:  "# nameserver 1.1.1.1\n\n   nameserver\t192.168.1.1  \n",
+			expected: "192.168.1.1",
+		},
+		{
+			name:     "loopback nameserver is skipped",
+			content:  "nameserver 127.0.0.11\nnameserver 1.1.1.1\n",
+			expected: "1.1.1.1",
+		},
+		{
+			name:     "IPv6 nameserver is skipped",
+			content:  "nameserver fd00::1\nnameserver 1.1.1.1\n",
+			expected: "1.1.1.1",
+		},
+		{
+			name:     "invalid entries are skipped",
+			content:  "nameserver\nnameserver not-an-ip\nnameserver 1.1.1.1\n",
+			expected: "1.1.1.1",
+		},
+		{
+			name:     "no usable nameserver",
+			content:  "search svc.cluster.local\nnameserver 127.0.0.53\n",
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resolvConf := filepath.Join(t.TempDir(), "resolv.conf")
+			err := os.WriteFile(resolvConf, []byte(tc.content), 0600)
+			assert.NoError(t, err)
+			mounts := []specs.Mount{
+				{Destination: "/etc/hostname", Source: "/dummy/hostname"},
+				{Destination: "/etc/resolv.conf", Source: resolvConf},
+			}
+
+			assert.Equal(t, tc.expected, getDNSServer(mounts))
+		})
+	}
+
+	t.Run("no resolv.conf mount", func(t *testing.T) {
+		t.Parallel()
+		mounts := []specs.Mount{
+			{Destination: "/etc/hostname", Source: "/dummy/hostname"},
+		}
+
+		assert.Equal(t, "", getDNSServer(mounts))
+	})
+
+	t.Run("missing resolv.conf file", func(t *testing.T) {
+		t.Parallel()
+		mounts := []specs.Mount{
+			{Destination: "/etc/resolv.conf", Source: filepath.Join(t.TempDir(), "resolv.conf")},
+		}
+
+		assert.Equal(t, "", getDNSServer(mounts))
+	})
+}

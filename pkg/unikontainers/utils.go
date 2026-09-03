@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -387,4 +388,36 @@ func executeHook(hook specs.Hook, state []byte) error {
 	}
 
 	return nil
+}
+
+func getDNSServer(mounts []specs.Mount) string {
+	resolvConf := ""
+	for _, mount := range mounts {
+		if filepath.Clean(mount.Destination) == "/etc/resolv.conf" {
+			resolvConf = mount.Source
+			break
+		}
+	}
+	if resolvConf == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(resolvConf)
+	if err != nil {
+		uniklog.Warnf("Failed to read %s: %v", resolvConf, err)
+		return ""
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "nameserver" {
+			continue
+		}
+		addr := net.ParseIP(fields[1])
+		if addr != nil && addr.To4() != nil && !addr.IsLoopback() {
+			return addr.String()
+		}
+	}
+
+	return ""
 }

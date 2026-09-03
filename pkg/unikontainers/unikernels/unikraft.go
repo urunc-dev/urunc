@@ -27,6 +27,8 @@ import (
 const UnikraftUnikernel string = "unikraft"
 const UnikraftCompatVersion string = "0.16.1"
 
+const defaultDNSServer string = "8.8.8.8"
+
 var ErrUndefinedVersion = errors.New("version is undefined, using default version")
 var ErrVersionParsing = errors.New("failed to parse provided version, using default version")
 
@@ -107,10 +109,14 @@ func (u *Unikraft) Init(data types.UnikernelParams) error {
 	u.Monitor = data.Monitor
 	u.Command = strings.Join(data.CmdLine, " ")
 
-	return u.configureUnikraftArgs(data.Rootfs.Type, data.Net.IP, data.Net.Gateway, data.Net.Mask)
+	return u.configureUnikraftArgs(data.Rootfs.Type, data.Net.IP, data.Net.Gateway, data.Net.Mask, data.Net.DNSServer)
 }
 
-func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGateway, ethDeviceMask string) error {
+func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGateway, ethDeviceMask, dnsServer string) error {
+	if dnsServer == "" {
+		dnsServer = defaultDNSServer
+	}
+
 	setCompatArgs := func() {
 		u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
 		u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
@@ -125,7 +131,7 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	}
 
 	setCurrentArgs := func() {
-		u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":8.8.8.8"
+		u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":" + dnsServer
 		switch rootFsType {
 		case "initrd":
 			// TODO: This needs better handling. We need to revisit this

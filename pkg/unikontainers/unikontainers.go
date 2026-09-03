@@ -266,7 +266,7 @@ func (u *Unikontainer) SetRunningState() error {
 
 // SetupNet creates the sandbox's network device (tap) in the current network
 // namespace and returns its parameters; uid and gid own the tap device.
-func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
+func SetupNet(networkType string, mounts []specs.Mount, uid, gid uint32) (types.NetDevParams, error) {
 	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
 	netArgs := types.NetDevParams{}
 	netManager, err := network.NewNetworkManager(networkType)
@@ -292,6 +292,7 @@ func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
 		// virtual ethernet interface inside the namespace
 		netArgs.MAC = networkInfo.EthDevice.MAC
 		netArgs.MTU = networkInfo.EthDevice.MTU
+		netArgs.DNSServer = getDNSServer(mounts)
 	}
 
 	return netArgs, nil
@@ -618,7 +619,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Mounts, u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
