@@ -552,6 +552,10 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
 	mSpec.PreStartCmd = monRes.PreStartCmd
+	// Resolve the guest DNS server once, here in the builder shared by both the
+	// libcontainer and non-libcontainer paths, where the container mount
+	// sources are available.
+	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
 
 	return mSpec
 }
@@ -638,6 +642,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 	metrics.Capture(m.TS16)
 	withTUNTAP := netArgs.IP != ""
+	// SetupNet does not resolve DNS; carry the server resolved at spec build.
+	netArgs.DNSServer = ms.DNSServer
 	unikernelParams.Net = netArgs
 	vmmArgs.Net = netArgs
 

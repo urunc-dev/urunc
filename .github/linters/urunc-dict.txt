@@ -449,3 +449,6 @@ bhyve
 GHSA
 crxr
 hmpj
+ndots
+resolv
+dupword

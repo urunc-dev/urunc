@@ -472,6 +472,23 @@ func nerdctlTestCases() []containerTestArgs {
 			Skippable:      false,
 			TestFunc:       pingTest,
 		},
+		{
+			Image:          "harbor.nbfc.io/nubificus/urunc/dns-test-qemu-unikraft-initrd:latest",
+			Name:           "Qemu-unikraft-dns-external",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      true,
+			ExpectOut:      "github.com OK",
+			TestFunc:       matchTest,
+		},
 	}
 }
 

@@ -87,6 +87,8 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		return fmt.Errorf("failed to setup network: %w", err)
 	}
 	metrics.Capture(m.TS16)
+	// SetupNet does not resolve DNS; carry the server resolved at spec build.
+	netArgs.DNSServer = ms.DNSServer
 	ms.ExecArgs.Net = netArgs
 	ms.GuestParams.Net = netArgs
 

@@ -41,6 +41,7 @@ type monitorSpec struct {
 	ExecArgs      types.ExecArgs        `json:"execArgs"`
 	GuestParams   types.UnikernelParams `json:"guestParams"`
 	NetworkType   string                `json:"networkType"`
+	DNSServer     string                `json:"dnsServer,omitempty"`
 	User          specs.User            `json:"user"`
 	PreStartCmd   []string              `json:"preStartCmd,omitempty"`
 }
