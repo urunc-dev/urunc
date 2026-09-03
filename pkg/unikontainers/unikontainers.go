@@ -1430,6 +1430,9 @@ func (u *Unikontainer) SendMessage(message IPCMessage) error {
 func (u *Unikontainer) isRunning() bool {
 	vmmType := hypervisors.VmmType(u.State.Annotations[annotHypervisor])
 	if vmmType != hypervisors.HedgeVmm {
+		if u.State.Pid <= 0 {
+			return false
+		}
 		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
 	}
 	hedge := hypervisors.Hedge{}
