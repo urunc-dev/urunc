@@ -14,3 +14,5 @@ versions:
   kubectl: "1.30.0"
   calico: "3.28.0"
   kubernetes: "1.30"
+  includeos: "6fd33d3"
+  nix: "2.35.2"

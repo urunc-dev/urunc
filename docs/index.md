@@ -61,6 +61,7 @@ Sandbox monitors, along with the unikernels that can run on top of them.
 | [Mewz](./unikernel-support#mewz)| [Qemu](./hypervisor-support#qemu) | x86 | In-memory |
 | [Linux](./unikernel-support#linux)| [Qemu](./hypervisor-support#qemu), [Firecracker](./hypervisor-support#aws-firecracker), [Cloud-Hypervisor](./hypervisor-support#cloud-hypervisor) | x86, aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
 | [Hermit](./unikernel-support#hermit)| [Qemu](./hypervisor-support#qemu) | x86 | Initrd |
+| [IncludeOS](./unikernel-support#includeos)| [Qemu](./hypervisor-support#qemu), [Solo5-hvt](./hypervisor-support#solo5-hvt), [Solo5-spt](./hypervisor-support#solo5-spt) | x86, aarch64 | Block/Devmapper |
 
 <!-- ## urunc and the CNCF -->
 
