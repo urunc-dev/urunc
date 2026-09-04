@@ -16,6 +16,7 @@ package hypervisors
 
 import (
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -292,4 +293,46 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQemuUnikernelPathIsAlwaysOneArgvElement(t *testing.T) {
+	t.Parallel()
+
+	annotationValue := "/unikernel/app.bin -fsdev local,id=extra,path=/data " +
+		"-device virtio-9p-pci,fsdev=extra,mount_tag=data"
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+	got, err := q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: annotationValue,
+		MemSizeB:      256 * 1024 * 1024,
+	}, &fakeUnikernel{})
+	assert.NoError(t, err)
+
+	kernelIdx := slices.Index(got, "-kernel")
+	if kernelIdx == -1 || kernelIdx+1 >= len(got) {
+		t.Fatalf("-kernel must be present and followed by the kernel path, got %v", got)
+	}
+	assert.Equal(t, annotationValue, got[kernelIdx+1], "the annotation value must stay one argv element")
+	for _, flag := range []string{"-fsdev", "-device"} {
+		assert.NotContains(t, got, flag, "the annotation value must not become a separate flag")
+	}
+}
+
+func TestQemuGuestCommandIsASingleAppendValue(t *testing.T) {
+	t.Parallel()
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+	got, err := q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: testKernelPath,
+		MemSizeB:      256 * 1024 * 1024,
+		Command:       "console=ttyS0 root=/dev/vda",
+	}, &fakeUnikernel{})
+	assert.NoError(t, err)
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least -append and its value, got %v", got)
+	}
+	assert.Equal(t, "-append", got[len(got)-2])
+	assert.Equal(t, "console=ttyS0 root=/dev/vda", got[len(got)-1],
+		"qemu must receive the guest cmdline as a single element")
 }
