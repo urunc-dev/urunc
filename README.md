@@ -18,8 +18,9 @@ Welcome to `urunc`, the "runc for unikernels".
 10. [Contributing](#Contributing)
 11. [Security Policy](#security-policy)
 12. [Changelog](#changelog)
-13. [License](#Introduction)
-14. [Contact](#Introduction)
+13. [Verifying releases](#verifying-releases)
+14. [License](#Introduction)
+15. [Contact](#Introduction)
 
 ## Introduction
 
@@ -217,6 +218,35 @@ for guidelines on how to report it responsibly.
 
 See [CHANGELOG.md](https://github.com/urunc-dev/urunc/blob/main/CHANGELOG.md)
 for more information on what changed in the latest and previous releases.
+
+## Verifying releases
+
+Every release binary ships with SHA-256 checksums and
+[cosign](https://github.com/sigstore/cosign) keyless signatures (issued via
+Sigstore). You can verify a downloaded binary as follows:
+
+### 1. Verify the checksum
+
+```bash
+sha256sum -c urunc_static_amd64.sha256
+```
+
+### 2. Verify the cosign signature
+
+Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/),
+then run:
+
+```bash
+cosign verify-blob \
+  --signature urunc_static_amd64.sig \
+  --certificate urunc_static_amd64.crt \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/urunc-dev/urunc/' \
+  urunc_static_amd64
+```
+
+Replace `urunc_static_amd64` with the relevant binary name
+(`urunc_static_arm64`, `containerd-shim-urunc-v2_static_amd64`, etc.).
 
 ## License
 
