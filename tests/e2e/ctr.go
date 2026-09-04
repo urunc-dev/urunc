@@ -103,7 +103,18 @@ func (i *ctrInfo) startPod() (string, error) {
 	return "", errToolDoesNotSupport
 }
 
+func (i *ctrInfo) startSideContainers() error {
+	if len(i.testArgs.SideContainers) == 0 {
+		return nil
+	}
+	// Not supported by ctr
+	return errToolDoesNotSupport
+}
+
 func (i *ctrInfo) startContainer(detach bool) (string, error) {
+	if err := i.startSideContainers(); err != nil {
+		return "", err
+	}
 	if detach {
 		i.detached = true
 	}
@@ -111,6 +122,9 @@ func (i *ctrInfo) startContainer(detach bool) (string, error) {
 }
 
 func (i *ctrInfo) runContainer(detach bool) (string, error) {
+	if err := i.startSideContainers(); err != nil {
+		return "", err
+	}
 	cmdBase := ctrName
 	cmdBase += " run "
 	if detach {

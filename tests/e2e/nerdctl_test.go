@@ -59,6 +59,10 @@ var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 			func(tc containerTestArgs) {
 				skipMissingVolumes(tc)
 				tool = newNerdctlTool(tc)
+				if len(tc.SideContainers) > 0 {
+					runDetachedSideContainerTest(tool, tc)
+					return
+				}
 				runDetachedTest(tool, tc)
 			},
 			toTableEntries(selectTestCases(nerdctlTestCases(), true)),

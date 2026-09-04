@@ -47,6 +47,10 @@ var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 		func(tc containerTestArgs) {
 			skipMissingVolumes(tc)
 			tool = newDockerTool(tc)
+			if len(tc.SideContainers) > 0 {
+				runDetachedSideContainerTest(tool, tc)
+				return
+			}
 			runDetachedTest(tool, tc)
 		},
 		toTableEntries(dockerTestCases()),

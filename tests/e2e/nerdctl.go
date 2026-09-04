@@ -21,8 +21,9 @@ import (
 const nerdctlName = "nerdctl"
 
 type nerdctlInfo struct {
-	testArgs    containerTestArgs
-	containerID string
+	testArgs         containerTestArgs
+	containerID      string
+	sideContainerIDs []string
 }
 
 func newNerdctlTool(args containerTestArgs) *nerdctlInfo {
@@ -73,7 +74,20 @@ func (i *nerdctlInfo) startPod() (string, error) {
 }
 
 func (i *nerdctlInfo) startContainer(detach bool) (string, error) {
-	return commonStart(nerdctlName, i.containerID, detach)
+	output, err := commonStart(nerdctlName, i.containerID, detach)
+	if err != nil {
+		return output, err
+	}
+	if err := i.startSideContainers(); err != nil {
+		return output, err
+	}
+	return output, nil
+}
+
+func (i *nerdctlInfo) startSideContainers() error {
+	ids, err := commonStartSideContainers(nerdctlName, i.testArgs, i.containerID)
+	i.sideContainerIDs = ids
+	return err
 }
 
 func (i *nerdctlInfo) runContainer(detach bool) (string, error) {
@@ -81,6 +95,9 @@ func (i *nerdctlInfo) runContainer(detach bool) (string, error) {
 }
 
 func (i *nerdctlInfo) stopContainer() error {
+	if err := commonStopSideContainers(nerdctlName, i.sideContainerIDs); err != nil {
+		return err
+	}
 	output, err := commonStopContainer(nerdctlName, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
@@ -95,6 +112,9 @@ func (i *nerdctlInfo) stopPod() error {
 }
 
 func (i *nerdctlInfo) rmContainer() error {
+	if err := commonRmSideContainers(nerdctlName, i.sideContainerIDs); err != nil {
+		return err
+	}
 	output, err := commonRmContainer(nerdctlName, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {

@@ -52,6 +52,26 @@ type containerVolume struct {
 	Dest   string
 }
 
+type sideContainerNetMode string
+
+const (
+	// sideContainerNetModeNetwork joins the same named/user-defined
+	// network as the primary container (docker/nerdctl --network <name>).
+	sideContainerNetModeNetwork sideContainerNetMode = "network"
+	// sideContainerNetModeShared joins the primary container's network
+	// namespace directly, similar to containers sharing a namespace
+	// inside a Kubernetes pod (docker/nerdctl --network container:<id>).
+	sideContainerNetModeShared sideContainerNetMode = "shared"
+)
+
+type sideContainer struct {
+	Name    string
+	Image   string
+	Cli     string
+	Volumes []containerVolume
+	NetMode sideContainerNetMode
+}
+
 type containerTestArgs struct {
 	Name           string
 	Image          string
@@ -63,8 +83,9 @@ type containerTestArgs struct {
 	Memory         string
 	Cli            string
 	Volumes        []containerVolume
+	Network        string
 	StaticNet      bool
-	SideContainers []string
+	SideContainers []sideContainer
 	Skippable      bool
 	TestFunc       testMethod
 	ExpectOut      string
@@ -89,6 +110,9 @@ func commonNewContainerCmd(a containerTestArgs) string {
 	}
 	if a.Memory != "" {
 		cmdBase += fmt.Sprintf("-m %s ", a.Memory)
+	}
+	if a.Network != "" {
+		cmdBase += fmt.Sprintf("--network %s ", a.Network)
 	}
 	if a.UID != 0 && a.GID != 0 {
 		cmdBase += fmt.Sprintf("-u %d:%d ", a.UID, a.GID)
@@ -134,6 +158,72 @@ func commonCmdExecStderr(command string) (string, string, error) {
 	output := strings.TrimSpace(stdoutBuf.String())
 	errorOut := strings.TrimSpace(stderrBuf.String())
 	return output, errorOut, err
+}
+
+func commonSideContainerCmd(sc sideContainer, netArg string) string {
+	cmdBase := ""
+	if netArg != "" {
+		cmdBase += fmt.Sprintf("--network %s ", netArg)
+	}
+	for _, vol := range sc.Volumes {
+		cmdBase += fmt.Sprintf("--mount type=bind,src=%s,dst=%s ", vol.Source, vol.Dest)
+	}
+	cmdBase += "--name "
+	cmdBase += sc.Name + " "
+	cmdBase += sc.Image + " "
+	cmdBase += sc.Cli
+	return cmdBase
+}
+
+func commonRunSideContainer(tool string, sc sideContainer, netArg string) (output string, err error) {
+	cmdBase := tool + " run -d "
+	cmdBase += commonSideContainerCmd(sc, netArg)
+	return commonCmdExec(cmdBase)
+}
+
+// commonStartSideContainers starts every side container defined and
+// joining each one of them int the primary container's network per its NetMode,
+// and returns their container IDs for later cleanup.
+func commonStartSideContainers(tool string, a containerTestArgs, primaryID string) ([]string, error) {
+	var ids []string
+	for _, sc := range a.SideContainers {
+		var netArg string
+		switch sc.NetMode {
+		case sideContainerNetModeNetwork:
+			// a.Network may be "": docker/nerdctl both attach a
+			// container to the default "bridge" network when
+			// --network is omitted.
+			netArg = a.Network
+		case sideContainerNetModeShared:
+			netArg = "container:" + primaryID
+		default:
+			return ids, fmt.Errorf("side container %s has unknown network mode %q", sc.Name, sc.NetMode)
+		}
+		cID, err := commonRunSideContainer(tool, sc, netArg)
+		if err != nil {
+			return ids, fmt.Errorf("failed to start side container %s: %s -- %v", sc.Name, cID, err)
+		}
+		ids = append(ids, cID)
+	}
+	return ids, nil
+}
+
+func commonStopSideContainers(tool string, ids []string) error {
+	for _, cID := range ids {
+		if _, err := commonStopContainer(tool, cID); err != nil {
+			return fmt.Errorf("failed to stop side container %s: %v", cID, err)
+		}
+	}
+	return nil
+}
+
+func commonRmSideContainers(tool string, ids []string) error {
+	for _, cID := range ids {
+		if _, err := commonRmContainer(tool, cID); err != nil {
+			return fmt.Errorf("failed to remove side container %s: %v", cID, err)
+		}
+	}
+	return nil
 }
 
 func commonPull(tool string, image string) error {

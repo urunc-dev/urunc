@@ -66,6 +66,10 @@ var _ = Describe("Crictl", Ordered, ContinueOnFailure, func() {
 				}
 			})
 
+			if len(tc.SideContainers) > 0 {
+				runDetachedSideContainerTest(tool, tc)
+				return
+			}
 			runDetachedTest(tool, tc)
 		},
 		toTableEntries(crictlTestCases()),
