@@ -112,6 +112,7 @@ func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkIn
 			Mask:           "255.255.255.0",
 			Interface:      redirectLink.Attrs().Name, // or tap0_urunc?
 			MAC:            redirectLink.Attrs().HardwareAddr.String(),
+			MTU:            redirectLink.Attrs().MTU,
 		},
 	}, nil
 }

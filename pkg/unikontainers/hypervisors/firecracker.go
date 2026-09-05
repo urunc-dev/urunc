@@ -59,6 +59,7 @@ type FirecrackerNet struct {
 	IfaceID  string `json:"iface_id"`
 	GuestMAC string `json:"guest_mac,omitempty"`
 	HostIF   string `json:"host_dev_name"`
+	MTU      int    `json:"mtu,omitempty"`
 }
 
 type FirecrackerVSockDev struct {
@@ -146,6 +147,7 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 			IfaceID:  "net1",
 			GuestMAC: args.Net.MAC,
 			HostIF:   args.Net.TapDev,
+			MTU:      args.Net.MTU,
 		}
 		FCNet = append(FCNet, AnIF)
 	}
