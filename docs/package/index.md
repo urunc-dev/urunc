@@ -56,8 +56,6 @@ required annotations are the following:
   `cloud-hypervisor`, d) `spt`,  e) `hvt`, f) `hyperlight-unikraft`.
 - `com.urunc.unikernel.binary`: The path to the unikernel binary inside the
   container's rootfs
-- `com.urunc.unikernel.cmdline`: The application's cmdline to pass to the
-  unikernel.
 
 Except of the above, `urunc` accepts the following optional annotations:
 
@@ -186,9 +184,9 @@ COPY rootfs.cpio /unikernel/initrd
 
 LABEL "com.urunc.unikernel.binary"=/unikernel/kernel
 LABEL "com.urunc.unikernel.initrd"=/unikernel/initrd
-LABEL "com.urunc.unikernel.cmdline"="nginx -c /nginx/conf/nginx.conf"
 LABEL "com.urunc.unikernel.unikernelType"="unikraft"
 LABEL "com.urunc.unikernel.hypervisor"="qemu"
+CMD ["nginx", "-c", "/nginx/conf/nginx.conf"]
 ```
 
 ***Using bunnyfile***

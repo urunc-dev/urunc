@@ -321,11 +321,11 @@ COPY vmlinux /kernel
 COPY nginx_rootfs.ext2 /rootfs.ext2
 
 LABEL "com.urunc.unikernel.binary"="/kernel"
-LABEL "com.urunc.unikernel.cmdline"="/urunit /usr/sbin/nginx -g 'daemon off;error_log stderr debug;"
 LABEL "com.urunc.unikernel.unikernelType"="linux"
 LABEL "com.urunc.unikernel.block"="/rootfs.ext2"
 LABEL "com.urunc.unikernel.blkMntPoint"="/"
 LABEL "com.urunc.unikernel.hypervisor"="firecracker"
+CMD ["/urunit", "/usr/sbin/nginx", "-g", "daemon off;error_log stderr debug;"]
 ```
 
 We can build the container with:

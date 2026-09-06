@@ -22,7 +22,7 @@ type Unikernel interface {
 	CommandString() (string, error)
 	SupportsBlock() bool
 	SupportsFS(string) bool
-	MonitorNetCli(string, string) string
+	MonitorNetCli(string, string) []string
 	MonitorBlockCli() []MonitorBlockArgs
 	MonitorCli() MonitorCliArgs
 }
@@ -82,7 +82,7 @@ type ProcessConfig struct {
 	WorkDir string // The workdir of the process inside the guest
 }
 
-// UnikernelParams holds the data required to build the unikernels commandline
+// UnikernelParams holds the data required by the unikernels commandline
 type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
 	EnvVars    []string // The environment variables provided by the image
@@ -117,13 +117,13 @@ type ExecArgs struct {
 
 type MonitorCliArgs struct {
 	ExtraInitrd string
-	OtherArgs   string
+	OtherArgs   []string
 }
 
 type MonitorBlockArgs struct {
 	ID        string
 	Path      string
-	ExactArgs string
+	ExactArgs []string
 }
 
 // ExtraBinConfig struct is used to hold specific configuration for extra binaries

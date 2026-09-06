@@ -25,6 +25,7 @@ import (
 
 // Constants for test configuration keys and values
 const (
+	testLibcontainerKey  = "urunc_config.runtime.libcontainer"
 	testQemuMemoryKey    = "urunc_config.monitors.qemu.default_memory_mb"
 	testQemuVCPUsKey     = "urunc_config.monitors.qemu.default_vcpus"
 	testQemuBinaryKey    = "urunc_config.monitors.qemu.binary_path"
@@ -425,7 +426,7 @@ func TestUruncConfigMap(t *testing.T) {
 		assert.Equal(t, config.ExtraBins["custom"].Options, cfgMap["urunc_config.extra_binaries.custom.options"])
 	})
 
-	t.Run("empty monitors map produces empty result", func(t *testing.T) {
+	t.Run("empty monitors map produces no monitor keys", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
 			Monitors: map[string]types.MonitorConfig{},
@@ -434,10 +435,10 @@ func TestUruncConfigMap(t *testing.T) {
 		cfgMap := config.Map()
 
 		assert.NotNil(t, cfgMap)
-		assert.Empty(t, cfgMap)
+		assert.Equal(t, map[string]string{testLibcontainerKey: "false"}, cfgMap)
 	})
 
-	t.Run("empty extra binaries map produces empty result", func(t *testing.T) {
+	t.Run("empty extra binaries map produces no extra binary keys", func(t *testing.T) {
 		t.Parallel()
 		config := &UruncConfig{
 			ExtraBins: map[string]types.ExtraBinConfig{},
@@ -446,7 +447,7 @@ func TestUruncConfigMap(t *testing.T) {
 		cfgMap := config.Map()
 
 		assert.NotNil(t, cfgMap)
-		assert.Empty(t, cfgMap)
+		assert.Equal(t, map[string]string{testLibcontainerKey: "false"}, cfgMap)
 	})
 
 	t.Run("vhost true is serialized correctly", func(t *testing.T) {
@@ -525,6 +526,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.False(t, config.Log.Syslog)
 		assert.False(t, config.Timestamps.Enabled)
 		assert.Equal(t, testTimestampsPath, config.Timestamps.Destination)
+		assert.False(t, config.Runtime.Libcontainer)
 		assert.Len(t, config.Monitors, 5)
 		assert.Len(t, config.ExtraBins, 1)
 	})
@@ -616,5 +618,98 @@ path = "/usr/bin/mon"
 		config, err := LoadUruncConfig(filepath.Join(t.TempDir(), "does-not-exist.toml"))
 		assert.Error(t, err)
 		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
+	})
+
+	t.Run("partial extra binary section keeps default options", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[extra_binaries.virtiofsd]
+path = "/opt/urunc/bin/virtiofsd"
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		virtiofsd := config.ExtraBins["virtiofsd"]
+		assert.Equal(t, "/opt/urunc/bin/virtiofsd", virtiofsd.Path)
+		assert.Equal(t, defaultExtraBinConfig()["virtiofsd"].Options, virtiofsd.Options)
+	})
+}
+
+// Note: these tests use t.Setenv and therefore must not call t.Parallel().
+func TestResolveUruncConfigPath(t *testing.T) {
+	t.Run("env var unset returns default path", func(t *testing.T) {
+		t.Setenv(UruncConfigFileEnv, "")
+		assert.Equal(t, UruncConfigPath, ResolveUruncConfigPath())
+	})
+
+	t.Run("env var set overrides the path", func(t *testing.T) {
+		customPath := "/var/etc/urunc/config.toml"
+		t.Setenv(UruncConfigFileEnv, customPath)
+		assert.Equal(t, customPath, ResolveUruncConfigPath())
+	})
+}
+
+func TestRuntimeLibcontainer(t *testing.T) {
+	t.Run("absent from the config file defaults to false", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.qemu]
+default_memory_mb = 512
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+		assert.False(t, config.Runtime.Libcontainer)
+	})
+
+	t.Run("libcontainer true is honored", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[runtime]
+libcontainer = true
+`)
+
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+		assert.True(t, config.Runtime.Libcontainer)
+	})
+
+	t.Run("libcontainer false is honored", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[runtime]
+libcontainer = false
+`)
+
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+		assert.False(t, config.Runtime.Libcontainer)
+	})
+
+	t.Run("survives the round trip through state.json annotations", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[runtime]
+libcontainer = true
+`)
+
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+
+		cfgMap := config.Map()
+		assert.Equal(t, "true", cfgMap[testLibcontainerKey])
+
+		assert.True(t, UruncConfigFromMap(cfgMap).Runtime.Libcontainer)
+	})
+
+	t.Run("absent annotation defaults to false", func(t *testing.T) {
+		t.Parallel()
+		assert.False(t, UruncConfigFromMap(map[string]string{}).Runtime.Libcontainer)
+	})
+
+	t.Run("malformed annotation falls back to false", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{testLibcontainerKey: "notBool"}
+
+		assert.False(t, UruncConfigFromMap(cfgMap).Runtime.Libcontainer)
 	})
 }

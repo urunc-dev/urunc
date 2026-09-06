@@ -15,9 +15,12 @@
 package unikontainers
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
+
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -154,4 +157,30 @@ func TestRootfsSelector_ShouldMountContainerRootfs(t *testing.T) {
 			assert.Equal(t, tt.expected, got, "shouldMountContainerRootfs() mismatch")
 		})
 	}
+}
+
+func TestMonitorDeviceMode(t *testing.T) {
+	t.Run("widens a group-only device for other users", func(t *testing.T) {
+		t.Parallel()
+		// /dev/kvm on a stock host: 0660 root:kvm. Without the widening a
+		// monitor running as a non-root user gets EACCES on it.
+		assert.Equal(t, os.FileMode(0o666), monitorDeviceMode(0o660))
+	})
+
+	t.Run("leaves an already-wide device alone", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, os.FileMode(0o666), monitorDeviceMode(0o666))
+	})
+
+	t.Run("keeps the owner and group bits", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, os.FileMode(0o646), monitorDeviceMode(0o640))
+	})
+
+	t.Run("drops the file type bits", func(t *testing.T) {
+		t.Parallel()
+		// unix.Stat reports the type in the high bits; only the permission
+		// bits may reach mknod.
+		assert.Equal(t, os.FileMode(0o666), monitorDeviceMode(unix.S_IFCHR|0o660))
+	})
 }

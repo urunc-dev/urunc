@@ -52,6 +52,10 @@ CGO            := CGO_ENABLED=1
 NOCGO          := CGO_ENABLED=0
 TEST_FLAGS     := "-count=1"
 TEST_OPTS      += -timeout 20m
+# Skip the execution of a test
+#   make test_crictl SKIP="Firecracker-unikraft-httpreply-static-net"
+#   make test_crictl SKIP="Crictl.*(CaseA|CaseB)"
+GINKGO_SKIP    := $(if $(SKIP),--ginkgo.skip="$(SKIP)")
 BUILD_TAGS     ?= netgo osusergo
 
 # Linking variables
@@ -233,7 +237,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_metrics test_network test_hypervisors test_unikernels
+unittest: test_unikontainers test_initrd test_metrics test_network test_hypervisors test_unikernels
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -243,6 +247,13 @@ e2etest: test_nerdctl test_ctr test_crictl test_docker
 test_unikontainers:
 	@echo "Unit testing in unikontainers"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers -v
+	@echo " "
+
+## test_initrd Run unit tests for initrd package
+.PHONY: test_initrd
+test_initrd:
+	@echo "Unit testing in initrd"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/initrd -v
 	@echo " "
 
 ## test_metrics Run unit tests for metrics package
@@ -273,56 +284,56 @@ test_unikernels:
 .PHONY: test_nerdctl
 test_nerdctl:
 	@echo "Testing nerdctl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Nerdctl"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Nerdctl" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_ctr Run all end-to-end tests with ctr
 .PHONY: test_ctr
 test_ctr:
 	@echo "Testing ctr"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Ctr"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Ctr" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_crictl Run all end-to-end tests with crictl
 .PHONY: test_crictl
 test_crictl:
 	@echo "Testing crictl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Crictl"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Crictl" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_docker Run all end-to-end tests with docker
 .PHONY: test_docker
 test_docker:
 	@echo "Testing docker"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Docker"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -run TestE2E -v --ginkgo.v --ginkgo.focus="Docker" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_nerdctl_[pattern] Run all end-to-end tests with nerdctl that match pattern
 .PHONY: test_nerdctl_%
 test_nerdctl_%:
 	@echo "Testing nerdctl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Nerdctl.*$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Nerdctl.*$*" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_ctr_[pattern] Run all end-to-end tests with ctr that match pattern
 .PHONY: test_ctr_%
 test_ctr_%:
 	@echo "Testing ctr"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Ctr.*$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Ctr.*$*" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_crictl_[pattern] Run all end-to-end tests with crictl that match pattern
 .PHONY: test_crictl_%
 test_crictl_%:
 	@echo "Testing crictl"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Crictl.*$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Crictl.*$*" $(GINKGO_SKIP)
 	@echo " "
 
 ## test_docker_[pattern] Run all end-to-end tests with docker that match pattern
 .PHONY: test_docker_%
 test_docker_%:
 	@echo "Testing docker"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Docker.*$*"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./tests/e2e -v --ginkgo.v -run TestE2E --ginkgo.focus="Docker.*$*" $(GINKGO_SKIP)
 	@echo " "
 
 ## help Show this help message

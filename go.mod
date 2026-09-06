@@ -20,6 +20,7 @@ require (
 	github.com/nubificus/hedge_cli v0.0.3
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
+	github.com/opencontainers/cgroups v0.0.4
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runc v1.3.6
 	github.com/opencontainers/runtime-spec v1.2.1
@@ -36,10 +37,12 @@ require (
 )
 
 require (
+	cyphar.com/go-pathrs v0.2.5 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Microsoft/hcsshim v0.13.0 // indirect
-	github.com/cilium/ebpf v0.21.0 // indirect
+	github.com/checkpoint-restore/go-criu/v6 v6.3.0 // indirect
+	github.com/cilium/ebpf v0.17.3 // indirect
 	github.com/containerd/cgroups/v3 v3.1.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/containerd/continuity v0.5.0 // indirect
@@ -63,11 +66,15 @@ require (
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
+	github.com/moby/sys/capability v0.4.0 // indirect
 	github.com/moby/sys/sequential v0.7.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
+	github.com/mrunalp/fileutils v0.5.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.36.0 // indirect

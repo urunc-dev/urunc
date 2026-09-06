@@ -86,8 +86,8 @@ func (u *Unikraft) SupportsFS(fsType string) bool {
 }
 
 // There is no need for any changes here yet.
-func (u *Unikraft) MonitorNetCli(_ string, _ string) string {
-	return ""
+func (u *Unikraft) MonitorNetCli(_ string, _ string) []string {
+	return nil
 }
 
 // We have not managed to make Unikraft run with block yet.

@@ -16,6 +16,7 @@ package hypervisors
 
 import (
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ import (
 // Qemu.BuildExecCmd. The three Monitor* methods are the ones the function
 // consults; the rest return zero values.
 type fakeUnikernel struct {
-	netCli     string
+	netCli     []string
 	blockCli   []types.MonitorBlockArgs
 	monitorCli types.MonitorCliArgs
 }
@@ -36,7 +37,7 @@ func (f *fakeUnikernel) Init(types.UnikernelParams) error          { return nil 
 func (f *fakeUnikernel) CommandString() (string, error)            { return "", nil }
 func (f *fakeUnikernel) SupportsBlock() bool                       { return true }
 func (f *fakeUnikernel) SupportsFS(string) bool                    { return true }
-func (f *fakeUnikernel) MonitorNetCli(string, string) string       { return f.netCli }
+func (f *fakeUnikernel) MonitorNetCli(string, string) []string     { return f.netCli }
 func (f *fakeUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return f.blockCli }
 func (f *fakeUnikernel) MonitorCli() types.MonitorCliArgs          { return f.monitorCli }
 
@@ -164,7 +165,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				Command:       testCommand,
 				Net:           types.NetDevParams{TapDev: "tap0"},
 			},
-			unikernel:      &fakeUnikernel{netCli: " -netdev user,id=net0 -device e1000,netdev=net0"},
+			unikernel:      &fakeUnikernel{netCli: []string{"-netdev", "user,id=net0", "-device", "e1000,netdev=net0"}},
 			mustContain:    []string{"-netdev user,id=net0", "-device e1000,netdev=net0"},
 			mustNotContain: []string{"-netdev tap"},
 		},
@@ -219,7 +220,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
 			},
-			unikernel:      &fakeUnikernel{blockCli: []types.MonitorBlockArgs{{ExactArgs: " -hda /custom/disk.img"}}},
+			unikernel:      &fakeUnikernel{blockCli: []types.MonitorBlockArgs{{ExactArgs: []string{"-hda", "/custom/disk.img"}}}},
 			mustContain:    []string{"-hda /custom/disk.img"},
 			mustNotContain: []string{"virtio-blk-pci"},
 		},
@@ -238,7 +239,7 @@ func TestQemuBuildExecCmd(t *testing.T) {
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
 			},
-			unikernel:   &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: " -nographic -no-reboot"}},
+			unikernel:   &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: []string{"-nographic", "-no-reboot"}}},
 			mustContain: []string{"-nographic", "-no-reboot"},
 		},
 		{
@@ -292,4 +293,46 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQemuUnikernelPathIsAlwaysOneArgvElement(t *testing.T) {
+	t.Parallel()
+
+	annotationValue := "/unikernel/app.bin -fsdev local,id=extra,path=/data " +
+		"-device virtio-9p-pci,fsdev=extra,mount_tag=data"
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+	got, err := q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: annotationValue,
+		MemSizeB:      256 * 1024 * 1024,
+	}, &fakeUnikernel{})
+	assert.NoError(t, err)
+
+	kernelIdx := slices.Index(got, "-kernel")
+	if kernelIdx == -1 || kernelIdx+1 >= len(got) {
+		t.Fatalf("-kernel must be present and followed by the kernel path, got %v", got)
+	}
+	assert.Equal(t, annotationValue, got[kernelIdx+1], "the annotation value must stay one argv element")
+	for _, flag := range []string{"-fsdev", "-device"} {
+		assert.NotContains(t, got, flag, "the annotation value must not become a separate flag")
+	}
+}
+
+func TestQemuGuestCommandIsASingleAppendValue(t *testing.T) {
+	t.Parallel()
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+	got, err := q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: testKernelPath,
+		MemSizeB:      256 * 1024 * 1024,
+		Command:       "console=ttyS0 root=/dev/vda",
+	}, &fakeUnikernel{})
+	assert.NoError(t, err)
+
+	if len(got) < 2 {
+		t.Fatalf("expected at least -append and its value, got %v", got)
+	}
+	assert.Equal(t, "-append", got[len(got)-2])
+	assert.Equal(t, "console=ttyS0 root=/dev/vda", got[len(got)-1],
+		"qemu must receive the guest cmdline as a single element")
 }

@@ -15,7 +15,6 @@
 package unikontainers
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -73,26 +72,24 @@ func (s sharedfsRootfs) getSharedDirs() (types.SharedfsParams, error) {
 	}, nil
 }
 
-func (s sharedfsRootfs) preStart() error {
+func (s sharedfsRootfs) preStartCmd() []string {
 	if s.sfsType == "9pfs" {
 		return nil
 	}
-	// Start the virtiofsd process
-	args := []string{
+	// The virtiofsd argv, with the binary itself as the first element so it can be
+	// both stored in the monitor spec and spawned later by spawnProcess.
+	argv := []string{
+		s.vfsdConfig.Path,
 		"--socket-path=/tmp/vhostqemu",
 		"--shared-dir",
 		s.sharedPath,
 	}
 
 	if s.vfsdConfig.Options != "" {
-		args = append(args, strings.Fields(s.vfsdConfig.Options)...)
+		argv = append(argv, strings.Fields(s.vfsdConfig.Options)...)
 	}
 
-	err := spawnProcess(s.vfsdConfig.Path, args)
-	if err != nil {
-		err = fmt.Errorf("failed to start virtiofsd: %w", err)
-	}
-	return err
+	return argv
 }
 
 func chooseTmpfsSize(sfsType string, mem uint64) string {

@@ -44,6 +44,8 @@ import (
 const (
 	monitorRootfsDirName     string = "monRootfs"
 	containerRootfsMountPath string = "/cntrRootfs"
+	// libcontainerDirName is the directory under urunc's root used from libcontainer
+	libcontainerDirName string = "libcontainer"
 )
 
 var uniklog = logrus.WithField("subsystem", "unikontainers")
@@ -61,6 +63,9 @@ type Unikontainer struct {
 	UruncCfg *UruncConfig
 	Listener *net.UnixListener
 	Conn     *net.UnixConn
+	// readyPipe is the read end of the libcontainer-mode ready FIFO, held by
+	// "urunc start" between opening it and reading the monitor's outcome.
+	readyPipe *os.File
 }
 
 // New parses the bundle and creates a new Unikontainer object
@@ -89,6 +94,8 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 	if err != nil {
 		return nil, ErrNotUnikernel
 	}
+
+	uniklog.Debugf("libcontainer runtime enabled: %t", cfg.Runtime.Libcontainer)
 
 	confMap := config.Map()
 
@@ -136,6 +143,7 @@ func Get(containerID string, rootDir string) (*Unikontainer, error) {
 	u.RootDir = rootDir
 	u.Spec = spec
 	u.UruncCfg = UruncConfigFromMap(state.Annotations)
+	uniklog.Debugf("libcontainer runtime enabled: %t", u.UruncCfg.Runtime.Libcontainer)
 	return u, nil
 }
 
@@ -169,26 +177,10 @@ func (u *Unikontainer) InitialSetup() error {
 	// if the respective annotation is set then, depending on the guest
 	// (supports block or 9pfs), it will use the supported option. In case
 	// both ae supported, then the block option will be used by default.
-	var rootfsParams types.RootfsParams
-
-	// Read the rootfs choice written by the shim.
-	if rootfsParamsJSON := u.Spec.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
-		if err := json.Unmarshal([]byte(rootfsParamsJSON), &rootfsParams); err != nil {
-			return fmt.Errorf("could not decode guest rootfs params: %w", err)
-		}
-	}
-
-	if rootfsParams.MonRootfs == "" {
-		rootfsParams, err = ChooseRootfs(bundleDir, rootfsDir, u.State.Annotations, u.UruncCfg)
-		if err != nil {
-			uniklog.Errorf("could not choose guest rootfs: %v", err)
-			return err
-		}
-		encoded, err := json.Marshal(rootfsParams)
-		if err != nil {
-			return err
-		}
-		u.State.Annotations[annotRootfsParams] = string(encoded)
+	rootfsParams, err := ChooseRootfs(bundleDir, rootfsDir, u.State.Annotations, u.UruncCfg)
+	if err != nil {
+		uniklog.Errorf("could not choose guest rootfs: %v", err)
+		return err
 	}
 	uniklog.WithFields(logrus.Fields{
 		"rootfs_type": rootfsParams.Type,
@@ -216,6 +208,12 @@ func (u *Unikontainer) InitialSetup() error {
 	if err != nil {
 		return err
 	}
+	monRes.Rootfs = rootfsParams
+
+	err = rfsBuilder.postSetup()
+	if err != nil {
+		return fmt.Errorf("post setup step for rootfs failed: %w", err)
+	}
 
 	u.State.Status = specs.StateCreating
 	// FIXME: should we really create this base dir
@@ -227,6 +225,17 @@ func (u *Unikontainer) InitialSetup() error {
 	err = saveMonitorResources(u.BaseDir, monRes)
 	if err != nil {
 		return fmt.Errorf("failed to store monitor resources: %w", err)
+	}
+
+	// In libcontainer mode the monitor process runs inside a dedicated rootfs and
+	// cannot reach the state directory, so everything it needs is written into that
+	// rootfs now.
+	// TODO: Switch to fifo
+	if u.UruncCfg.Runtime.Libcontainer {
+		err = u.writeMonitorSpec(rootfsParams, monRes)
+		if err != nil {
+			return fmt.Errorf("failed to store the monitor spec: %w", err)
+		}
 	}
 
 	return u.saveContainerState()
@@ -255,8 +264,9 @@ func (u *Unikontainer) SetRunningState() error {
 	return u.saveContainerState()
 }
 
-func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
-	networkType := u.getNetworkType()
+// SetupNet creates the sandbox's network device (tap) in the current network
+// namespace and returns its parameters; uid and gid own the tap device.
+func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
 	netArgs := types.NetDevParams{}
 	netManager, err := network.NewNetworkManager(networkType)
@@ -264,7 +274,7 @@ func (u *Unikontainer) SetupNet() (types.NetDevParams, error) {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
 	}
 
-	networkInfo, err := netManager.NetworkSetup(u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	networkInfo, err := netManager.NetworkSetup(uid, gid)
 	if err != nil {
 		// TODO: Handle this case better. We do not need to show an error
 		// since there was no network in the container. Therefore, we
@@ -388,6 +398,13 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 	}
 	res.Devices = append(res.Devices, blockDevs...)
 
+	res.Sharedfs, err = rfs.getSharedDirs()
+	if err != nil {
+		return res, fmt.Errorf("failed to get directories to share with sandbox: %w", err)
+	}
+
+	res.PreStartCmd = rfs.preStartCmd()
+
 	return res, nil
 }
 
@@ -413,6 +430,7 @@ func (u *Unikontainer) newRootfsBuilder(rootfsParams types.RootfsParams, unikern
 			mounts:             u.Spec.Mounts,
 			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
 			monRootfs:          rootfsParams.MonRootfs,
+			guestType:          u.State.Annotations[annotType],
 		}
 	case "virtiofs", "9pfs":
 		return sharedfsRootfs{
@@ -446,45 +464,19 @@ func monitorMemoryBytes(defaultMem uint, resources *specs.LinuxResources) uint64
 	return mem
 }
 
-// nolint:gocyclo
-func (u *Unikontainer) Exec(metrics m.Writer) error {
-	metrics.Capture(m.TS15)
+// buildMonitorSpec assembles the base MonitorSpec: everything the monitor needs
+// that can be derived from the OCI spec, the container's annotations and the
+// monitor resources gathered during InitialSetup.
+func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes monitorResources) monitorSpec {
+	var mSpec monitorSpec
 
-	// container Paths
-	// Make sure paths are clean
-	bundleDir := filepath.Clean(u.State.Bundle)
-	rootfsDir := filepath.Clean(u.Spec.Root.Path)
-	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
-	if err != nil {
-		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
-		return err
-	}
-
-	// unikernel
 	unikernelType := u.State.Annotations[annotType]
-	unikernel, err := unikernels.New(unikernelType)
-	if err != nil {
-		return err
-	}
-
-	// Vmm
 	vmmType := u.State.Annotations[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
-	if err != nil {
-		return err
-	}
-
-	// unikernelParams
 	unikernelVersion := u.State.Annotations[annotVersion]
-
-	// ExecArgs
 	unikernelPath := u.State.Annotations[annotBinary]
 	initrdPath := u.State.Annotations[annotInitrd]
 
-	// debug
 	uniklog.WithFields(logrus.Fields{
-		"bundle directory":  bundleDir,
-		"rootfs directory":  rootfsDir,
 		"vmm type":          vmmType,
 		"unikernel type":    unikernelType,
 		"unikernel version": unikernelVersion,
@@ -492,14 +484,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		"initrd Path":       initrdPath,
 	}).Debug("Initialization values")
 
-	// ExecArgs
 	defaultVCPUs := u.UruncCfg.Monitors[vmmType].DefaultVCPUs
 	if defaultVCPUs < 1 {
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
 
-	// ExecArgs
 	vmmArgs := types.ExecArgs{
 		ContainerID:   u.State.ID,
 		UnikernelPath: unikernelPath,
@@ -510,70 +500,97 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		Environment:   os.Environ(),
 	}
 
-	// ExecArgs
 	// Check if container is set to unconfined -- disable seccomp
 	if u.Spec.Linux.Seccomp == nil {
 		uniklog.Warn("Seccomp is disabled")
 		vmmArgs.Seccomp = false
 	}
 
-	procAttrs := types.ProcessConfig{
-		UID:     u.Spec.Process.User.UID,
-		GID:     u.Spec.Process.User.GID,
-		WorkDir: u.Spec.Process.Cwd,
-	}
-	// UnikernelParams
-	// populate unikernel params
-	unikernelParams := types.UnikernelParams{
-		CmdLine:    u.Spec.Process.Args,
-		EnvVars:    u.Spec.Process.Env,
-		Monitor:    vmmType,
-		Version:    unikernelVersion,
-		ProcConf:   procAttrs,
+	guest := types.UnikernelParams{
+		CmdLine: u.Spec.Process.Args,
+		EnvVars: u.Spec.Process.Env,
+		Monitor: vmmType,
+		Version: unikernelVersion,
+		ProcConf: types.ProcessConfig{
+			UID:     u.Spec.Process.User.UID,
+			GID:     u.Spec.Process.User.GID,
+			WorkDir: u.Spec.Process.Cwd,
+		},
 		NetDevName: u.State.Annotations[annotNetDev],
 		BlkDevName: u.State.Annotations[annotBlkDev],
-	}
-	if len(unikernelParams.CmdLine) == 0 {
-		unikernelParams.CmdLine = strings.Fields(u.State.Annotations[annotCmdLine])
+		Rootfs:     rootfsParams,
+		Block:      monRes.BlockArgs,
 	}
 
-	// handle network
-	netArgs, err := u.SetupNet()
+	if rootfsParams.Type == "virtiofs" || rootfsParams.Type == "9pfs" {
+		// Update the paths of the files we need to pass in the monitor process.
+		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
+		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
+	}
+	vmmArgs.Sharedfs = monRes.Sharedfs
+
+	mSpec.ContainerID = u.State.ID
+	mSpec.UnikernelType = unikernelType
+	mSpec.MonitorType = vmmType
+	mSpec.MonitorCfg = u.UruncCfg.Monitors[vmmType]
+	mSpec.ExecArgs = vmmArgs
+	mSpec.GuestParams = guest
+	mSpec.PreStartCmd = monRes.PreStartCmd
+
+	return mSpec
+}
+
+// setupMonitorRootfs prepares the monitor rootfs: it makes sure the directory
+// exists and is mounted with a propagation flag that allows a later pivot, then
+// replicates the gathered mounts and devices inside it and gives the monitor a
+// console.
+func (u *Unikontainer) setupMonitorRootfs(monRootfs string, monRes monitorResources, withTUNTAP bool) error {
+	err := os.MkdirAll(monRootfs, 0o755)
 	if err != nil {
-		uniklog.Errorf("failed to setup network: %v", err)
+		return fmt.Errorf("failed to create monitor rootfs directory %s: %w", monRootfs, err)
+	}
+
+	// Make sure that rootfs is mounted with the correct propagation
+	// flags so we can later pivot if needed.
+	err = prepareRoot(monRootfs, u.Spec.Linux.RootfsPropagation)
+	if err != nil {
 		return err
 	}
-	metrics.Capture(m.TS16)
-	withTUNTAP := netArgs.IP != ""
 
-	// UnikernelParams
-	unikernelParams.Net = netArgs
-
-	// ExecArgs
-	vmmArgs.Net = netArgs
-
-	// guest rootfs
-	// block
-	// handle guest's rootfs.
-	// There are three options:
-	// 1. No rootfs for guest
-	// 2. Use the devmapper snapshot as a block device for the guest's rootfs
-	// 3. Use 9pfs to share the container's rootfs as the guest's rootfs
-	// By default, urunc will not set any rootfs for the guest. However,
-	// if the respective annotation is set then, depending on the guest
-	// (supports block or 9pfs), it will use the supported option. In case
-	// both ae supported, then the block option will be used by default.
-	var rootfsParams types.RootfsParams
-
-	// Read the rootfs choice written by the shim.
-	if rootfsParamsJSON := u.State.Annotations[annotRootfsParams]; rootfsParamsJSON != "" {
-		if err := json.Unmarshal([]byte(rootfsParamsJSON), &rootfsParams); err != nil {
-			return fmt.Errorf("could not decode guest rootfs params: %w", err)
-		}
+	err = applyMounts(monRootfs, monRes.Mounts)
+	if err != nil {
+		return fmt.Errorf("failed to apply rootfs mounts: %w", err)
 	}
 
+	// setupDevices decides whether to create the TUN/TAP device based on the
+	// container's network configuration.
+	err = setupDevices(monRootfs, monRes.Devices, withTUNTAP)
+	if err != nil {
+		return fmt.Errorf("failed to create devices in monitor rootfs: %w", err)
+	}
+
+	err = setupConsole(monRootfs)
+	if err != nil {
+		return fmt.Errorf("failed to setup console: %w", err)
+	}
+
+	return nil
+}
+
+// nolint:gocyclo
+func (u *Unikontainer) Exec(metrics m.Writer) error {
+	metrics.Capture(m.TS15)
+
+	// The chosen guest rootfs params, together with the monitor mounts, devices
+	// and block args, were gathered and stored in monitor.json during
+	// InitialSetup. Load them back here.
+	monRes, err := loadMonitorResources(u.BaseDir)
+	if err != nil {
+		return fmt.Errorf("failed to load monitor resources: %w", err)
+	}
+	rootfsParams := monRes.Rootfs
 	if rootfsParams.MonRootfs == "" {
-		uniklog.Errorf("missing annotations from selected rootfs")
+		uniklog.Errorf("missing metadata for selected rootfs")
 		return fmt.Errorf("missing metadata for rootfs preparation")
 	}
 	uniklog.WithFields(logrus.Fields{
@@ -582,55 +599,38 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		"mon_rootfs":  rootfsParams.MonRootfs,
 	}).Debug("guest rootfs params")
 
-	rfsBuilder := u.newRootfsBuilder(rootfsParams, unikernel, unikernelPath, initrdPath, vmmArgs.MemSizeB)
-	if rootfsParams.Type == "virtiofs" || rootfsParams.Type == "9pfs" {
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
-		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-	}
+	ms := u.buildMonitorSpec(rootfsParams, monRes)
+	vmmArgs := ms.ExecArgs
+	unikernelParams := ms.GuestParams
 
-	if err = os.MkdirAll(rootfsParams.MonRootfs, 0o755); err != nil {
-		return fmt.Errorf("failed to create monitor rootfs directory %s: %w", rootfsParams.MonRootfs, err)
+	// The spec carries the monitor and unikernel by type; rebuild the behaviour
+	// objects it refers to, exactly as the monitor process does.
+	unikernel, err := unikernels.New(ms.UnikernelType)
+	if err != nil {
+		return err
 	}
-
-	// Prepare Monitor rootfs
-	// Make sure that rootfs is mounted with the correct propagation
-	// flags so we can later pivot if needed.
-	err = prepareRoot(rootfsParams.MonRootfs, u.Spec.Linux.RootfsPropagation)
+	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(ms.MonitorType), u.UruncCfg.Monitors)
 	if err != nil {
 		return err
 	}
 
-	// The monitor mounts and devices were gathered and stored in a file during
-	// InitialSetup; here we just apply them. postSetup applies the container's own
-	// bind mounts on top of the shared rootfs, and setupDevices decides whether to
-	// create the TUN/TAP device based on the container's network configuration.
-	monRes, err := loadMonitorResources(u.BaseDir)
+	// handle network
+	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
-		return fmt.Errorf("failed to load monitor resources: %w", err)
+		uniklog.Errorf("failed to setup network: %v", err)
+		return err
 	}
+	metrics.Capture(m.TS16)
+	withTUNTAP := netArgs.IP != ""
+	unikernelParams.Net = netArgs
+	vmmArgs.Net = netArgs
 
-	err = applyMounts(rootfsParams.MonRootfs, monRes.Mounts)
-	if err != nil {
-		return fmt.Errorf("failed to apply rootfs mounts: %w", err)
-	}
-
-	err = rfsBuilder.postSetup()
-	if err != nil {
-		return fmt.Errorf("post setup step for rootfs failed: %w", err)
-	}
-
-	err = setupDevices(rootfsParams.MonRootfs, monRes.Devices, withTUNTAP)
-	if err != nil {
-		return fmt.Errorf("failed to create devices in monitor rootfs: %w", err)
-	}
-
-	err = setupConsole(rootfsParams.MonRootfs)
+	err = u.setupMonitorRootfs(rootfsParams.MonRootfs, monRes, withTUNTAP)
 	if err != nil {
 		return err
 	}
-
 	metrics.Capture(m.TS17)
+
 	// vAccel setup
 	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
 	if err != nil {
@@ -664,38 +664,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		vmmArgs.VSockDevID = idToGuestCID(u.State.ID)
 	}
 
-	unikernelParams.Rootfs = rootfsParams
-
-	// unikernelParams
-	// The block parameters were gathered in InitialSetup and stored in the
-	// monitor resources file.
-	unikernelParams.Block = monRes.BlockArgs
-
-	// ExecArgs
-	sharedfsArgs, err := rfsBuilder.getSharedDirs()
-	if err != nil {
-		return fmt.Errorf("failed to get directories to share with sandbox: %w", err)
-	}
-	vmmArgs.Sharedfs = sharedfsArgs
-
-	// unikernel
-	err = unikernel.Init(unikernelParams)
-	if errors.Is(err, unikernels.ErrUndefinedVersion) ||
-		errors.Is(err, unikernels.ErrVersionParsing) {
-		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
-	} else if err != nil {
-		return err
-	}
-
 	// unikernel
 	// build the unikernel command
-	unikernelCmd, err := unikernel.CommandString()
+	vmmArgs.Command, err = buildUnikernelCommand(unikernel, unikernelParams)
 	if err != nil {
 		return err
 	}
-
-	// ExecArgs
-	vmmArgs.Command = unikernelCmd
 
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
@@ -728,35 +702,54 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
-	err = rfsBuilder.preStart()
+	err = spawnProcess(monRes.PreStartCmd)
 	if err != nil {
 		return err
 	}
 
-	uniklog.Debug("calling vmm execve")
-	metrics.Capture(m.TS18)
-
-	// Build the VMM command once and verify it can be constructed successfully.
-	// This ensures we don't report the container as started if command building fails.
+	// Build the VMM command once and verify it can be constructed successfully, so
+	// we do not report the container as started if command building fails.
 	execCmd, err := vmm.BuildExecCmd(vmmArgs, unikernel)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to build VMM command")
 		return err
 	}
 
-	// Notify urunc start that the monitor is ready to execute.
-	// We send this after BuildExecCmd succeeds to avoid reporting a container
-	// as started when the VMM command cannot be built.
-	// TODO: The container can still be reported as running if the PreExec step
-	// (e.g., BPF/seccomp filter setup) fails after this point. We should find
-	// a way to handle that case as well.
+	// Notify urunc start that the monitor is ready to execute, only after the
+	// command builds so a container is never reported started when it cannot be.
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
 	}
 
+	return execMonitor(metrics, vmm, vmmArgs, execCmd)
+}
+
+// buildUnikernelCommand initializes the unikernel with the collected parameters
+// and returns its command line.
+func buildUnikernelCommand(unikernel types.Unikernel, params types.UnikernelParams) (string, error) {
+	err := unikernel.Init(params)
+	if errors.Is(err, unikernels.ErrUndefinedVersion) ||
+		errors.Is(err, unikernels.ErrVersionParsing) {
+		uniklog.WithError(err).Error("an error occurred while initializing the unikernel")
+	} else if err != nil {
+		return "", err
+	}
+
+	return unikernel.CommandString()
+}
+
+// execMonitor runs the monitor's pre-exec setup and finally execve's the monitor.
+// It does not return on success:
+//
+// TODO: The container can still be reported as running if the PreExec step
+// (e.g., BPF/seccomp filter setup) fails after the caller reported success. We
+// should find a way to handle that case as well.
+func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execCmd []string) error {
+	uniklog.Debug("calling vmm execve")
+	metrics.Capture(m.TS18)
 	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
-	err = vmm.PreExec(vmmArgs)
+	err := vmm.PreExec(execArgs)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to perform pre-exec setup")
 		return err
@@ -764,7 +757,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Execute the VMM using the command we built earlier.
 	uniklog.WithField("command", execCmd).Debug("Ready to execve VMM")
-	return syscall.Exec(vmm.Path(), execCmd, vmmArgs.Environment) //nolint: gosec
+	return syscall.Exec(vmm.Path(), execCmd, execArgs.Environment) //nolint: gosec
 }
 
 func setupUser(user specs.User) error {
@@ -848,6 +841,15 @@ func (u *Unikontainer) Delete() error {
 		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
 	}
 
+	// In libcontainer mode, tear down the monitor's libcontainer state and cgroup.
+	// Like runc.
+	if u.UruncCfg.Runtime.Libcontainer {
+		err := u.destroyLibcontainer()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Restore the block volume mounts that were unmounted during create,
 	// so their sources become discoverable by future containers. Do it in
 	// a best-effort way, since a failure to restore a mount should not
@@ -891,11 +893,17 @@ func (u *Unikontainer) Delete() error {
 		dirs = append(dirs, monitorRootfsDirName)
 		prefPath = bundleDir
 	} else {
-		// Otherwise remove the enw directories we created inside the
-		// container's rootfs.
+		// Otherwise remove the enw directories we created and the monitor spec
+		// file inside the container's rootfs.
 		// We do not need to unmount anything here, since we rely on Linux
 		// to do the cleanup for us. This will happen automatically,
 		// when the mount namespace gets destroyed
+		err = RemoveMonitorSpec(rootfsDir)
+		// Ignore the case where the file does not exist.
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to remove the monitor spec: %w", err)
+		}
+
 		dirs = []string{
 			"/lib",
 			"/lib64",
@@ -1314,6 +1322,12 @@ func (u *Unikontainer) FormatNsenterInfo() (rdr io.Reader, retErr error) {
 // If it is not the reexec process then the listener will refer to the
 // uruncSock, the socket that holds messages from reexec to urunc instances
 func (u *Unikontainer) CreateListener(isReexec bool) error {
+	// In libcontainer mode the start side reads the monitor's outcome from a FIFO
+	// in the state dir, whose write end the monitor inherited from create.
+	if !isReexec && u.UruncCfg.Runtime.Libcontainer {
+		return u.openReadReadyPipe()
+	}
+
 	sockAddr := getUruncSockAddr(u.BaseDir)
 	if isReexec {
 		sockAddr = getReexecSockAddr(u.BaseDir)
@@ -1332,6 +1346,10 @@ func (u *Unikontainer) CreateListener(isReexec bool) error {
 
 // DestroyListener destroys an existing listener over a socket
 func (u *Unikontainer) DestroyListener(isReexec bool) error {
+	if !isReexec && u.UruncCfg.Runtime.Libcontainer {
+		return u.closeReadReadyPipe()
+	}
+
 	sockAddr := getUruncSockAddr(u.BaseDir)
 	if isReexec {
 		sockAddr = getReexecSockAddr(u.BaseDir)
@@ -1389,6 +1407,10 @@ func (u *Unikontainer) DestroyConn(isReexec bool) error {
 
 // AwaitMessage waits for a specific message in the listener of unikontainer instance
 func (u *Unikontainer) AwaitMsg(msg IPCMessage) error {
+	// In libcontainer mode the monitor reports over the ready FIFO.
+	if u.UruncCfg.Runtime.Libcontainer {
+		return u.awaitReadyPipe()
+	}
 	return AwaitMessage(u.Listener, msg)
 }
 

@@ -15,7 +15,7 @@
 package hypervisors
 
 import (
-	"fmt"
+	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -68,7 +68,8 @@ func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]str
 		cmdArgs = append(cmdArgs, "--initrd", args.InitrdPath)
 	}
 	if args.MemSizeB > 0 {
-		cmdArgs = append(cmdArgs, "--memory", fmt.Sprintf("%d", args.MemSizeB))
+		memArg := strconv.FormatUint(args.MemSizeB, 10)
+		cmdArgs = append(cmdArgs, "--memory", memArg)
 	}
 	return cmdArgs, nil
 }

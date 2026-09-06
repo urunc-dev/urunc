@@ -65,9 +65,9 @@ above `bunnyfile` to the equivalent `Containerfile`:
 FROM unikraft.org/nginx:1.15
 
 LABEL com.urunc.unikernel.binary="/unikraft/bin/kernel"
-LABEL "com.urunc.unikernel.cmdline"="nginx -c /nginx/conf/nginx.conf"
 LABEL "com.urunc.unikernel.unikernelType"="unikraft"
 LABEL "com.urunc.unikernel.hypervisor"="qemu"
+CMD ["nginx", "-c", "/nginx/conf/nginx.conf"]
 ```
 
 In the above file:

@@ -2,13 +2,25 @@
 
 ## Configuration File Location
 
-`urunc` looks for its configuration file at `/etc/urunc/config.toml`. If the file doesn't exist or contains invalid configuration, `urunc` will use sensible defaults and continue to operate normally.
+`urunc` looks for its configuration file at `/etc/urunc/config.toml` by default. The location can be overridden with the `URUNC_CONFIG_FILE` environment variable, for example `URUNC_CONFIG_FILE=/var/etc/urunc/config.toml`. If the file doesn't exist or contains invalid configuration, `urunc` will use sensible defaults and continue to operate normally.
+
+One way to set the variable is to replace the `containerd-shim-urunc-v2` binary that containerd invokes with a small wrapper script that sets it and execs the real shim. For example, move the real shim aside (e.g. to `containerd-shim-urunc-v2.real`) and save the following as `/usr/local/bin/containerd-shim-urunc-v2`:
+
+```bash
+#!/bin/bash
+URUNC_CONFIG_FILE=/some/path/config.toml exec /usr/local/bin/containerd-shim-urunc-v2.real "$@"
+```
+
+where `/some/path/config.toml` is the configuration file to use and `/usr/local/bin/containerd-shim-urunc-v2.real` is the actual shim binary.
 
 ## Configuration File Format
 
 The configuration file uses the [TOML](https://toml.io/) format and is organized into several sections:
 
 ```toml
+[runtime]
+libcontainer = false
+
 [log]
 level = "info"
 syslog = false
@@ -41,6 +53,29 @@ options = "--sandbox none"
 ```
 
 ## Configuration Sections
+
+### Runtime
+
+The `[runtime]` section controls runtime-wide behavior.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `libcontainer` | boolean | `false` | Use libcontainer to set up the monitor's execution environment |
+
+> **⚠️ Experimental:** the use of `libcontainer` to prepare the monitor execution
+> environment is under active development. It is off by default.
+
+The value is resolved when the container is created and recorded in the
+container's `state.json`, so `start`, `kill` and `delete` keep using the mode
+the container was created with even if the configuration file changes in
+between.
+
+**Example:**
+
+```toml
+[runtime]
+libcontainer = false
+```
 
 ### Log Configuration
 
@@ -112,6 +147,7 @@ Each monitor subsection supports the following options:
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
 | `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
+| `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
 
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
@@ -125,6 +161,7 @@ default_memory_mb = 1024
 default_vcpus = 4
 path = "/usr/local/bin/qemu-system-x86_64"
 data_path = "/usr/local/share/"
+vhost = false
 
 [monitors.firecracker]
 default_memory_mb = 512
@@ -155,6 +192,8 @@ Specifically for `virtiofsd` the default values are the following:
 
 - `path`: `/usr/libexec/virtiofsd`
 - `options`: `--cache always --sandbox none`
+
+> **NOTE**: Currently, in the case of libcontainer the option `--sandbox` should be set to none, due to missing capabilities inside the monitor's execution environment.
 
 **Example:**
 
