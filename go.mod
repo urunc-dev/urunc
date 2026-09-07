@@ -16,24 +16,24 @@ require (
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackpal/gateway v1.2.0
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/moby/sys/userns v0.1.0
+	github.com/moby/sys/userns v0.2.0
 	github.com/nubificus/hedge_cli v0.0.3
-	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.42.1
-	github.com/opencontainers/cgroups v0.0.4
+	github.com/onsi/ginkgo/v2 v2.32.1
+	github.com/onsi/gomega v1.43.0
+	github.com/opencontainers/cgroups v0.1.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runc v1.3.6
 	github.com/opencontainers/runtime-spec v1.2.1
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/rs/zerolog v1.35.1
-	github.com/sirupsen/logrus v1.9.4
-	github.com/stretchr/testify v1.11.1
-	github.com/urfave/cli/v3 v3.10.1
+	github.com/sirupsen/logrus v1.10.2
+	github.com/stretchr/testify v1.12.1
+	github.com/urfave/cli/v3 v3.11.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.47.0
-	google.golang.org/grpc v1.83.0
-	k8s.io/cri-api v0.36.3
+	google.golang.org/grpc v1.83.2
+	k8s.io/cri-api v0.37.0
 )
 
 require (
@@ -53,7 +53,6 @@ require (
 	github.com/containerd/platforms v1.0.0-rc.4 // indirect
 	github.com/containerd/typeurl/v2 v2.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/go-events v0.0.0-20260608200158-dbf6103125a4 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -73,17 +72,15 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/genproto v0.0.0-20260622175928-b703f567277d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260622175928-b703f567277d // indirect
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
