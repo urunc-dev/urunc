@@ -96,6 +96,24 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			},
 		},
 		{
+			// A guest cmdline that selects hvc0 gets a virtio console
+			// instead of the emulated UART on stdio.
+			name: "hvc0 guest console renders virtio console instead of UART",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       "console=hvc0 8250.nr_uarts=0 root=/dev/vda rw " + testCommand,
+			},
+			unikernel: &fakeUnikernel{},
+			mustContain: []string{
+				"-chardev stdio,id=urunc-console,signal=off",
+				"-device virtio-serial-pci",
+				"-device virtconsole,chardev=urunc-console",
+			},
+			mustNotContain: []string{
+				"-serial stdio",
+			},
+		},
+		{
 			name: "custom MemSizeB renders -m in MB",
 			args: types.ExecArgs{
 				UnikernelPath: testKernelPath,
