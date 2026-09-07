@@ -94,6 +94,12 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([
 		cmdArgs = append(cmdArgs, "--qmp", v.qmpSocket)
 	}
 
+	// Agent transport: vz-runner bridges this host unix socket to guest
+	// vsock port 1024, where urunit-agent serves exec sessions.
+	if args.AgentSockPath != "" {
+		cmdArgs = append(cmdArgs, "--agent-sock", args.AgentSockPath)
+	}
+
 	return cmdArgs, nil
 }
 

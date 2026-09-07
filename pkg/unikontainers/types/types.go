@@ -126,6 +126,7 @@ type ExecArgs struct {
 	RootfsPath         string   // The path to the rootfs directory or image (for Linux kernels on darwin)
 	BlockDevPath       string   // The path to a block device image (ext4) to attach as virtio-blk
 	LogFile            string   // The path to the log file for serial output (macOS)
+	AgentSockPath      string   // Host unix socket bridged to the in-guest urunit-agent
 	VirtiofsSocketPath string   // The path to the virtiofs socket (for shared directories)
 	VAccelType         string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
 	VSockDevPath       string   // The host directory where the fc unix socket is created
