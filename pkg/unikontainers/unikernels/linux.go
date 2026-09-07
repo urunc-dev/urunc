@@ -44,15 +44,16 @@ const (
 )
 
 type Linux struct {
-	App        string
-	Command    string
-	Monitor    string
-	Env        []string
-	Net        LinuxNet
-	Blk        []types.BlockDevParams
-	RootFsType string
-	InitrdConf bool
-	ProcConfig types.ProcessConfig
+	App           string
+	Command       string
+	Monitor       string
+	Env           []string
+	Net           LinuxNet
+	Blk           []types.BlockDevParams
+	RootFsType    string
+	InitrdConf    bool
+	ProcConfig    types.ProcessConfig
+	ContainerBoot bool
 }
 
 type LinuxNet struct {
@@ -115,7 +116,10 @@ func (l *Linux) CommandString() (string, error) {
 			l.Net.Mask)
 		bootParams += " " + netParams
 	}
-	if !l.InitrdConf {
+	if l.ContainerBoot {
+		// The per-container environment is carried in /urunc-env in the boot
+		// initrd, keeping values intact and off the kernel command line.
+	} else if !l.InitrdConf {
 		for _, eVar := range l.Env {
 			bootParams += " " + eVar
 		}
@@ -130,6 +134,9 @@ func (l *Linux) CommandString() (string, error) {
 	}
 	if !IsIPInSubnet(l.Net) {
 		bootParams += " URUNIT_DEFROUTE=1"
+	}
+	if l.ContainerBoot {
+		rdinit = "rd"
 	}
 	if l.App != "" {
 		initParams := rdinit + "init=" + l.App + " -- " + l.Command
@@ -238,6 +245,15 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	l.Env = data.EnvVars
 	l.Monitor = data.Monitor
 	l.ProcConfig = data.ProcConf
+	l.ContainerBoot = data.ContainerBoot
+	if l.ContainerBoot {
+		if l.Command != "" {
+			l.Command = l.App + " " + l.Command
+		} else {
+			l.Command = l.App
+		}
+		l.App = "/init"
+	}
 
 	// if the application contains urunit, then we assume
 	// that the init process is based on our urunit

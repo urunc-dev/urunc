@@ -340,31 +340,3 @@ func addMissingParents(w *cpio.Writer, lookupName string, existingNames map[stri
 	}
 	return nil
 }
-
-func AddFileToInitrd(oldInitrd string, data string, name string) error {
-	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("could not open %s: %w", oldInitrd, err)
-	}
-	defer f.Close()
-
-	w := cpio.NewWriter(f)
-	fileInfo := syscall.Stat_t{
-		Mode: syscall.S_IFREG | 0400,
-		Size: int64(len(data)),
-		Mtim: syscall.Timespec{Sec: time.Now().Unix()},
-		Uid:  0,
-		Gid:  0,
-	}
-	err = addInitrdRecord(w, []byte(data), &fileInfo, name, 0)
-	if err != nil {
-		return fmt.Errorf("could not add file %s to initrd: %w", name, err)
-	}
-
-	err = w.Close()
-	if err != nil {
-		return fmt.Errorf("could not close initrd: %w", err)
-	}
-
-	return nil
-}

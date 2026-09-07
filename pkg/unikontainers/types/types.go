@@ -70,8 +70,10 @@ type BlockDevParams struct {
 }
 
 type SharedfsParams struct {
-	Type string // The type of shared-fs 9p or virtiofs
-	Path string // The path in the host to share with guest
+	Type     string // The type of shared-fs 9p or virtiofs
+	Path     string // The path in the host to share with guest
+	Tag      string // Optional guest mount tag; defaults to fs0
+	ReadOnly bool   // Export the share read-only when supported
 }
 
 // SharedDirParams describes one host directory exported to the guest with a
@@ -99,17 +101,18 @@ type ProcessConfig struct {
 
 // UnikernelParams holds the data required by the unikernels commandline
 type UnikernelParams struct {
-	CmdLine    []string // The cmdline provided by the image
-	EnvVars    []string // The environment variables provided by the image
-	Monitor    string   // The monitor where guest will execute
-	Version    string   // The version of the unikernel
-	InitrdPath string   // The path to the initrd of the unikernel
-	NetDevName string   // The name of the guest network device declared at build time
-	BlkDevName string   // The name of the guest block device declared at build time
-	Net        NetDevParams
-	Block      []BlockDevParams
-	Rootfs     RootfsParams  // Information about rootfs
-	ProcConf   ProcessConfig // Information for the process execution inside the guest
+	CmdLine       []string // The cmdline provided by the image
+	EnvVars       []string // The environment variables provided by the image
+	Monitor       string   // The monitor where guest will execute
+	Version       string   // The version of the unikernel
+	InitrdPath    string   // The path to the initrd of the unikernel
+	NetDevName    string   // The name of the guest network device declared at build time
+	BlkDevName    string   // The name of the guest block device declared at build time
+	Net           NetDevParams
+	Block         []BlockDevParams
+	Rootfs        RootfsParams  // Information about rootfs
+	ProcConf      ProcessConfig // Information for the process execution inside the guest
+	ContainerBoot bool          // Use the generic initrd /init before entering a block rootfs
 }
 
 // ExecArgs holds the data required by Execve to start the VMM

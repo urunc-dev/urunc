@@ -41,8 +41,8 @@ func TestVzDarwinSharedDirReadOnly(t *testing.T) {
 	}
 }
 
-// The root shares are what the guest boots from and must stay writable
-// whatever the tagged shares ask for.
+// Legacy root shares remain writable by default. Generic container boot opts
+// into a read-only lower layer explicitly in the next test.
 func TestVzDarwinRootShareStaysWritable(t *testing.T) {
 	args := types.ExecArgs{
 		UnikernelPath: "/img/kernel",
@@ -58,5 +58,32 @@ func TestVzDarwinRootShareStaysWritable(t *testing.T) {
 	joined := strings.Join(out, " ")
 	if !strings.Contains(joined, "--share /host/root fs0") {
 		t.Errorf("root share must stay read-write:\n%s", joined)
+	}
+}
+
+func TestVzDarwinContainerBootRootShareIsTaggedReadOnly(t *testing.T) {
+	args := types.ExecArgs{
+		UnikernelPath: "/host/Image",
+		KernelPath:    "/host/Image",
+		InitrdPath:    "/instance/container-initrd",
+		Command:       "rdinit=/vz-init console=hvc0",
+		Sharedfs: types.SharedfsParams{
+			Path: "/store/ubuntu/rootfs", Tag: "rootfs", ReadOnly: true,
+		},
+	}
+	out, err := NewVzDarwin().BuildExecCmd(args, &fakeUnikernel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(out, " ")
+	for _, want := range []string{
+		"--kernel /host/Image",
+		"--initrd /instance/container-initrd",
+		"--share-ro /store/ubuntu/rootfs rootfs",
+		"--cmdline rdinit=/vz-init console=hvc0",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("expected %q in Vz command:\n%s", want, joined)
+		}
 	}
 }

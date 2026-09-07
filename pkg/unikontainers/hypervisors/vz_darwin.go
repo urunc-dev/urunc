@@ -72,7 +72,15 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([
 		// unikernel builder's cmdline (root=fs0 rootfstype=virtiofs), the same
 		// convention the QEMU backend uses, so both monitors boot the identical
 		// kernel command line.
-		cmdArgs = append(cmdArgs, "--share", args.Sharedfs.Path, "fs0")
+		flag := "--share"
+		if args.Sharedfs.ReadOnly {
+			flag = "--share-ro"
+		}
+		tag := args.Sharedfs.Tag
+		if tag == "" {
+			tag = "fs0"
+		}
+		cmdArgs = append(cmdArgs, flag, args.Sharedfs.Path, tag)
 	} else if args.RootfsPath != "" && args.InitrdPath == "" {
 		// Legacy root share: a caller that builds its own kernel command line
 		// (e.g. the macOS product with root=rootfs) passes RootfsPath instead

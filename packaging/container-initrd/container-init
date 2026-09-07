@@ -1,0 +1,160 @@
+#!/busybox sh
+# Generic container boot init (rdinit=/init).
+# Runs before the container entrypoint. The OCI image is unmodified:
+#   - block rootfs (mountRootfs=true): customer fs arrives on /dev/vda; we mount
+#     it and switch_root into it before starting the container process.
+#   - initrd rootfs: the customer fs IS this initramfs; we exec in place.
+BB=/busybox
+$BB mount -t proc     proc /proc 2>/dev/null
+$BB mount -t sysfs    sys  /sys  2>/dev/null
+$BB mount -t devtmpfs dev  /dev  2>/dev/null
+
+# HVI has no emulated wall-clock RTC. Hull stages the host epoch in the
+# initrd; apply it before package managers or TLS clients run.
+if [ -s /urunc-epoch ]; then
+  _epoch=$($BB cat /urunc-epoch)
+  case "$_epoch" in
+    ''|*[!0-9]*) ;;
+    *) $BB date -u -s "@$_epoch" >/dev/null 2>&1 ;;
+  esac
+fi
+
+# Reconstruct the container entrypoint. Prefer the out-of-band /urunc-cmd file
+# (one argv element per line, baked into this initrd by urunc) which is immune
+# to the kernel cmdline tokenizer word-splitting quoted multi-word arguments.
+# Fall back to the argv after "--" for simple entrypoints.
+if [ -f /urunc-cmd ]; then
+  set --
+  while IFS= read -r _a; do set -- "$@" "$_a"; done < /urunc-cmd
+fi
+
+# Restore the container environment (one KEY=VALUE per line). It travels here
+# rather than on the kernel cmdline because the cmdline is echoed to the console,
+# exposed through /proc/cmdline to every process in the guest.
+# The exported environment survives the switch_root exec into the entrypoint.
+if [ -f /urunc-env ]; then
+  while IFS= read -r _e; do
+    case "$_e" in ''|'#'*) continue ;; *=*) export "$_e" ;; esac
+  done < /urunc-env
+fi
+
+# Hand off to the UNMODIFIED customer entrypoint.
+if [ -b /dev/vda ]; then
+  # Block rootfs: pivot into the container filesystem.
+  $BB mkdir -p /newroot
+  if $BB mount /dev/vda /newroot 2>/dev/null || $BB mount -o ro /dev/vda /newroot 2>/dev/null; then
+    # keep the injected agents visible to a debugger inside the new root
+    # switch_root replaces the root, so the proc/sys/dev mounted above (in the
+    # initramfs) do NOT follow us into the customer filesystem. Nothing else will
+    # provide them either: the customer entrypoint is exec'd directly as PID 1,
+    # with no container runtime and no init system underneath it. Shells and
+    # coreutils do not care, which is what makes this easy to miss - but any
+    # runtime that reads /proc at startup does. JSC/mimalloc (every Bun binary,
+    # e.g. claude-code) reads /proc/self/maps and /proc/meminfo and abort()s
+    # SILENTLY without procfs: exit 134, empty stderr, every run.
+    $BB mkdir -p /newroot/proc /newroot/sys /newroot/dev
+    $BB mount -t proc     proc /newroot/proc 2>/dev/null
+    $BB mount -t sysfs    sys  /newroot/sys  2>/dev/null
+    $BB mount -t devtmpfs dev  /newroot/dev  2>/dev/null
+    $BB mkdir -p /newroot/dev/pts /newroot/dev/shm
+    $BB mount -t devpts -o gid=5,mode=0620,ptmxmode=0666 devpts /newroot/dev/pts 2>/dev/null
+    $BB mount -t tmpfs -o mode=1777 shm /newroot/dev/shm 2>/dev/null
+    $BB mkdir -p /newroot/tmp
+    $BB chmod 1777 /newroot/tmp 2>/dev/null
+    # Start the packaged static exec agent with the customer root already in
+    # effect. The copy lives only in this container's writable filesystem.
+    if [ -x /urunit-agent ]; then
+      $BB mkdir -p /newroot/run/urunc
+      $BB cp /urunit-agent /newroot/run/urunc/urunit-agent
+      $BB cp /busybox /newroot/run/urunc/busybox
+      $BB chmod 0755 /newroot/run/urunc/urunit-agent
+      $BB chmod 0755 /newroot/run/urunc/busybox
+      $BB chroot /newroot /run/urunc/busybox sh -c \
+        '/run/urunc/urunit-agent >/dev/hvc0 2>&1 &'
+      $BB rm -f /newroot/run/urunc/busybox
+    fi
+    # Same story as /proc: the runtime is handed the container's network identity
+    # as bind mounts over /etc/resolv.conf, /etc/hosts and /etc/hostname, and
+    # booting the image as a block device applies none of them - so the guest
+    # comes up with an empty resolv.conf and every name lookup fails while raw IP
+    # egress works. urunc stages them into this initrd; install them the way the
+    # bind mounts would have, i.e. the container's copy wins over the image's.
+    $BB mkdir -p /newroot/etc
+    for _f in resolv.conf hosts hostname; do
+      case "$_f" in
+        resolv.conf) _s=/urunc-resolv.conf ;;
+        hosts)       _s=/urunc-hosts ;;
+        hostname)    _s=/urunc-hostname ;;
+      esac
+      [ -s "$_s" ] && $BB cp "$_s" "/newroot/etc/$_f" 2>/dev/null
+    done
+    # Fall back to what the kernel learned by DHCP, as vz-init does. hull only
+    # stages /urunc-resolv.conf when it has a resolver to name - with a plain
+    # NAT and no gateway it has none - and without this the block guest keeps
+    # whatever the image shipped, which is usually nothing. Name resolution
+    # then fails while egress by address still works, from a file the image
+    # looks responsible for.
+    # Tested by content, not by [ -s /proc/net/pnp ]: procfs reports st_size 0
+    # for that file however much it holds, so a size test is false even when
+    # DHCP filled it in. vz-init carried the same mistake and its fallback had
+    # therefore never run once.
+    if [ ! -s /newroot/etc/resolv.conf ] && $BB grep -q '^nameserver' /proc/net/pnp 2>/dev/null; then
+      $BB grep -E '^(nameserver|domain|search)' /proc/net/pnp > /newroot/etc/resolv.conf 2>/dev/null
+    fi
+    $BB chmod 0644 /newroot/etc/resolv.conf /newroot/etc/hosts /newroot/etc/hostname 2>/dev/null
+
+    # Additional virtiofs shares, encoded by hull as
+    # tag<TAB>absolute-guest-path<TAB>ro|rw.
+    #
+    # vz-init has always mounted these; this path never did, so a block rootfs
+    # booted with --shared-dir came up with the share simply absent - no error,
+    # just an empty directory where the workspace should be. Mounted before the
+    # handoff so the entrypoint sees them, exactly as on the virtiofs path.
+    if [ -f /urunc-mounts ]; then
+      while IFS="	" read -r _tag _dest _mode; do
+        [ -n "$_tag" ] && [ -n "$_dest" ] || continue
+        $BB mkdir -p "/newroot$_dest"
+        if [ "$_mode" = ro ]; then
+          $BB mount -t virtiofs -o ro "$_tag" "/newroot$_dest" 2>/dev/null
+        else
+          $BB mount -t virtiofs "$_tag" "/newroot$_dest" 2>/dev/null
+        fi
+      done < /urunc-mounts
+    fi
+    # busybox switch_root execs the new init via execv (no PATH search), so a
+    # bare entrypoint like "bash" must be resolved to an absolute path that
+    # exists inside the customer rootfs before we hand off.
+    cmd="$1"
+    case "$cmd" in
+      /*) : ;;
+      *)  for d in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do
+            if [ -x "/newroot$d/$cmd" ]; then cmd="$d/$cmd"; break; fi
+          done ;;
+    esac
+    shift 2>/dev/null || true
+    # Hand over to urunit, not to the entrypoint: switch_root exec's whatever
+    # it is given as the new init, so an entrypoint that exits takes PID 1 with
+    # it and panics the kernel. urunit runs it as a child, reaps, syncs,
+    # unmounts and asks for power-off. See vz-init for the full reasoning.
+    if [ -x /urunit ]; then
+      $BB mkdir -p /newroot/run/urunc
+      $BB cp /urunit /newroot/run/urunc/urunit
+      $BB chmod 0755 /newroot/run/urunc/urunit
+      exec $BB switch_root /newroot /run/urunc/urunit "$cmd" "$@"
+    fi
+    exec $BB switch_root /newroot "$cmd" "$@"
+  fi
+  echo "container-init: could not mount /dev/vda; exec in place" >&2
+fi
+# When the OCI rootfs itself is the initramfs, the packaged agent already has
+# the correct root and needs no copy/chroot handoff.
+if [ -x /urunit-agent ]; then
+  /urunit-agent >/dev/hvc0 2>&1 &
+fi
+# initrd rootfs (the customer fs is this initramfs) or fallback. Same handover
+# as above: urunit keeps PID 1 alive past the entrypoint and powers the VM off
+# afterwards. No copy needed here -- we never leave this filesystem.
+if [ -x /urunit ]; then
+  exec /urunit "$@"
+fi
+exec "$@"

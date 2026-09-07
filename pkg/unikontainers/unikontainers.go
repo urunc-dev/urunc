@@ -374,6 +374,10 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			uruncJSONPath:   uruncJSONFilename,
 			guestType:       u.State.Annotations[annotType],
 			guest:           unikernel,
+			bootKernelHost:  u.Spec.Annotations[annotBootKernel],
+			bootInitrdHost:  u.Spec.Annotations[annotBootInitrd],
+			containerCmd:    u.Spec.Process.Args,
+			containerEnv:    u.Spec.Process.Env,
 		}
 	case "initrd":
 		return initrdRootfs{
@@ -472,6 +476,15 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	}
 
 	vmmArgs.Sharedfs = monRes.Sharedfs
+
+	// Generic container boot: a block rootfs booted with a host kernel and
+	// initrd staged by blockRootfs.stageContainerBootFiles. The guest gets the
+	// staged initrd, and the kernel command line is built for it.
+	if rootfsParams.Type == "block" &&
+		(u.Spec.Annotations[annotBootKernel] != "" || u.Spec.Annotations[annotBootInitrd] != "") {
+		vmmArgs.InitrdPath = containerBootInitrdPath
+		guest.ContainerBoot = true
+	}
 
 	mSpec.ContainerID = u.State.ID
 	mSpec.UnikernelType = unikernelType

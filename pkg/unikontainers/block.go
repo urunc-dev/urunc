@@ -21,6 +21,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,12 +31,22 @@ import (
 	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
 )
 
 // TODO: Find and set the correct size for the tmpfs in the host
 const tmpfsSizeForBlockRootfs = "65536k"
+
+const (
+	containerBootInitrdPath = "/boot/urunc-container-initrd"
+	containerCmdPath        = "/urunc-cmd"
+	containerEnvPath        = "/urunc-env"
+	containerResolvPath     = "/urunc-resolv.conf"
+	containerHostsPath      = "/urunc-hosts"
+	containerHostnamePath   = "/urunc-hostname"
+)
 
 var ErrMountpoint = errors.New("no FS is mounted in this mountpoint")
 
@@ -50,6 +61,10 @@ type blockRootfs struct {
 	uruncJSONPath   string
 	guestType       string
 	guest           types.Unikernel
+	bootKernelHost  string
+	bootInitrdHost  string
+	containerCmd    []string
+	containerEnv    []string
 }
 
 // getMountInfo determines whether the provided path is a mount point
@@ -178,6 +193,112 @@ func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string,
 	}
 
 	return nil
+}
+
+func (b blockRootfs) hasContainerBoot() bool {
+	return b.bootKernelHost != "" || b.bootInitrdHost != ""
+}
+
+// bootStageDir is where the host boot files are staged so that, after the
+// pivot, Exec resolves them under containerRootfsMountPath: the extraction
+// directory of a snapshot rootfs, or the container rootfs itself when that is
+// what gets bind-mounted there (explicit block image).
+func (b blockRootfs) bootStageDir() string {
+	if b.mountedPath == "" && b.containerRootfs != "" {
+		return b.containerRootfs
+	}
+	return filepath.Join(b.monRootfs, containerRootfsMountPath)
+}
+
+func (b blockRootfs) stageContainerBootFiles() error {
+	if b.bootKernelHost == "" || b.bootInitrdHost == "" {
+		return fmt.Errorf("%s and %s must be set together", annotBootKernel, annotBootInitrd)
+	}
+	if b.kernelPath == "" {
+		return fmt.Errorf("container boot requires a destination path via %s", annotBinary)
+	}
+
+	stageDir := b.bootStageDir()
+	if err := copyFile(b.bootKernelHost, filepath.Join(stageDir, b.kernelPath)); err != nil {
+		return fmt.Errorf("could not stage host boot kernel %s: %w", b.bootKernelHost, err)
+	}
+	initrdDst := filepath.Join(stageDir, containerBootInitrdPath)
+	if err := copyFile(b.bootInitrdHost, initrdDst); err != nil {
+		return fmt.Errorf("could not stage host boot initrd %s: %w", b.bootInitrdHost, err)
+	}
+	if len(b.containerCmd) > 0 {
+		if err := initrd.AddFileToInitrd(initrdDst, strings.Join(b.containerCmd, "\n")+"\n", containerCmdPath); err != nil {
+			return fmt.Errorf("could not add container command to boot initrd: %w", err)
+		}
+	}
+	if len(b.containerEnv) > 0 {
+		if err := initrd.AddFileToInitrd(initrdDst, strings.Join(b.containerEnv, "\n")+"\n", containerEnvPath); err != nil {
+			return fmt.Errorf("could not add container environment to boot initrd: %w", err)
+		}
+	}
+	return b.stageContainerNetworkFiles(initrdDst)
+}
+
+var containerNetworkFiles = map[string]string{
+	"/etc/resolv.conf": containerResolvPath,
+	"/etc/hosts":       containerHostsPath,
+	"/etc/hostname":    containerHostnamePath,
+}
+
+func (b blockRootfs) stageContainerNetworkFiles(initrdPath string) error {
+	stagedResolver := false
+	for _, m := range b.mounts {
+		dest, ok := containerNetworkFiles[m.Destination]
+		if !ok || m.Source == "" {
+			continue
+		}
+		data, err := os.ReadFile(m.Source)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		if err := initrd.AddFileToInitrd(initrdPath, string(data), dest); err != nil {
+			return fmt.Errorf("could not add %s to boot initrd: %w", m.Destination, err)
+		}
+		stagedResolver = stagedResolver || m.Destination == "/etc/resolv.conf"
+	}
+	if !stagedResolver {
+		if resolv := usableHostResolvConf(); resolv != "" {
+			return initrd.AddFileToInitrd(initrdPath, resolv, containerResolvPath)
+		}
+	}
+	return nil
+}
+
+func usableHostResolvConf() string {
+	for _, path := range []string{"/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var lines []string
+		hasNameserver := false
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			switch fields[0] {
+			case "nameserver":
+				ip := net.ParseIP(fields[1])
+				if ip == nil || ip.IsLoopback() {
+					continue
+				}
+				hasNameserver = true
+				lines = append(lines, line)
+			case "search", "options":
+				lines = append(lines, line)
+			}
+		}
+		if hasNameserver {
+			return strings.Join(lines, "\n") + "\n"
+		}
+	}
+	return ""
 }
 
 func copyMountfiles(targetPath string, mounts []specs.Mount) error {
@@ -389,27 +510,31 @@ func blockDevNodes(blockArgs []types.BlockDevParams, rootfs types.RootfsParams) 
 }
 
 func (b blockRootfs) preSetup() error {
-	if b.mountedPath == "" {
+	if b.mountedPath == "" && !b.hasContainerBoot() {
 		return nil
 	}
 
-	err := copyMountfiles(b.mountedPath, b.mounts)
-	if err != nil {
-		return fmt.Errorf("failed to copy files from mount list: %w", err)
+	if b.mountedPath != "" {
+		if err := copyMountfiles(b.mountedPath, b.mounts); err != nil {
+			return fmt.Errorf("failed to copy files from mount list: %w", err)
+		}
 	}
 
 	// Extract the boot files under containerRootfsMountPath
 	// FIXME: This approach fills up /run with unikernel binaries and
 	// urunc.json files for each unikernel instance we run
-	extractDest := filepath.Join(b.monRootfs, containerRootfsMountPath)
-	err = extractBootFiles(b.mountedPath, extractDest, b.kernelPath, b.uruncJSONPath, b.initrdPath)
-	if err != nil {
+	if b.hasContainerBoot() {
+		if err := b.stageContainerBootFiles(); err != nil {
+			return err
+		}
+	} else if err := extractBootFiles(b.mountedPath, filepath.Join(b.monRootfs, containerRootfsMountPath), b.kernelPath, b.uruncJSONPath, b.initrdPath); err != nil {
 		return fmt.Errorf("failed to extract boot files from rootfs: %w", err)
 	}
 
-	err = unmount(b.mountedPath)
-	if err != nil {
-		return fmt.Errorf("failed to unmount rootfs: %w", err)
+	if b.mountedPath != "" {
+		if err := unmount(b.mountedPath); err != nil {
+			return fmt.Errorf("failed to unmount rootfs: %w", err)
+		}
 	}
 
 	return nil

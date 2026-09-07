@@ -49,6 +49,8 @@ const (
 	annotBlock         = "com.urunc.unikernel.block"
 	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
+	annotBootKernel    = "com.urunc.unikernel.bootKernel"
+	annotBootInitrd    = "com.urunc.unikernel.bootInitrd"
 	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
 	annotBlkDev        = "com.urunc.unikernel.solo5BlkDev"
 	annotVAccel        = "com.urunc.unikernel.vAccel"

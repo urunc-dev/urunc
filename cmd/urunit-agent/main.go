@@ -67,15 +67,20 @@ func main() {
 	}
 
 	// Poll for the virtio-serial port first (QEMU); if it never shows up,
-	// fall back to vsock (Vz). Keep retrying rather than dying: the agent
-	// is started in the background early during guest boot.
+	// fall back to vsock (Vz). Vz's init path can select vsock explicitly to
+	// avoid delaying exec availability during the QEMU-oriented probe.
+	// Keep retrying rather than dying: the agent is started in the background
+	// early during guest boot.
+	vsockOnly := os.Getenv("URUNIT_AGENT_TRANSPORT") == "vsock"
 	for {
-		for i := 0; i < 25; i++ {
-			if dev := findVirtioPort(); dev != "" {
-				serveVirtioPort(dev)
-				return
+		if !vsockOnly {
+			for i := 0; i < 25; i++ {
+				if dev := findVirtioPort(); dev != "" {
+					serveVirtioPort(dev)
+					return
+				}
+				time.Sleep(200 * time.Millisecond)
 			}
-			time.Sleep(200 * time.Millisecond)
 		}
 		if err := serveVsock(); err != nil {
 			log.Printf("vsock transport unavailable: %v; retrying discovery", err)

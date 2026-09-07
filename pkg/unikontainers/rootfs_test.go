@@ -67,6 +67,13 @@ func TestRootfsSelector_TryInitrd(t *testing.T) {
 			expectedFound: false,
 		},
 		{
+			name: "host boot initrd does not become the guest rootfs",
+			annot: map[string]string{
+				annotBootInitrd: "/host/container-initrd",
+			},
+			expectedFound: false,
+		},
+		{
 			name: "initrd empty",
 			annot: map[string]string{
 				annotInitrd: "",

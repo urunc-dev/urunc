@@ -70,6 +70,21 @@ Except of the above, `urunc` accepts the following optional annotations:
 - `com.urunc.unikernel.mountRootfs`: A boolean value that if it is `true`,
   requests from `urunc` to mount the container's image rootfs in the unikernel
   (either as a block device or through shared-fs).
+- `com.urunc.unikernel.bootKernel`: A host path to the Linux kernel image used
+  to boot an otherwise unmodified container image. For HVI this must be a
+  `bzImage`; Apple Vz requires an ARM64 Linux `Image`. It is staged at the
+  guest path named by `com.urunc.unikernel.binary`.
+- `com.urunc.unikernel.bootInitrd`: A host path to the generic container-boot
+  initrd. It is supplied as early userspace while the container image remains
+  the block rootfs. `bootKernel` and `bootInitrd` must be set together and are
+  accepted only as runtime annotations, not from an image's `urunc.json`.
+  On macOS the initrd's `/vz-init` mounts the unpacked OCI rootfs from Vz's
+  `rootfs` virtiofs tag and uses it as a read-only overlay lower layer.
+  `packaging/container-initrd/build-container-initrd.sh` also cross-compiles a
+  static Linux `urunit-agent` for `TARGET_ARCH` (or accepts a prebuilt binary
+  through `URUNIT_AGENT`) and packages it in the initrd. Early init starts the
+  agent under the container root at `/run/urunc/urunit-agent`, preserving exec
+  support without adding anything to the shared OCI image directory.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container

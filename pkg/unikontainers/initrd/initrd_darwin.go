@@ -17,20 +17,10 @@
 
 package initrd
 
-import "errors"
-
 // Initrd is a stub for darwin
 type Initrd struct{}
 
 // NewInitrd creates a new Initrd (stub on darwin)
 func NewInitrd(path string) (*Initrd, error) {
 	return &Initrd{}, nil
-}
-
-// AddFileToInitrd is unsupported on darwin: the darwin runner delivers the
-// urunit config through the 9pfs/virtiofs rootfs (createFile), not by
-// rewriting a cpio initrd. Present so the shared Linux unikernel builder
-// compiles; only reached for initrd-rootfs images, which darwin does not use.
-func AddFileToInitrd(_ string, _ string, _ string) error {
-	return errors.New("initrd rewriting is not supported on darwin (use a 9pfs/virtiofs rootfs)")
 }

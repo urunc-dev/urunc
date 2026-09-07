@@ -1,0 +1,151 @@
+#!/busybox sh
+# Generic macOS virtiofs early init. Vz exports the OCI cache read-only and uses
+# a tmpfs-backed overlay. HVI can instead export Hull's per-instance APFS clone
+# read-write and mount it directly, preserving changes without charging them to
+# guest RAM or changing the cached image.
+BB=/busybox
+$BB mount -t proc proc /proc 2>/dev/null
+$BB mount -t sysfs sys /sys 2>/dev/null
+$BB mount -t devtmpfs dev /dev 2>/dev/null
+
+# Rosetta is a host-provided virtiofs share. Register its translator while the
+# initramfs path is still reachable; the F flag pins the interpreter across the
+# later switch_root. Native ARM64 containers simply omit /urunc-rosetta.
+if [ -f /urunc-rosetta ]; then
+  $BB mkdir -p /mnt/rosetta /proc/sys/fs/binfmt_misc
+  $BB mount -t virtiofs rosetta /mnt/rosetta
+  $BB mount -t binfmt_misc none /proc/sys/fs/binfmt_misc
+  $BB printf '%s' ':rosetta:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/mnt/rosetta/rosetta:OCF' > /proc/sys/fs/binfmt_misc/register
+fi
+
+$BB mkdir -p /lowerroot /newroot /run/urunc-overlay
+if [ -f /urunc-rootfs-direct ]; then
+  if ! $BB mount -t virtiofs rootfs /newroot; then
+    echo "vz-init: could not mount writable virtiofs tag rootfs" >&2
+    exec $BB sh
+  fi
+else
+  if ! $BB mount -t virtiofs rootfs /lowerroot; then
+    echo "vz-init: could not mount virtiofs tag rootfs" >&2
+    exec $BB sh
+  fi
+
+  # Virtualization.framework's virtiofs cannot perform every mutation expected
+  # by Linux package managers (notably temporary mode-000 files). Keep it as the
+  # immutable lower layer and put all guest writes in initramfs-backed tmpfs.
+  $BB mount -t tmpfs tmpfs /run/urunc-overlay
+  $BB mkdir -p /run/urunc-overlay/upper /run/urunc-overlay/work
+  if ! $BB mount -t overlay overlay \
+    -o lowerdir=/lowerroot,upperdir=/run/urunc-overlay/upper,workdir=/run/urunc-overlay/work \
+    /newroot; then
+    echo "vz-init: overlay unavailable; using virtiofs root directly" >&2
+    $BB umount /lowerroot 2>/dev/null
+    if ! $BB mount -t virtiofs rootfs /newroot; then
+      exec $BB sh
+    fi
+  fi
+fi
+
+# Reconstruct the OCI argv and environment from the private initrd copy.
+if [ -f /urunc-cmd ]; then
+  set --
+  while IFS= read -r _a; do set -- "$@" "$_a"; done < /urunc-cmd
+fi
+if [ -f /urunc-env ]; then
+  while IFS= read -r _e; do
+    case "$_e" in ''|'#'*) continue ;; *=*) export "$_e" ;; esac
+  done < /urunc-env
+fi
+
+# Recreate the standard mounts after switch_root. DHCP exposes resolver data in
+# /proc/net/pnp; copy it into the selected writable root before changing root.
+$BB mkdir -p /newroot/proc /newroot/sys /newroot/dev /newroot/tmp /newroot/etc
+$BB mount -t proc proc /newroot/proc 2>/dev/null
+$BB mount -t sysfs sys /newroot/sys 2>/dev/null
+$BB mount -t devtmpfs dev /newroot/dev 2>/dev/null
+$BB mkdir -p /newroot/dev/pts /newroot/dev/shm
+$BB mount -t devpts -o gid=5,mode=0620,ptmxmode=0666 devpts /newroot/dev/pts 2>/dev/null
+$BB mount -t tmpfs -o mode=1777 shm /newroot/dev/shm 2>/dev/null
+
+# OCI extraction onto a macOS-owned cache cannot reliably preserve Linux's
+# sticky bit (the cached /tmp commonly arrives as 0755). Container runtimes
+# normally supply a writable 01777 /tmp; recreate that contract in the rootfs
+# before an unprivileged process such as `_apt` tries to create temporary files.
+$BB chmod 1777 /newroot/tmp 2>/dev/null
+if [ -s /urunc-resolv.conf ]; then
+  $BB cp /urunc-resolv.conf /newroot/etc/resolv.conf 2>/dev/null
+elif $BB grep -q '^nameserver' /proc/net/pnp 2>/dev/null; then
+  # Not [ -s /proc/net/pnp ]: procfs reports st_size 0 for this file whatever
+  # it contains, so the size test is false even when DHCP filled it in, and
+  # this branch had never once run. The guest came up with the empty
+  # resolv.conf from the image and every name lookup failed while egress by
+  # address worked. Test for the content we actually want instead.
+  #
+  # Only the resolver directives are taken: pnp also carries "bootserver" and
+  # a "#PROTO:" line, which are not resolv.conf's to interpret.
+  $BB grep -E '^(nameserver|domain|search)' /proc/net/pnp > /newroot/etc/resolv.conf 2>/dev/null
+fi
+[ -s /urunc-hosts ] && $BB cp /urunc-hosts /newroot/etc/hosts 2>/dev/null
+[ -s /urunc-hostname ] && $BB cp /urunc-hostname /newroot/etc/hostname 2>/dev/null
+# Per-instance metadata is deliberately archived as root-only. These three
+# files become ordinary container identity files after installation and must
+# be readable by non-root workloads (APT drops network acquisition to `_apt`).
+$BB chmod 0644 /newroot/etc/resolv.conf /newroot/etc/hosts /newroot/etc/hostname 2>/dev/null
+
+# Additional Vz shares are encoded as: tag<TAB>absolute-guest-path. They are
+# mounted before the handoff so the OCI process sees the requested filesystem.
+if [ -f /urunc-mounts ]; then
+  while IFS="	" read -r _tag _dest; do
+    [ -n "$_tag" ] && [ -n "$_dest" ] || continue
+    $BB mkdir -p "/newroot$_dest"
+    $BB mount -t virtiofs "$_tag" "/newroot$_dest" 2>/dev/null
+  done < /urunc-mounts
+fi
+
+# Install the initrd's static agent in the writable root, then start it with
+# the container root already in effect. Exec sessions consequently see the OCI
+# filesystem, while the shared read-only lower directory stays unchanged.
+if [ -x /urunit-agent ]; then
+  $BB mkdir -p /newroot/run/urunc
+  $BB cp /urunit-agent /newroot/run/urunc/urunit-agent
+  $BB cp /busybox /newroot/run/urunc/busybox
+  $BB chmod 0755 /newroot/run/urunc/urunit-agent
+  $BB chmod 0755 /newroot/run/urunc/busybox
+  # Launch from a shell already inside the new root. Running `busybox chroot &`
+  # directly races switch_root, which can remove /busybox before the child has
+  # exec'd it.
+  $BB chroot /newroot /run/urunc/busybox sh -c \
+    'URUNIT_AGENT_TRANSPORT=vsock /run/urunc/urunit-agent >/dev/hvc0 2>&1 &'
+  $BB rm -f /newroot/run/urunc/busybox
+fi
+
+cmd="$1"
+case "$cmd" in
+  /*) : ;;
+  *) for d in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do
+       if [ -x "/newroot$d/$cmd" ]; then cmd="$d/$cmd"; break; fi
+     done ;;
+esac
+shift 2>/dev/null || true
+
+# Hand over to urunit rather than to the entrypoint, so that PID 1 outlives it.
+# switch_root exec's whatever it is given as the new init, and an entrypoint
+# that exits -- `echo`, a build step, any one-shot command -- takes init with
+# it: "Kernel panic - not syncing: Attempted to kill init!". The VM then never
+# powers off and the runtime waits for a machine that is not coming back.
+#
+# urunit runs the entrypoint as its child, reaps it, syncs, unmounts and asks
+# for power-off, which on arm64 is a PSCI call the VMM answers by stopping.
+# It takes the command on argv and, with no URUNIT_CONFIG set, exec's it with
+# execvp -- so the environment restored above is inherited, not dropped.
+#
+# Copied in the way the agent already is; the initrd is gone after the switch.
+if [ -x /urunit ]; then
+  $BB mkdir -p /newroot/run/urunc
+  $BB cp /urunit /newroot/run/urunc/urunit
+  $BB chmod 0755 /newroot/run/urunc/urunit
+  exec $BB switch_root /newroot /run/urunc/urunit "$cmd" "$@"
+fi
+# No urunit in this initrd (one built before it was added): boot the way we
+# always did. A long-lived entrypoint is unaffected; a short one still panics.
+exec $BB switch_root /newroot "$cmd" "$@"
