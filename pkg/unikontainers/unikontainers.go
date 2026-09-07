@@ -1,3 +1,5 @@
+//go:build linux
+
 // Copyright (c) 2023-2026, Nubificus LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,14 +46,11 @@ import (
 )
 
 const (
-	monitorRootfsDirName     = constants.MonitorRootfsDirName
 	containerRootfsMountPath = constants.ContainerRootfsMountPath
 	vAccelMountPath          = constants.VAccelMountPath
 	// libcontainerDirName is the directory under urunc's root used from libcontainer
 	libcontainerDirName string = "libcontainer"
 )
-
-var uniklog = logrus.WithField("subsystem", "unikontainers")
 
 var ErrQueueProxy = errors.New("this a queue proxy container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
@@ -312,77 +311,6 @@ func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	}
 
 	return netArgs, nil
-}
-
-// chooseRootfs determines the best rootfs configuration based on available options
-// Priority order:
-//  1. Initrd (if specified)
-//  2. Explicit block device annotation (if mounted at /)
-//  3. Container rootfs as block device (if MountRootfs=true and supported)
-//  4. Container rootfs as shared-fs: virtiofs > 9pfs (if MountRootfs=true and supported)
-//  5. No rootfs
-func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncConfig) (types.RootfsParams, error) {
-	bundleDir := filepath.Clean(bundle)
-	rootfsDir := filepath.Clean(specRoot)
-	rootfsDir, err := resolveAgainstBase(bundleDir, rootfsDir)
-	if err != nil {
-		uniklog.Errorf("could not resolve rootfs directory %s: %v", rootfsDir, err)
-		return types.RootfsParams{}, err
-	}
-
-	if cfg == nil {
-		return types.RootfsParams{}, fmt.Errorf("urunc config is required for guest rootfs selection")
-	}
-
-	unikernelType := annot[annotType]
-	unikernel, err := unikernels.New(unikernelType)
-	if err != nil {
-		return types.RootfsParams{}, err
-	}
-
-	vmmType := annot[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), cfg.Monitors)
-	if err != nil {
-		return types.RootfsParams{}, err
-	}
-
-	virtiofsdConfig := cfg.ExtraBins["virtiofsd"]
-
-	selector := &rootfsSelector{
-		bundle:     bundleDir,
-		cntrRootfs: rootfsDir,
-		annot:      annot,
-		unikernel:  unikernel,
-		vmm:        vmm,
-		vfsdPath:   virtiofsdConfig.Path,
-	}
-
-	// Priority 1: Initrd
-	result, ok := selector.tryInitrd()
-	if ok {
-		return switchMonRootfs(result, bundleDir), nil
-	}
-
-	// Priority 2: Explicit block annotation
-	result, ok = selector.tryExplicitBlock()
-	if ok {
-		return switchMonRootfs(result, bundleDir), nil
-	}
-
-	// Priority 3 & 4: Container rootfs (block or shared-fs)
-	result, ok = selector.tryContainerRootfs()
-	if ok {
-		return switchMonRootfs(result, bundleDir), nil
-	}
-
-	if selector.shouldMountContainerRootfs() {
-		return types.RootfsParams{}, fmt.Errorf("can not use the container rootfs as the sandbox's guest rootfs through block or shared-fs")
-	}
-
-	uniklog.Info("no rootfs configured for guest")
-
-	result = newRootfsResult("", "", selector.cntrRootfs)
-	return switchMonRootfs(result, bundleDir), nil
 }
 
 // getMonitorResources collects every mount and device required for the monitor's

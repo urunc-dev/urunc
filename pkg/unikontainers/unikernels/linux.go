@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// The Linux unikernel builder is platform-neutral: it turns urunc's unikernel
+// config into a Linux kernel command line (root=, console=, ip=, urunit
+// config) and is shared by the Linux orchestration engine and the darwin
+// runner so both produce an identical boot line for the same image.
+
 package unikernels
 
 import (
@@ -76,9 +81,13 @@ func (l *Linux) CommandString() (string, error) {
 	// TODO: Check under which conditions console should be set to
 	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
 	// and Qemu ttyAMA0 for aarch64 while for amd64 both are fine with ttyS0
-	if runtime.GOARCH == "arm64" && l.Monitor == "qemu" {
+	switch {
+	case l.Monitor == "vz":
+		// Apple Virtualization.framework exposes a virtio console (hvc0).
+		consoleStr = "console=hvc0"
+	case runtime.GOARCH == "arm64" && l.Monitor == "qemu":
 		consoleStr = "console=ttyAMA0"
-	} else {
+	default:
 		consoleStr = "console=ttyS0"
 	}
 	bootParams += " " + consoleStr
@@ -304,13 +313,21 @@ func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
 }
 
 // buildEnvConfig creates the environment configuration content for urunit.
-func (l *Linux) buildUrunitConfig() string {
+// BuildUrunitConfig renders a urunit configuration blob from the container's
+// environment, process identity and auxiliary block mounts, in urunit's wire
+// format (UES/UEE environment, UCS/UCE process config, UBS/UBE block mounts).
+//
+// Exported so platform runners outside this package — notably the darwin
+// product, which stages the rootfs and writes this file itself at
+// platform-specific points — generate the exact config urunit expects instead
+// of duplicating the format.
+func BuildUrunitConfig(env []string, proc types.ProcessConfig, blk []types.BlockDevParams, monitor string) string {
 	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
 	var sb strings.Builder
 	sb.WriteString(envStartMarker)
 	sb.WriteString("\n")
-	if len(l.Env) > 0 {
-		sb.WriteString(strings.Join(l.Env, "\n"))
+	if len(env) > 0 {
+		sb.WriteString(strings.Join(env, "\n"))
 		sb.WriteString("\n")
 	}
 	sb.WriteString(envEndMarker)
@@ -318,24 +335,24 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString(lpcStartMarker)
 	sb.WriteString("\n")
 	sb.WriteString("UID:")
-	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.UID), 10))
+	sb.WriteString(strconv.FormatUint(uint64(proc.UID), 10))
 	sb.WriteString("\n")
 	sb.WriteString("GID:")
-	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.GID), 10))
+	sb.WriteString(strconv.FormatUint(uint64(proc.GID), 10))
 	sb.WriteString("\n")
 	sb.WriteString("WD:")
-	sb.WriteString(l.ProcConfig.WorkDir)
+	sb.WriteString(proc.WorkDir)
 	sb.WriteString("\n")
 	sb.WriteString(lpcEndMarker)
 	sb.WriteString("\n")
 	sb.WriteString(blkStartMarker)
 	sb.WriteString("\n")
-	for _, b := range l.Blk {
+	for _, b := range blk {
 		if b.ID == "rootfs" {
 			continue
 		}
 		sb.WriteString("ID:")
-		if l.Monitor == "firecracker" {
+		if monitor == "firecracker" {
 			sb.WriteString("FC")
 		}
 		sb.WriteString(b.ID)
@@ -347,6 +364,10 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString(blkEndMarker)
 	sb.WriteString("\n")
 	return sb.String()
+}
+
+func (l *Linux) buildUrunitConfig() string {
+	return BuildUrunitConfig(l.Env, l.ProcConfig, l.Blk, l.Monitor)
 }
 
 func newLinux() *Linux {

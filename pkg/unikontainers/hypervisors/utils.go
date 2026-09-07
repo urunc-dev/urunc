@@ -19,10 +19,16 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+// solo5ArgsSeparator terminates the tender options in a solo5 cli. It lives
+// here rather than in hvt.go because spt (platform-neutral) uses it too and
+// hvt is Linux-only.
+const solo5ArgsSeparator = "--"
 
 func cpuArch() string {
 	switch runtime.GOARCH {
@@ -61,7 +67,8 @@ func BytesToStringMB(argMem uint64) string {
 
 func killProcess(pid int) error {
 	const timeout = 2 * time.Second
-	err := unix.Kill(pid, unix.SIGKILL)
+	sig := syscall.Signal(0x9) // SIGKILL on both Linux and Darwin
+	err := syscall.Kill(pid, sig)
 	if err != nil {
 		if errors.Is(err, unix.ESRCH) {
 			// Process already dead, nothing to do

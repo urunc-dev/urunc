@@ -21,6 +21,10 @@ import (
 	"strings"
 )
 
+// UnikraftUnikernel names the unikraft guest type. The builder is Linux-only;
+// the name is platform-neutral so annotation validation can refer to it.
+const UnikraftUnikernel string = "unikraft"
+
 func subnetMaskToCIDR(subnetMask string) (int, error) {
 	maskParts := strings.Split(subnetMask, ".")
 	if len(maskParts) != 4 {

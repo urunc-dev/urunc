@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 // Copyright (c) 2023-2026, Nubificus LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,9 +28,8 @@ import (
 )
 
 const (
-	FirecrackerVmm    VmmType = "firecracker"
-	FirecrackerBinary string  = "firecracker"
-	FCJsonFilename    string  = "fc.json"
+	FirecrackerBinary string = "firecracker"
+	FCJsonFilename    string = "fc.json"
 )
 
 type Firecracker struct {

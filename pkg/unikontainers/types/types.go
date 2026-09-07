@@ -50,7 +50,10 @@ type NetDevParams struct {
 	Gateway string // The veth device gateway
 	MAC     string // The MAC address of the guest network device
 	TapDev  string // The tap device name
-	MTU     int    // The MTU value of the tap device
+	// UnixSocket, when set, backs the guest NIC with a QEMU stream netdev
+	// connected to this unix socket (a user-mode gateway) instead of vmnet.
+	UnixSocket string
+	MTU        int // The MTU value of the tap device
 }
 
 type BlockDevParams struct {
@@ -69,6 +72,14 @@ type BlockDevParams struct {
 type SharedfsParams struct {
 	Type string // The type of shared-fs 9p or virtiofs
 	Path string // The path in the host to share with guest
+}
+
+// SharedDirParams describes one host directory exported to the guest with a
+// dedicated mount tag. Unlike Sharedfs, several of these can be attached to
+// the same VM.
+type SharedDirParams struct {
+	Path string // The path in the host to share with the guest
+	Tag  string // The virtiofs mount tag the guest uses to mount it
 }
 
 type RootfsParams struct {
@@ -103,19 +114,25 @@ type UnikernelParams struct {
 // ExecArgs holds the data required by Execve to start the VMM
 // FIXME: add extra fields if required by additional VMM's
 type ExecArgs struct {
-	ContainerID   string   // The container ID
-	Environment   []string // The environment variables of the monitor
-	Command       string   // The unikernel's command line
-	Seccomp       bool     // Enable or disable seccomp filters for the VMM
-	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
-	VCPUs         uint     // The number of vCPUs to allocate
-	UnikernelPath string   // The path of the unikernel inside rootfs
-	InitrdPath    string   // The path to the initrd of the unikernel
-	VAccelType    string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
-	VSockDevPath  string   // The directory inside the monitor rootfs with the vAccel unix sockets
-	VSockDevID    int      // The guest-cid
-	Net           NetDevParams
-	Sharedfs      SharedfsParams
+	ContainerID        string   // The container ID
+	Environment        []string // The environment variables of the monitor
+	Command            string   // The unikernel's command line
+	Seccomp            bool     // Enable or disable seccomp filters for the VMM
+	MemSizeB           uint64   // The size of the memory provided to the VM in bytes
+	VCPUs              uint     // The number of vCPUs to allocate
+	UnikernelPath      string   // The path of the unikernel inside rootfs
+	KernelPath         string   // The path of the kernel image (for Linux kernels on darwin)
+	InitrdPath         string   // The path to the initrd of the unikernel
+	RootfsPath         string   // The path to the rootfs directory or image (for Linux kernels on darwin)
+	BlockDevPath       string   // The path to a block device image (ext4) to attach as virtio-blk
+	LogFile            string   // The path to the log file for serial output (macOS)
+	VirtiofsSocketPath string   // The path to the virtiofs socket (for shared directories)
+	VAccelType         string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
+	VSockDevPath       string   // The host directory where the fc unix socket is created
+	VSockDevID         int      // The guest-cid
+	Net                NetDevParams
+	Sharedfs           SharedfsParams
+	SharedDirs         []SharedDirParams // additional tagged virtiofs shares (Vz)
 }
 
 type MonitorCliArgs struct {

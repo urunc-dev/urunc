@@ -35,6 +35,8 @@ ifeq ($(origin ARCH), undefined)
         ARCH := amd64
     else ifeq ($(UNAME_ARCH),aarch64)
         ARCH := arm64
+    else ifeq ($(UNAME_ARCH),arm64)
+        ARCH := arm64
     else
         $(error Unsupported architecture: $(UNAME_ARCH))
     endif
@@ -44,10 +46,18 @@ endif
 URUNC_BIN      := $(BUILD_DIR)/urunc
 SHIM_BIN       := $(BUILD_DIR)/containerd-shim-urunc-v2
 
+# OS detection for platform-specific build flags
+UNAME_OS := $(shell uname -s)
+ifeq ($(UNAME_OS),Darwin)
+    IS_MACOS := 1
+else
+    IS_MACOS := 0
+endif
+
 # Golang variables
 #? GO go binary to use (default: go)
 GO             ?= go
-GO_FLAGS       := GOOS=linux
+GO_FLAGS       :=
 CGO            := CGO_ENABLED=1
 NOCGO          := CGO_ENABLED=0
 TEST_FLAGS     := "-count=1"
@@ -61,7 +71,13 @@ BUILD_TAGS     ?= netgo osusergo
 # Linking variables
 LDFLAGS_COMMON   := -X main.version=$(VERSION)
 LDFLAGS_EXTERNAL := -linkmode external
-LDFLAGS_STATIC   := -extldflags -static
+ifeq ($(IS_MACOS),1)
+    # macOS doesn't support static linking in the traditional sense
+    LDFLAGS_STATIC   :=
+else
+    # Linux supports static linking
+    LDFLAGS_STATIC   := -extldflags -static
+endif
 LDFLAGS_OPT      := -s -w
 
 # Source files variables
@@ -117,7 +133,13 @@ INSTALL_DEPS   += $(shell test -e $(SHIM_BIN)_static_$(ARCH) \
 
 ## default Build shim and urunc statically for host arch.(default).
 .PHONY: default
-default: static
+ifeq ($(IS_MACOS),1)
+    # On macOS, only urunc is built (the shim requires Linux-only deps)
+    default: urunc_static
+else
+    # On Linux, build both urunc and shim
+    default: static
+endif
 
 ## static Build urunc and containerd shim statically for host arch.
 .PHONY: static

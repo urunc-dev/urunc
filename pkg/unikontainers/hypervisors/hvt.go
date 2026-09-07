@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 // Copyright (c) 2023-2026, Nubificus LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,10 +27,7 @@ import (
 )
 
 const (
-	HvtVmm    VmmType = "hvt"
-	HvtBinary string  = "solo5-hvt"
-	// solo5ArgsSeparator terminates the tender options in a solo5 cli
-	solo5ArgsSeparator = "--"
+	HvtBinary string = "solo5-hvt"
 )
 
 type HVT struct {

@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 // Copyright (c) 2023-2026, Nubificus LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +27,6 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
-const UnikraftUnikernel string = "unikraft"
 const UnikraftCompatVersion string = "0.16.1"
 
 var ErrUndefinedVersion = errors.New("version is undefined, using default version")

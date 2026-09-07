@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 // The below code is taken from runc's libcontainer/message_linux.go
 // Commit: ba0b5e2 // spellchecker:disable-line
 // The code is shipped under the Apache 2.0 License. For more information
