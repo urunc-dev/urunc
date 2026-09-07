@@ -78,8 +78,9 @@ type SharedfsParams struct {
 // dedicated mount tag. Unlike Sharedfs, several of these can be attached to
 // the same VM.
 type SharedDirParams struct {
-	Path string // The path in the host to share with the guest
-	Tag  string // The virtiofs mount tag the guest uses to mount it
+	Path     string // The path in the host to share with the guest
+	Tag      string // The virtiofs mount tag the guest uses to mount it
+	ReadOnly bool   // Export the directory read-only, so the guest cannot write to it
 }
 
 type RootfsParams struct {
@@ -127,6 +128,8 @@ type ExecArgs struct {
 	BlockDevPath       string   // The path to a block device image (ext4) to attach as virtio-blk
 	LogFile            string   // The path to the log file for serial output (macOS)
 	AgentSockPath      string   // Host unix socket bridged to the in-guest urunit-agent
+	GUI                bool     // Enable a graphical window for the VM (Vz-only)
+	GUITitle           string   // Optional title for the GUI window (Vz-only)
 	VirtiofsSocketPath string   // The path to the virtiofs socket (for shared directories)
 	VAccelType         string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
 	VSockDevPath       string   // The host directory where the fc unix socket is created
