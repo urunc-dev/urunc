@@ -30,9 +30,10 @@ const podConfigFilename = "pod.json"
 const cntrConfigFilename = "container.json"
 
 type crictlInfo struct {
-	testArgs    containerTestArgs
-	podID       string
-	containerID string
+	testArgs         containerTestArgs
+	podID            string
+	containerID      string
+	sideContainerIDs []string
 }
 
 func newCrictlTool(args containerTestArgs) *crictlInfo {
@@ -133,6 +134,39 @@ func crictlNewContainerConfig(path string, a containerTestArgs) (string, error) 
 	return absContConf, nil
 }
 
+// crictlNewSideContainerConfig writes a container config for a side container,
+// named after it so multiple side containers don't collide on disk.
+func crictlNewSideContainerConfig(path string, sc sideContainer) (string, error) {
+	var mounts []*criruntimeapi.Mount
+	for _, vol := range sc.Volumes {
+		mounts = append(mounts, &criruntimeapi.Mount{
+			ContainerPath: vol.Dest,
+			HostPath:      vol.Source,
+			Readonly:      false,
+		})
+	}
+	containerConfig := criruntimeapi.ContainerConfig{
+		Metadata: &criruntimeapi.ContainerMetadata{
+			Name: sc.Name,
+		},
+		Image: &criruntimeapi.ImageSpec{
+			Image: sc.Image,
+		},
+		Command: strings.Fields(sc.Cli),
+		Mounts:  mounts,
+	}
+	cc, err := json.MarshalIndent(&containerConfig, "", "    ")
+	if err != nil {
+		return "", fmt.Errorf("Failed to marshal side container config: %v", err)
+	}
+	absConf := filepath.Join(path, sc.Name+".json")
+	err = writeToFile(absConf, string(cc))
+	if err != nil {
+		return "", fmt.Errorf("Failed to write side container config: %v", err)
+	}
+	return absConf, nil
+}
+
 func (i *crictlInfo) Name() string {
 	return crictlName
 }
@@ -201,7 +235,46 @@ func (i *crictlInfo) createContainer() (string, error) {
 	return commonCmdExec(cmdBase)
 }
 
+// startSideContainers starts every side container declared on the test
+// case as an extra container in the SAME pod as the primary container.
+func (i *crictlInfo) startSideContainers() error {
+	if len(i.testArgs.SideContainers) == 0 {
+		return nil
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("Failed to get CWD to write side container configs: %v", err)
+	}
+	absPodConf := filepath.Join(cwd, podConfigFilename)
+
+	for _, sc := range i.testArgs.SideContainers {
+		if sc.NetMode != sideContainerNetModeShared {
+			return fmt.Errorf("crictl does not support side container network mode %q: crictl has no named/user-defined network, only pod-shared networking (sideContainerNetModeShared)", sc.NetMode)
+		}
+
+		absSideConf, err := crictlNewSideContainerConfig(cwd, sc)
+		if err != nil {
+			return err
+		}
+
+		cmdBase := crictlName + " create " + i.podID + " " + absSideConf + " " + absPodConf
+		cID, err := commonCmdExec(cmdBase)
+		if err != nil {
+			return fmt.Errorf("failed to create side container %s: %s -- %v", sc.Name, cID, err)
+		}
+		if output, err := commonCmdExec(crictlName + " start " + cID); err != nil {
+			return fmt.Errorf("failed to start side container %s: %s -- %v", sc.Name, output, err)
+		}
+		i.sideContainerIDs = append(i.sideContainerIDs, cID)
+	}
+	return nil
+}
+
 func (i *crictlInfo) startContainer(bool) (string, error) {
+	if err := i.startSideContainers(); err != nil {
+		return "", err
+	}
 	cmdBase := crictlName
 	cmdBase += " start "
 	cmdBase += i.containerID
@@ -209,6 +282,9 @@ func (i *crictlInfo) startContainer(bool) (string, error) {
 }
 
 func (i *crictlInfo) runContainer(bool) (string, error) {
+	if err := i.startSideContainers(); err != nil {
+		return "", err
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("Failed to get CWD to write Container/Pod config: %v", err)
@@ -234,6 +310,10 @@ func (i *crictlInfo) runContainer(bool) (string, error) {
 }
 
 func (i *crictlInfo) stopContainer() error {
+	if err := commonStopSideContainers(crictlName, i.sideContainerIDs); err != nil {
+		return err
+	}
+
 	output, err := commonStopContainer(crictlName, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
@@ -257,6 +337,10 @@ func (i *crictlInfo) stopPod() error {
 }
 
 func (i *crictlInfo) rmContainer() error {
+	if err := commonRmSideContainers(crictlName, i.sideContainerIDs); err != nil {
+		return err
+	}
+
 	output, err := commonRmContainer(crictlName, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
@@ -271,6 +355,13 @@ func (i *crictlInfo) rmContainer() error {
 	err = os.Remove(absContConf)
 	if err != nil {
 		return fmt.Errorf("Could not remove container config file: %v", err)
+	}
+
+	for _, sc := range i.testArgs.SideContainers {
+		absSideConf := filepath.Join(cwd, sc.Name+".json")
+		if err := os.Remove(absSideConf); err != nil {
+			return fmt.Errorf("Could not remove side container %s config file: %v", sc.Name, err)
+		}
 	}
 	return nil
 }

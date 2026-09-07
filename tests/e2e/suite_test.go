@@ -132,6 +132,42 @@ func runDetachedTest(tool testTool, tc containerTestArgs) {
 	}, defaultTimeout, defaultInterval).Should(Succeed())
 }
 
+func runDetachedSideContainerTest(tool testTool, tc containerTestArgs) {
+	By("Creating container")
+	cID, err := tool.createContainer()
+	Expect(err).NotTo(HaveOccurred(), "Failed to create container: %s", cID)
+	tool.setContainerID(cID)
+
+	DeferCleanup(func() {
+		if tool.getContainerID() != "" {
+			if CurrentSpecReport().Failed() {
+				captureContainerLogs(tool)
+			}
+			By("Stopping container")
+			if err := tool.stopContainer(); err != nil {
+				GinkgoLogr.Error(err, "Failed to stop container")
+			}
+			By("Removing container")
+			if err := tool.rmContainer(); err != nil {
+				GinkgoLogr.Error(err, "Failed to remove container")
+			}
+			By("Verifying container removal")
+			if err := testVerifyRm(tool); err != nil {
+				GinkgoLogr.Error(err, "Failed to verify removal")
+			}
+		}
+	})
+
+	By("Starting container")
+	output, err := tool.startContainer(true)
+	Expect(err).NotTo(HaveOccurred(), "Failed to start container: %s", output)
+
+	By("Running test function")
+	Eventually(func() error {
+		return tc.TestFunc(tool)
+	}, defaultTimeout, defaultInterval).Should(Succeed())
+}
+
 // runForegroundTest runs a container in the foreground and verifies the
 // output contains the expected string.
 func runForegroundTest(tool testTool, tc containerTestArgs) {
