@@ -8,6 +8,17 @@ $BB mount -t proc proc /proc 2>/dev/null
 $BB mount -t sysfs sys /sys 2>/dev/null
 $BB mount -t devtmpfs dev /dev 2>/dev/null
 
+# HVI currently has no emulated wall-clock RTC. Hull stamps the private initrd
+# with the host epoch for HVI boots; setting it once here makes TLS certificate
+# validation and build tools work while the kernel clock advances normally.
+if [ -s /urunc-epoch ]; then
+  _epoch=$($BB cat /urunc-epoch)
+  case "$_epoch" in
+    ''|*[!0-9]*) ;;
+    *) $BB date -u -s "@$_epoch" >/dev/null 2>&1 ;;
+  esac
+fi
+
 # Rosetta is a host-provided virtiofs share. Register its translator while the
 # initramfs path is still reachable; the F flag pins the interpreter across the
 # later switch_root. Native ARM64 containers simply omit /urunc-rosetta.
@@ -92,13 +103,18 @@ fi
 # be readable by non-root workloads (APT drops network acquisition to `_apt`).
 $BB chmod 0644 /newroot/etc/resolv.conf /newroot/etc/hosts /newroot/etc/hostname 2>/dev/null
 
-# Additional Vz shares are encoded as: tag<TAB>absolute-guest-path. They are
-# mounted before the handoff so the OCI process sees the requested filesystem.
+# Additional virtiofs shares are encoded as:
+# tag<TAB>absolute-guest-path<TAB>ro|rw. They are mounted before the handoff so
+# the OCI process sees the requested filesystem with its requested mode.
 if [ -f /urunc-mounts ]; then
-  while IFS="	" read -r _tag _dest; do
+  while IFS="	" read -r _tag _dest _mode; do
     [ -n "$_tag" ] && [ -n "$_dest" ] || continue
     $BB mkdir -p "/newroot$_dest"
-    $BB mount -t virtiofs "$_tag" "/newroot$_dest" 2>/dev/null
+    if [ "$_mode" = ro ]; then
+      $BB mount -t virtiofs -o ro "$_tag" "/newroot$_dest" 2>/dev/null
+    else
+      $BB mount -t virtiofs "$_tag" "/newroot$_dest" 2>/dev/null
+    fi
   done < /urunc-mounts
 fi
 

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -49,6 +50,13 @@ var vmmFactories = map[VmmType]VMMFactory{
 		precheck: func() error { return NewVzDarwin().Ok() },
 		createFunc: func(_, _ string, _ bool) types.VMM {
 			return NewVzDarwin()
+		},
+	},
+	HviVmm: {
+		binary:   HviBinary,
+		pathFunc: darwinHviPath,
+		createFunc: func(_, binaryPath string, _ bool) types.VMM {
+			return NewHviDarwin(binaryPath)
 		},
 	},
 }
@@ -81,4 +89,23 @@ func darwinQemuPath(monitors map[string]types.MonitorConfig) (string, error) {
 		return "", errors.New("qemu-system-aarch64 not found in PATH; install with: brew install qemu")
 	}
 	return p, nil
+}
+
+// darwinHviPath honors config, then finds a bundled HVI next to Hull, and
+// finally falls back to PATH. Keeping the signed helper adjacent mirrors the
+// existing vz-runner deployment contract.
+func darwinHviPath(monitors map[string]types.MonitorConfig) (string, error) {
+	if p := monitors[string(HviVmm)].BinaryPath; p != "" {
+		return p, nil
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), HviBinary)
+		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return candidate, nil
+		}
+	}
+	if p, err := exec.LookPath(HviBinary); err == nil {
+		return p, nil
+	}
+	return "", errors.New("hvi not found next to hull or in PATH")
 }

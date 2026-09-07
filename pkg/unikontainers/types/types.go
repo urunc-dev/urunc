@@ -140,6 +140,16 @@ type ExecArgs struct {
 	Net                NetDevParams
 	Sharedfs           SharedfsParams
 	SharedDirs         []SharedDirParams // additional tagged virtiofs shares (Vz)
+	// GuestUID and GuestGID are who the workload runs as inside the guest.
+	//
+	// A file server sharing a host directory has to present it as owned by
+	// somebody, and the guest kernel checks its own permissions against that
+	// before any request reaches the host. Presenting the host user as root --
+	// the obvious default -- locks out every guest that does not run as root:
+	// it sees a home owned by a root it is not, and every write fails with
+	// EACCES that names nothing.
+	GuestUID uint32
+	GuestGID uint32
 }
 
 type MonitorCliArgs struct {
