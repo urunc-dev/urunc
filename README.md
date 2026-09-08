@@ -147,6 +147,7 @@ supported VM/Sandbox monitors and unikernels:
 | Mewz      | QEMU                                | x86         | In-memory                               |
 | Linux     | QEMU, Firecracker, Cloud-HYpervisor | x86,aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
 | Hermit    | QEMU                                | x86         | Initrd                                  |
+| IncludeOS | QEMU, Solo5-hvt, Solo5-spt          | x86,aarch64 | Block/Devmapper                         |
 
 We plan to add support for more unikernel frameworks and other platforms too.
 Feel free to [contact](#Contact) us for a specific unikernel framework or similar

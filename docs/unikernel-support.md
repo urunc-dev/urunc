@@ -392,6 +392,36 @@ An example of running a Hermit unikernel with `urunc`:
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/hello-world-qemu-hermit-initrd:latest
 ```
 
+## IncludeOS
+
+[IncludeOS](https://github.com/includeos/IncludeOS) is an open-source, modular unikernel written in C++ designed for building cloud services and network applications. IncludeOS can execute on top of [Solo5](https://github.com/Solo5/solo5) and [Qemu](https://www.qemu.org/), making it compatible with `urunc` across these monitors.
+
+### VMMs and other sandbox monitors
+
+IncludeOS runs on top of [QEMU](https://www.qemu.org/) as well as [Solo5-hvt](https://github.com/Solo5/solo5) and [Solo5-spt](https://github.com/Solo5/solo5). It accesses the network via standard interfaces:
+- **QEMU**: virtio-net
+- **Solo5**: Solo5 network interface (`--net:service=...`)
+
+For storage, IncludeOS supports block devices:
+- **QEMU**: virtio-blk
+- **Solo5**: Solo5 block device interface (`--block:rootfs=...`)
+
+### IncludeOS and `urunc`
+
+In the case of IncludeOS, `urunc` provides support for booting on QEMU, Solo5-hvt, and Solo5-spt. When the container is configured with network access, `urunc` provides the appropriate monitor networking configuration.
+
+An example of running an IncludeOS unikernel with `urunc` on top of QEMU:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/hello-qemu-includeos:latest
+```
+
+An example of running an IncludeOS unikernel with `urunc` on top of Solo5-hvt:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/hello-hvt-includeos:latest
+```
+
 ## Future unikernels and frameworks:
 
 In the near future, we plan to add support for the following frameworks:

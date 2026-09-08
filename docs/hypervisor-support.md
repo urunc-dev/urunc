@@ -66,6 +66,7 @@ Supported unikernel frameworks with `urunc`:
 - [Mewz](../unikernel-support#mewz)
 - [Linux](../unikernel-support#linux)
 - [Hermit](../unikernel-support#hermit)
+- [IncludeOS](../unikernel-support#includeos)
 
 An example unikernel:
 
@@ -245,6 +246,7 @@ Supported unikernel frameworks with `urunc`:
 
 - [Rumprun](../unikernel-support#rumprun)
 - [MirageOS](../unikernel-support#mirage)
+- [IncludeOS](../unikernel-support#includeos)
 
 An example unikernel with a block image inside the container's rootfs:
 
@@ -385,6 +387,7 @@ Supported unikernel frameworks with `urunc`:
 
 - [Rumprun](../unikernel-support#rumprun)
 - [MirageOS](../unikernel-support#mirage)
+- [IncludeOS](../unikernel-support#includeos)
 
 An example unikernel which utilizes devmapper for block storage:
 
