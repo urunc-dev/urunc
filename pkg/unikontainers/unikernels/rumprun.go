@@ -171,6 +171,11 @@ func (r *Rumprun) MonitorBlockCli() []types.MonitorBlockArgs {
 	}
 }
 
+// MonitorSharedfsCli is nil since rumprun does not support shared-fs
+func (r *Rumprun) MonitorSharedfsCli(_ string, _ string) []string {
+	return nil
+}
+
 // Rumprun can execute only on top of Solo5 and currently there
 // are no generic Solo5-specific arguments that Rumprun requires
 func (r *Rumprun) MonitorCli() types.MonitorCliArgs {

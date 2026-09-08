@@ -25,21 +25,23 @@ import (
 )
 
 // fakeUnikernel is a minimal stub of types.Unikernel used only to drive
-// Qemu.BuildExecCmd. The three Monitor* methods are the ones the function
+// Qemu.BuildExecCmd. The four Monitor* methods are the ones the function
 // consults; the rest return zero values.
 type fakeUnikernel struct {
-	netCli     []string
-	blockCli   []types.MonitorBlockArgs
-	monitorCli types.MonitorCliArgs
+	netCli      []string
+	blockCli    []types.MonitorBlockArgs
+	sharedfsCli []string
+	monitorCli  types.MonitorCliArgs
 }
 
-func (f *fakeUnikernel) Init(types.UnikernelParams) error          { return nil }
-func (f *fakeUnikernel) CommandString() (string, error)            { return "", nil }
-func (f *fakeUnikernel) SupportsBlock() bool                       { return true }
-func (f *fakeUnikernel) SupportsFS(string) bool                    { return true }
-func (f *fakeUnikernel) MonitorNetCli(string, string) []string     { return f.netCli }
-func (f *fakeUnikernel) MonitorBlockCli() []types.MonitorBlockArgs { return f.blockCli }
-func (f *fakeUnikernel) MonitorCli() types.MonitorCliArgs          { return f.monitorCli }
+func (f *fakeUnikernel) Init(types.UnikernelParams) error           { return nil }
+func (f *fakeUnikernel) CommandString() (string, error)             { return "", nil }
+func (f *fakeUnikernel) SupportsBlock() bool                        { return true }
+func (f *fakeUnikernel) SupportsFS(string) bool                     { return true }
+func (f *fakeUnikernel) MonitorNetCli(string, string) []string      { return f.netCli }
+func (f *fakeUnikernel) MonitorBlockCli() []types.MonitorBlockArgs  { return f.blockCli }
+func (f *fakeUnikernel) MonitorSharedfsCli(string, string) []string { return f.sharedfsCli }
+func (f *fakeUnikernel) MonitorCli() types.MonitorCliArgs           { return f.monitorCli }
 
 const (
 	testQemuBinary = "/usr/bin/qemu-system-x86_64"
@@ -180,17 +182,30 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			mustContain: []string{"-initrd /rootfs/initrd.img"},
 		},
 		{
-			name: "Sharedfs 9pfs renders fsdev and virtio-9p-pci",
+			name: "Sharedfs 9pfs appends the guest-supplied CLI verbatim",
 			args: types.ExecArgs{
 				UnikernelPath: testKernelPath,
 				Command:       testCommand,
 				Sharedfs:      types.SharedfsParams{Type: "9pfs", Path: "/srv/share"},
 			},
-			unikernel: &fakeUnikernel{},
+			unikernel: &fakeUnikernel{sharedfsCli: []string{
+				"-fsdev", "local,id=rootfs9p,security_model=none,multidevs=remap,path=/srv/share",
+				"-device", "virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0",
+			}},
 			mustContain: []string{
-				"-fsdev local,id=rootfs9p,security_model=none,path=/srv/share",
+				"-fsdev local,id=rootfs9p,security_model=none,multidevs=remap,path=/srv/share",
 				"-device virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0",
 			},
+		},
+		{
+			name: "Sharedfs 9pfs with a guest that supplies no CLI renders nothing",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+				Sharedfs:      types.SharedfsParams{Type: "9pfs", Path: "/srv/share"},
+			},
+			unikernel:      &fakeUnikernel{},
+			mustNotContain: []string{"-fsdev", "virtio-9p"},
 		},
 		{
 			name: "Sharedfs virtiofs renders memory-backend-file and vhost-user-fs-pci",

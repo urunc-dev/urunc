@@ -95,6 +95,11 @@ func (m *Mirage) MonitorBlockCli() []types.MonitorBlockArgs {
 	}
 }
 
+// MonitorSharedfsCli is nil since mirage does not support shared-fs
+func (m *Mirage) MonitorSharedfsCli(_ string, _ string) []string {
+	return nil
+}
+
 func (m *Mirage) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{}
 }

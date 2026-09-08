@@ -195,6 +195,17 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 	return blkArgs
 }
 
+// MonitorSharedfsCli exposes the 9p shared rootfs over QEMU's PCI transport.
+func (l *Linux) MonitorSharedfsCli(fsType string, path string) []string {
+	if l.Monitor != "qemu" || fsType != "9pfs" {
+		return nil
+	}
+	return []string{
+		"-fsdev", "local,id=rootfs9p,security_model=none,multidevs=remap,path=" + path,
+		"-device", "virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0",
+	}
+}
+
 func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	switch l.Monitor {
 	case "qemu":

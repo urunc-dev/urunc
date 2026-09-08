@@ -97,6 +97,17 @@ func (u *Unikraft) MonitorBlockCli() []types.MonitorBlockArgs {
 	return nil
 }
 
+// MonitorSharedfsCli exposes the 9p shared rootfs over QEMU's PCI transport.
+func (u *Unikraft) MonitorSharedfsCli(fsType string, path string) []string {
+	if u.Monitor != "qemu" || fsType != "9pfs" {
+		return nil
+	}
+	return []string{
+		"-fsdev", "local,id=rootfs9p,security_model=none,multidevs=remap,path=" + path,
+		"-device", "virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0",
+	}
+}
+
 // There are no generic CLI hypervisor options for Unikraft yet.
 func (u *Unikraft) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{}

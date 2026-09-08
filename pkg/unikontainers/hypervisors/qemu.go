@@ -134,8 +134,10 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 
 	switch args.Sharedfs.Type {
 	case "9pfs":
-		fsdevArg := fmt.Sprintf("local,id=rootfs9p,security_model=none,path=%s", args.Sharedfs.Path)
-		exArgs = append(exArgs, "-fsdev", fsdevArg, "-device", "virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0")
+		// The 9p transport depends on the guest, so let the guest supply
+		// the cli options; nil means no support for 9pfs
+		sharedFSOption := ukernel.MonitorSharedfsCli(args.Sharedfs.Type, args.Sharedfs.Path)
+		exArgs = append(exArgs, sharedFSOption...)
 	case "virtiofs":
 		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
 		exArgs = append(exArgs,

@@ -452,3 +452,5 @@ hmpj
 ndots
 resolv
 dupword
+multidevs
+MMIO

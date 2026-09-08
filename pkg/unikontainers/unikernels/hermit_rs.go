@@ -97,6 +97,12 @@ func (h *Hermit) MonitorBlockCli() []types.MonitorBlockArgs {
 	return nil
 }
 
+// MonitorSharedfsCli is nil since we have not checked the support of
+// shared-fs for hermit.
+func (h *Hermit) MonitorSharedfsCli(_ string, _ string) []string {
+	return nil
+}
+
 func (h *Hermit) MonitorCli() types.MonitorCliArgs {
 	return types.MonitorCliArgs{
 		OtherArgs: []string{"-no-reboot"},
