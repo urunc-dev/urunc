@@ -165,6 +165,8 @@ Each monitor subsection supports the following options:
 | `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
+| `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not specified, urunc uses a per-container default under `/tmp`. When a custom path is set, urunc creates its parent directory; setting it to an invalid location (a file already exists on the path) makes the monitor fail to start. Currently used by Qemu. |
+| `boot_mode` | string | (empty) | Optional boot mode. When set to `api`, urunc starts the monitor as a supervised child and triggers the guest's start through the monitor's control socket; when unset, the monitor boots from its command line as before. Currently only used by Qemu. |
 
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
@@ -179,6 +181,7 @@ default_vcpus = 4
 path = "/usr/local/bin/qemu-system-x86_64"
 data_path = "/usr/local/share/"
 vhost = false
+boot_mode = "api"
 
 [monitors.firecracker]
 default_memory_mb = 512

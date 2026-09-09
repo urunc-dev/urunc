@@ -510,6 +510,8 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+	bootMode := u.UruncCfg.Monitors[vmmType].BootMode
 
 	vmmArgs := types.ExecArgs{
 		ContainerID:   u.State.ID,
@@ -519,6 +521,8 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		MemSizeB:      monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources),
 		VCPUs:         uint(defaultVCPUs),
 		Environment:   os.Environ(),
+		SocketPath:    socketPath,
+		BootMode:      bootMode,
 	}
 
 	// Check if container is set to unconfined -- disable seccomp
@@ -684,6 +688,25 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		vmmArgs.VSockDevID = idToGuestCID(u.State.ID)
 	}
 
+	// api boot mode: QEMU is spawned frozen (-S) as a supervised child right
+	// after changeRoot below, so the monitor and its QMP socket are confined
+	// inside the monitor rootfs. The guest only starts when the QMP cont is
+	// sent after the start-success handshake, preserving OCI start ordering.
+	isAPIBoot := vmmArgs.BootMode == "api" && ms.MonitorType == string(hypervisors.QemuVmm)
+	if isAPIBoot && vmmArgs.Sharedfs.Type == "virtiofs" {
+		return fmt.Errorf("boot_mode=api does not support the virtiofs shared filesystem yet")
+	}
+	var qSession *hypervisors.QemuSession
+	qHandedOff := false
+	defer func() {
+		// Any error return after the spawn must not leave the VMM child
+		// behind. Supervise never returns (os.Exit), so this only fires on
+		// error paths.
+		if qSession != nil && !qHandedOff {
+			qSession.Kill()
+		}
+	}()
+
 	// pivot
 	_, err = findNS(u.Spec.Linux.Namespaces, specs.MountNamespace)
 	// Only pivot if a mount namespace entry is actually present in the
@@ -724,6 +747,28 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	if hypervisors.UsesControlSocket(hypervisors.VmmType(ms.MonitorType)) {
+		sockDir := filepath.Dir(hypervisors.ResolveSocketPath(vmmArgs))
+		if err = os.MkdirAll(sockDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		}
+	}
+
+	// urunc is still privileged at this point; the child is started directly
+	// under the container user's credentials, and urunc drops its own
+	// privileges right after (setupUser below).
+	if isAPIBoot {
+		q, ok := vmm.(*hypervisors.Qemu)
+		if !ok {
+			return fmt.Errorf("boot_mode=api is only supported for the qemu monitor")
+		}
+		qSession, err = q.SpawnPausedVMM(vmmArgs, unikernel, u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+		if err != nil {
+			uniklog.Errorf("failed to spawn qemu: %v", err)
+			return err
+		}
+	}
+
 	// uid/gid
 	// Setup uid, gid and additional groups for the monitor process
 	err = setupUser(u.Spec.Process.User)
@@ -749,10 +794,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Build the VMM command once and verify it can be constructed successfully, so
 	// we do not report the container as started if command building fails.
-	execCmd, err := vmm.BuildExecCmd(vmmArgs, unikernel)
-	if err != nil {
-		uniklog.WithError(err).Error("failed to build VMM command")
-		return err
+	// For the api boot mode the VMM is already running, frozen and fully
+	// configured (the equivalent validation), so there is no command to build.
+	var execCmd []string
+	if !isAPIBoot {
+		execCmd, err = vmm.BuildExecCmd(vmmArgs, unikernel)
+		if err != nil {
+			uniklog.WithError(err).Error("failed to build VMM command")
+			return err
+		}
 	}
 
 	// Notify urunc start that the monitor is ready to execute, only after the
@@ -760,6 +810,19 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
+	}
+
+	if isAPIBoot {
+		// The VMM is up and configured; unfreeze the guest and hand this
+		// process over to supervising the child. This process must not exit
+		// before the child, since it is the container's init process.
+		metrics.Capture(m.TS18)
+		if err = qSession.Resume(); err != nil {
+			uniklog.Errorf("failed to resume the guest: %v", err)
+			return err
+		}
+		qHandedOff = true
+		return qSession.Supervise()
 	}
 
 	return execMonitor(metrics, vmm, vmmArgs, execCmd)
