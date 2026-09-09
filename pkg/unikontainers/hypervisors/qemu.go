@@ -56,6 +56,11 @@ func (q *Qemu) SupportsSharedfs(_ string) bool {
 	return true
 }
 
+// SupportsControlSocket reports that QEMU exposes a control socket (QMP).
+func (q *Qemu) SupportsControlSocket() bool {
+	return true
+}
+
 func (q *Qemu) Path() string {
 	return q.binaryPath
 }
@@ -72,6 +77,11 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		"-vga", "none",
 		"-serial", "stdio",
 		"-monitor", "null",
+	}
+	// Expose the QMP socket only when socket_path is set. server,nowait lets
+	// QEMU boot without waiting for a client.
+	if args.SocketPath != "" {
+		exArgs = append(exArgs, "-qmp", "unix:"+args.SocketPath+",server,nowait")
 	}
 
 	if args.VCPUs > 0 {

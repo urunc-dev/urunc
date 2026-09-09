@@ -42,12 +42,25 @@ func (h *Hedge) Stop(_ int) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 
+func (h *Hedge) SupportsGuestShutdown() bool {
+	return false
+}
+
+func (h *Hedge) RequestGuestShutdown(_ string) error {
+	return fmt.Errorf("hedge not implemented yet")
+}
+
 func (h *Hedge) UsesKVM() bool {
 	return true
 }
 
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
 func (h *Hedge) SupportsSharedfs(_ string) bool {
+	return false
+}
+
+// SupportsControlSocket reports that Hedge exposes no control socket.
+func (h *Hedge) SupportsControlSocket() bool {
 	return false
 }
 

@@ -17,8 +17,10 @@ package hypervisors
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -90,6 +92,18 @@ func (fc *Firecracker) Ok() error {
 	return nil
 }
 
+// SupportsGuestShutdown reports whether Firecracker can shut the guest down
+// gracefully. Firecracker's SendCtrlAltDel action only exists on x86; on
+// aarch64 the API rejects it, so guest shutdown is supported on amd64 only.
+func (fc *Firecracker) SupportsGuestShutdown() bool {
+	return runtime.GOARCH == "amd64"
+}
+
+func (fc *Firecracker) RequestGuestShutdown(socketPath string) error {
+	body := []byte(`{"action_type":"SendCtrlAltDel"}`)
+	return unixSocketRequest(socketPath, http.MethodPut, "/actions", body)
+}
+
 func (fc *Firecracker) UsesKVM() bool {
 	return true
 }
@@ -97,6 +111,12 @@ func (fc *Firecracker) UsesKVM() bool {
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
 func (fc *Firecracker) SupportsSharedfs(_ string) bool {
 	return false
+}
+
+// SupportsControlSocket reports that Firecracker exposes a control socket (its API
+// socket).
+func (fc *Firecracker) SupportsControlSocket() bool {
+	return true
 }
 
 func (fc *Firecracker) Path() string {
@@ -111,7 +131,15 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
 	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
-	exArgs := []string{fc.Path(), "--no-api", "--config-file", JSONConfigFile}
+	exArgs := []string{fc.Path()}
+	// Enable the API socket when a socket_path is configured, otherwise keep the
+	// upstream --no-api. Either way the guest boots from the config file.
+	if args.SocketPath != "" {
+		exArgs = append(exArgs, "--api-sock", args.SocketPath)
+	} else {
+		exArgs = append(exArgs, "--no-api")
+	}
+	exArgs = append(exArgs, "--config-file", JSONConfigFile)
 	if !args.Seccomp {
 		exArgs = append(exArgs, "--no-seccomp")
 	}
