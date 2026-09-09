@@ -18,7 +18,35 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
+
+// TestSupportsControlSocket verifies each monitor reports whether it exposes a
+// control socket (Qemu, Firecracker, Cloud Hypervisor true; the rest false).
+func TestSupportsControlSocket(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		vmm  types.VMM
+		want bool
+	}{
+		{"qemu", &Qemu{}, true},
+		{"firecracker", &Firecracker{}, true},
+		{"cloud-hypervisor", &CloudHypervisor{}, true},
+		{"hvt", &HVT{}, false},
+		{"spt", &SPT{}, false},
+		{"hedge", &Hedge{}, false},
+		{"hyperlight", &Hyperlight{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, tt.vmm.SupportsControlSocket())
+		})
+	}
+}
 
 func TestVMMFactoryQemuVhostFalse(t *testing.T) {
 	t.Parallel()
