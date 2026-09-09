@@ -1,0 +1,13 @@
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+version: v0.1
+platforms:
+  framework: unikraft
+  monitor: qemu
+  architecture: x86_64
+rootfs:
+  from: scratch
+  type: raw
+kernel:
+  from: local
+  path: httpreply-qemu-x86_64
+cmdline: "/httpreply"
