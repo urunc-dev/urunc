@@ -112,6 +112,7 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 
 	// Block device configuration
 	blockArgs := ukernel.MonitorBlockCli()
+	var disks []string
 	for _, blockArg := range blockArgs {
 		if len(blockArg.ExactArgs) > 0 {
 			exArgs = append(exArgs, blockArg.ExactArgs...)
@@ -120,8 +121,12 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 			if blockArg.ID != "" {
 				diskArg += ",id=" + blockArg.ID
 			}
-			exArgs = append(exArgs, "--disk", diskArg)
+			disks = append(disks, diskArg)
 		}
+	}
+	if len(disks) > 0 {
+		exArgs = append(exArgs, "--disk")
+		exArgs = append(exArgs, disks...)
 	}
 
 	// Initrd configuration
