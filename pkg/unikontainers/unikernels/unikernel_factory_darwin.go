@@ -42,9 +42,12 @@ func New(unikernelType string) (types.Unikernel, error) {
 		// (root=/console=/ip=/urunit config) for the same image.
 		unikernel := newLinux()
 		return unikernel, nil
-	case "unikraft":
-		// Unikraft is Linux-only
-		return nil, errors.New("unikraft is not supported on darwin")
+	case UnikraftUnikernel:
+		// Unikraft's command-line builder is OS-neutral (it only reads
+		// runtime.GOARCH), so darwin uses the same one the Linux engine
+		// does and produces an identical guest command line.
+		unikernel := newUnikraft()
+		return unikernel, nil
 	default:
 		return nil, ErrNotSupportedUnikernel
 	}
