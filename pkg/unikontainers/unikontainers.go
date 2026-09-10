@@ -16,6 +16,7 @@ package unikontainers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -314,6 +315,15 @@ func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	return netArgs, nil
 }
 
+func (u *Unikontainer) HasNetwork() (bool, error) {
+	networkType := u.getNetworkType()
+	netManager, err := network.NewNetworkManager(networkType)
+	if err != nil {
+		return false, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
+	}
+	return netManager.HasNetwork()
+}
+
 // chooseRootfs determines the best rootfs configuration based on available options
 // Priority order:
 //  1. Initrd (if specified)
@@ -510,9 +520,13 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+	bootMode := u.UruncCfg.Monitors[vmmType].BootMode
 
 	vmmArgs := types.ExecArgs{
 		ContainerID:   u.State.ID,
+		SocketPath:    socketPath,
+		BootMode:      bootMode,
 		UnikernelPath: unikernelPath,
 		InitrdPath:    initrdPath,
 		Seccomp:       true, // Enable Seccomp by default
@@ -635,23 +649,75 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
-	if err != nil {
-		uniklog.Errorf("failed to setup network: %v", err)
-		return err
+	//
+	// In api boot mode, SetupNet runs concurrently with the rootfs prep below,
+	// which only needs to know whether a network interface exists.
+	isAPIBoot := ms.MonitorType == string(hypervisors.FirecrackerVmm) && vmmArgs.BootMode != "config-file"
+
+	var netArgs types.NetDevParams
+	var netSetupErr error
+	var netWG sync.WaitGroup
+	var withTUNTAP bool
+
+	var fcSession *hypervisors.FirecrackerSession
+	fcHandedOff := false
+	defer func() {
+		// Supervise never returns, so this only runs when Exec fails after
+		// the spawn.
+		if fcSession != nil && !fcHandedOff {
+			fcSession.Kill()
+		}
+	}()
+	ctx := context.Background()
+
+	var fcVmm *hypervisors.Firecracker
+	if isAPIBoot {
+		fc, ok := vmm.(*hypervisors.Firecracker)
+		if !ok {
+			return fmt.Errorf("boot_mode=api is only supported for the firecracker monitor")
+		}
+		fcVmm = fc
+
+		hasNet, err := u.HasNetwork()
+		if err != nil {
+			uniklog.Errorf("failed to check for a container network: %v", err)
+			return err
+		}
+		withTUNTAP = hasNet
+		netWG.Add(1)
+		go func() {
+			defer netWG.Done()
+			netArgs, netSetupErr = SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+		}()
+	} else {
+		netArgs, err = SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+		if err != nil {
+			uniklog.Errorf("failed to setup network: %v", err)
+			return err
+		}
+		withTUNTAP = netArgs.IP != ""
 	}
 	metrics.Capture(m.TS16)
-	withTUNTAP := netArgs.IP != ""
-	// SetupNet does not resolve DNS; carry the server resolved at spec build.
-	netArgs.DNSServer = ms.DNSServer
-	unikernelParams.Net = netArgs
-	vmmArgs.Net = netArgs
 
 	err = u.setupMonitorRootfs(rootfsParams.MonRootfs, monRes, withTUNTAP)
 	if err != nil {
 		return err
 	}
 	metrics.Capture(m.TS17)
+
+	// buildUnikernelCommand below bakes the resolved IP, gateway and MAC into
+	// the guest command line, so the concurrent network setup must be finished.
+	if isAPIBoot {
+		netWG.Wait()
+		if netSetupErr != nil {
+			uniklog.Errorf("failed to setup network: %v", netSetupErr)
+			return netSetupErr
+		}
+	}
+	// SetupNet does not resolve DNS; carry the server resolved at spec build.
+	netArgs.DNSServer = ms.DNSServer
+	unikernelParams.Net = netArgs
+	vmmArgs.Net = netArgs
 
 	// vAccel setup
 	vAccelType, vAccelSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.State.Annotations)
@@ -724,6 +790,30 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	if err = ensureSocketDir(ms.MonitorType, vmmArgs); err != nil {
+		return err
+	}
+
+	if isAPIBoot {
+		fcSession, err = fcVmm.SpawnSocketVMM(vmmArgs, u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+		if err != nil {
+			uniklog.Errorf("failed to spawn firecracker: %v", err)
+			return err
+		}
+		if err = fcSession.ConfigureMachine(ctx, vmmArgs); err != nil {
+			uniklog.Errorf("failed to configure the machine over the socket: %v", err)
+			return err
+		}
+		if err = fcSession.ConfigureNetwork(ctx, netArgs); err != nil {
+			uniklog.Errorf("failed to configure the network over the socket: %v", err)
+			return err
+		}
+		if err = fcSession.ConfigureGuest(ctx, vmmArgs, unikernel); err != nil {
+			uniklog.Errorf("failed to configure the guest over the socket: %v", err)
+			return err
+		}
+	}
+
 	// uid/gid
 	// Setup uid, gid and additional groups for the monitor process
 	err = setupUser(u.Spec.Process.User)
@@ -749,10 +839,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 
 	// Build the VMM command once and verify it can be constructed successfully, so
 	// we do not report the container as started if command building fails.
-	execCmd, err := vmm.BuildExecCmd(vmmArgs, unikernel)
-	if err != nil {
-		uniklog.WithError(err).Error("failed to build VMM command")
-		return err
+	// For the API-based boot the VMM is already running and fully configured
+	// (the equivalent validation), so there is no command to build.
+	var execCmd []string
+	if !isAPIBoot {
+		execCmd, err = vmm.BuildExecCmd(vmmArgs, unikernel)
+		if err != nil {
+			uniklog.WithError(err).Error("failed to build VMM command")
+			return err
+		}
 	}
 
 	// Notify urunc start that the monitor is ready to execute, only after the
@@ -760,6 +855,16 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	err = u.SendMessage(StartSuccess)
 	if err != nil {
 		return err
+	}
+
+	if isAPIBoot {
+		metrics.Capture(m.TS18)
+		if err = fcSession.StartGuest(ctx); err != nil {
+			uniklog.Errorf("failed to start the guest: %v", err)
+			return err
+		}
+		fcHandedOff = true
+		return fcSession.Supervise()
 	}
 
 	return execMonitor(metrics, vmm, vmmArgs, execCmd)
@@ -844,6 +949,17 @@ func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execC
 	// Execute the VMM using the command we built earlier.
 	uniklog.WithField("command", execCmd).Debug("Ready to execve VMM")
 	return syscall.Exec(vmm.Path(), execCmd, execArgs.Environment) //nolint: gosec
+}
+
+func ensureSocketDir(vmmType string, vmmArgs types.ExecArgs) error {
+	if !hypervisors.UsesControlSocket(hypervisors.VmmType(vmmType)) {
+		return nil
+	}
+	sockDir := filepath.Dir(hypervisors.ResolveSocketPath(vmmArgs))
+	if err := os.MkdirAll(sockDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+	}
+	return nil
 }
 
 func setupUser(user specs.User) error {

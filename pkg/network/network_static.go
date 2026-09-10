@@ -88,6 +88,14 @@ func setNATRule(iface string, sourceIP string) error {
 	return nil
 }
 
+func (n StaticNetwork) HasNetwork() (bool, error) {
+	_, err := discoverContainerIface()
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
 func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
 	newTapName := strings.ReplaceAll(DefaultTap, "X", "0")
 	addTCRules := false

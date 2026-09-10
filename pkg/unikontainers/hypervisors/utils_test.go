@@ -18,7 +18,19 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
+
+func TestResolveSocketPath(t *testing.T) {
+	t.Parallel()
+	if got := ResolveSocketPath(types.ExecArgs{SocketPath: "/run/urunc/x.sock"}); got != "/run/urunc/x.sock" {
+		t.Fatalf("configured path: got %q", got)
+	}
+	if got := ResolveSocketPath(types.ExecArgs{ContainerID: "abc"}); got != "/tmp/abc.sock" {
+		t.Fatalf("default path: got %q", got)
+	}
+}
 
 func TestBytesToMiB(t *testing.T) {
 	t.Parallel()

@@ -38,6 +38,7 @@ type UnikernelNetworkInfo struct {
 	EthDevice Interface
 }
 type Manager interface {
+	HasNetwork() (bool, error)
 	NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error)
 }
 
