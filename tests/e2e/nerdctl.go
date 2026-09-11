@@ -36,6 +36,10 @@ func (i *nerdctlInfo) Name() string {
 	return nerdctlName
 }
 
+func (i *nerdctlInfo) ToolType() ToolType {
+	return ToolNerdctl
+}
+
 func (i *nerdctlInfo) getTestArgs() containerTestArgs {
 	return i.testArgs
 }

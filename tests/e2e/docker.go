@@ -36,6 +36,10 @@ func (i *dockerInfo) Name() string {
 	return dockerName
 }
 
+func (i *dockerInfo) ToolType() ToolType {
+	return ToolDocker
+}
+
 func (i *dockerInfo) getTestArgs() containerTestArgs {
 	return i.testArgs
 }

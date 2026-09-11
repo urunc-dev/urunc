@@ -22,9 +22,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	probing "github.com/prometheus-community/pro-bing"
+	"golang.org/x/sync/singleflight"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -32,39 +35,154 @@ const (
 	pullRetryDelay = 2 * time.Second
 )
 
-func getTestImages(cases []containerTestArgs) []string {
-	unique := make(map[string]struct{})
-	for _, tc := range cases {
-		unique[tc.Image] = struct{}{}
-	}
+var (
+	pullGroup        singleflight.Group
+	imageTrackerLock sync.RWMutex
+	// trackedImages maps tool -> image -> bool (true = pulled by this run, eligible for cleanup).
+	trackedImages = make(map[ToolType]map[string]bool)
+)
 
-	images := make([]string, 0, len(unique))
-	for img := range unique {
-		images = append(images, img)
+func withFileLock(domain string, fn func() error) error {
+	lockPath := filepath.Join(os.TempDir(), fmt.Sprintf("urunc-e2e-%s.lock", domain))
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return fn()
 	}
-	return images
+	defer f.Close()
+
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+		return fn()
+	}
+	defer func() {
+		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	}()
+
+	return fn()
 }
 
-func pullAllImages(testFunc string, images []string) error {
-	for _, image := range images {
-		log.Printf("Pulling image: %s", image)
-		if err := pullImageWithRetry(testFunc, image); err != nil {
-			return fmt.Errorf("failed to pull %s: %w", image, err)
+func imageExists(tool ToolType, image string) (bool, error) {
+	var cmd string
+	switch tool {
+	case ToolCrictl:
+		cmd = crictlName + " images -q " + image
+	case ToolNerdctl:
+		cmd = nerdctlName + " images -q " + image
+	case ToolDocker:
+		cmd = dockerName + " images -q " + image
+	default:
+		cmd = ctrName + " images list -q \"name==" + image + "\""
+	}
+
+	output, errorOut, err := commonCmdExecStderr(cmd)
+	if err != nil {
+		return false, fmt.Errorf("%s check failed: %s (%w)", tool, errorOut, err)
+	}
+
+	return strings.TrimSpace(output) != "", nil
+}
+
+func ensureImage(tool ToolType, image string) error {
+	imageTrackerLock.RLock()
+	if _, ok := trackedImages[tool][image]; ok {
+		imageTrackerLock.RUnlock()
+		return nil
+	}
+	imageTrackerLock.RUnlock()
+
+	key := string(tool) + ":" + image
+	_, err, _ := pullGroup.Do(key, func() (interface{}, error) {
+		imageTrackerLock.RLock()
+		if _, ok := trackedImages[tool][image]; ok {
+			imageTrackerLock.RUnlock()
+			return nil, nil
+		}
+		imageTrackerLock.RUnlock()
+
+		exists, err := imageExists(tool, image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check image presence for %s: %w", image, err)
+		}
+
+		if exists {
+			imageTrackerLock.Lock()
+			if trackedImages[tool] == nil {
+				trackedImages[tool] = make(map[string]bool)
+			}
+			trackedImages[tool][image] = false
+			imageTrackerLock.Unlock()
+			return nil, nil
+		}
+
+		err = withFileLock(tool.LockDomain(), func() error {
+			log.Printf("Pulling image for %s: %s", tool, image)
+			return pullImageWithRetry(tool, image)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to pull %s: %w", image, err)
+		}
+
+		imageTrackerLock.Lock()
+		if trackedImages[tool] == nil {
+			trackedImages[tool] = make(map[string]bool)
+		}
+		trackedImages[tool][image] = true
+		imageTrackerLock.Unlock()
+
+		return nil, nil
+	})
+
+	return err
+}
+
+func ensureTestImages(tool testTool, tc containerTestArgs) error {
+	if tc.Image != "" {
+		if err := ensureImage(tool.ToolType(), tc.Image); err != nil {
+			return err
+		}
+	}
+	for _, side := range tc.SideContainers {
+		if side != "" {
+			if err := ensureImage(tool.ToolType(), side); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func removeAllImages(testFunc string, images []string) {
-	for _, image := range images {
-		log.Printf("Removing image: %s", image)
-		if err := removeImageForTest(testFunc, image); err != nil {
-			log.Printf("Warning: failed to remove %s: %v", image, err)
+func cleanupImages(tool ToolType) {
+	if os.Getenv("URUNC_E2E_KEEP_IMAGES") == "1" || strings.ToLower(os.Getenv("URUNC_E2E_KEEP_IMAGES")) == "true" {
+		log.Printf("URUNC_E2E_KEEP_IMAGES is set; skipping image cleanup for %s", tool)
+		return
+	}
+
+	imageTrackerLock.Lock()
+	toolImages := trackedImages[tool]
+	var toRemove []string
+	for img, pulledByUs := range toolImages {
+		if pulledByUs {
+			toRemove = append(toRemove, img)
 		}
 	}
+	delete(trackedImages, tool)
+	imageTrackerLock.Unlock()
+
+	if len(toRemove) == 0 {
+		return
+	}
+
+	_ = withFileLock(tool.LockDomain(), func() error {
+		for _, image := range toRemove {
+			log.Printf("Removing image for %s: %s", tool, image)
+			if err := removeImageForTest(tool, image); err != nil {
+				log.Printf("Warning: failed to remove %s: %v", image, err)
+			}
+		}
+		return nil
+	})
 }
 
-func pullImageWithRetry(testFunc string, image string) error {
+func pullImageWithRetry(testFunc ToolType, image string) error {
 	var err error
 	for i := 0; i < maxPullRetries; i++ {
 		err = pullImageForTest(testFunc, image)
@@ -78,36 +196,36 @@ func pullImageWithRetry(testFunc string, image string) error {
 	return fmt.Errorf("failed to pull %s after %d attempts: %w", image, maxPullRetries, err)
 }
 
-func pullImageForTest(testFunc string, image string) error {
+func pullImageForTest(testFunc ToolType, image string) error {
 	switch testFunc {
-	case testCrictl:
+	case ToolCrictl:
 		cmd := crictlName + " pull " + image
 		output, err := commonCmdExec(cmd)
 		if err != nil {
 			return fmt.Errorf("%s -- %v", output, err)
 		}
 		return nil
-	case testNerdctl:
+	case ToolNerdctl:
 		return commonPull(nerdctlName, image)
-	case testDocker:
+	case ToolDocker:
 		return commonPull(dockerName, image)
 	default:
 		return commonPull(ctrName, image)
 	}
 }
 
-func removeImageForTest(testFunc string, image string) error {
+func removeImageForTest(testFunc ToolType, image string) error {
 	switch testFunc {
-	case testCrictl:
+	case ToolCrictl:
 		cmd := crictlName + " rmi " + image
 		output, err := commonCmdExec(cmd)
 		if err != nil {
 			return fmt.Errorf("%s -- %v", output, err)
 		}
 		return nil
-	case testNerdctl:
+	case ToolNerdctl:
 		return commonRmImage(nerdctlName, image)
-	case testDocker:
+	case ToolDocker:
 		return commonRmImage(dockerName, image)
 	default:
 		return commonRmImage(ctrName, image)

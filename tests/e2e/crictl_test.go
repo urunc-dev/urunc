@@ -19,17 +19,12 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Crictl", Ordered, ContinueOnFailure, func() {
+var _ = Describe("Crictl", Ordered, ContinueOnFailure, Serial, func() {
 	var tool *crictlInfo
 
 	BeforeAll(func() {
-		cases := crictlTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testCrictl, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull crictl images")
-
 		DeferCleanup(func() {
-			removeAllImages(testCrictl, images)
+			cleanupImages(ToolCrictl)
 		})
 	})
 
@@ -47,6 +42,9 @@ var _ = Describe("Crictl", Ordered, ContinueOnFailure, func() {
 		func(tc containerTestArgs) {
 			skipMissingVolumes(tc)
 			tool = newCrictlTool(tc)
+
+			By("Ensuring images are available")
+			Expect(ensureTestImages(tool, tc)).To(Succeed())
 
 			By("Creating pod")
 			pID, err := tool.createPod()
