@@ -40,4 +40,3 @@ default_vcpus = 1
 [extra_binaries.virtiofsd]
 path = "/opt/urunc/libexec/virtiofsd"
 options = "--cache always --sandbox none"
-
