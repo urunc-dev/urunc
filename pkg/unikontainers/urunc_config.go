@@ -146,11 +146,12 @@ const (
 
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
-		"qemu":             {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"hvt":              {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"spt":              {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"firecracker":      {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"cloud-hypervisor": {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"qemu":                {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"hvt":                 {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"spt":                 {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"firecracker":         {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"cloud-hypervisor":    {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"hyperlight-unikraft": {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 	}
 }
 
