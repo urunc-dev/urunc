@@ -111,6 +111,9 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
 	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
+	if args.ContainerID != "" {
+		JSONConfigFile = filepath.Join("/tmp/", fmt.Sprintf("fc-%s.json", args.ContainerID))
+	}
 	exArgs := []string{fc.Path(), "--no-api", "--config-file", JSONConfigFile}
 	if !args.Seccomp {
 		exArgs = append(exArgs, "--no-seccomp")
