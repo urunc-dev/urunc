@@ -104,6 +104,12 @@ func (h *HviDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]stri
 	} else if args.Net.TapDev != "" {
 		cmd = append(cmd, "--net")
 	}
+	// The guest's MAC is how the gateway tells one sandbox from another: it
+	// keys its DHCP leases by it. Without this every guest presents the VMM's
+	// built-in default, so a second sandbox takes the first one's lease.
+	if args.Net.MAC != "" {
+		cmd = append(cmd, "--net-mac", args.Net.MAC)
+	}
 	if args.AgentSockPath != "" {
 		cmd = append(cmd, "--agent-sock", args.AgentSockPath)
 	}
