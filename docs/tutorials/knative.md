@@ -1,87 +1,72 @@
 # Knative + urunc: Deploying Serverless Unikernels
 
 This guide walks you through deploying [Knative Serving](https://knative.dev/)
-using [`urunc`](https://github.com/urunc-dev/urunc). You’ll build Knative from
-a custom branch and use [`ko`](https://github.com/ko-build/ko) for seamless
-image building and deployment.
+with urunc support on Kubernetes. We provide pre-built binaries for quick setup,
+or you can build Knative from source using [`ko`](https://github.com/ko-build/ko)
+for custom configurations.
 
 ## Prerequisites
 
 -   A running Kubernetes cluster
--   A Docker-compatible registry (e.g. Harbor, Docker Hub)
--   Ubuntu 20.04 or newer
--   Basic `git`, `curl`, `kubectl`, and `docker` installed
-    
-## Environment Setup
+-   `urunc` installed (follow the [installation guide](https://urunc.io/tutorials/How-to-urunc-on-k8s/))
 
-Install [Docker](/quickstart/#install-docker), Go >= 1.21, and `ko`:
+## Install Knative Serving
 
-### Install Go 1.21  
+### Option 1: Use Pre-built Knative (Recommended)
 
-```bash
-sudo mkdir /usr/local/go1.21
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -zxvf go1.21.5.linux-amd64.tar.gz -C /usr/local/go1.21/
-rm go1.21.5.linux-amd64.tar.gz
-```
+Apply the pre-built Knative manifests with urunc support:
 
-### Verify Go installation (Should be 1.21.5)
-
-```console
-$ export GOROOT=/usr/local/go1.21/go 
-$ export PATH=$GOROOT/bin:$PATH  
-$ export GOPATH=$HOME/go 
-$ go version
-go version go1.21.5 linux/amd64
-```
-
-### Install ko VERSION=0.15.1
-```bash
-export OS=Linux
-export ARCH=x86_64
-curl -sSfL "https://github.com/ko-build/ko/releases/download/v${VERSION}/ko_${VERSION}_${OS}_${ARCH}.tar.gz" -o ko.tar.gz
-sudo tar -zxvf ko.tar.gz -C /usr/local/bin` 
-```
-
-## Clone and Build Knative with the queue-proxy patch
-
-### Set your container registry  
-
-> Note: You should be able to use dockerhub for this. e.g. `<yourdockerhubid>/knative`
-
-```bash
-export KO_DOCKER_REPO='harbor.nbfc.io/nubificus/knative-install-urunc'
-```
-
-### Clone urunc-enabled Knative Serving 
-```bash
-git clone https://github.com/nubificus/serving -b feat_urunc 
-cd serving/
-ko resolve -Rf ./config/core/ > knative-custom.yaml
-```
-
-### Apply knative's manifests to the local k8s
-```bash
-kubectl apply -f knative-custom.yaml
-```
-
-Alternatively, you could use our latest build:
 ```bash
 kubectl apply -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml
 ```
 
 > Note: There are cases where due to the large manifests, kubectl fails. Try a second time, or use `kubectl create -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml`
 
-## Setup Networking (Kourier)
+### Option 2: Build Knative from Source
+
+If you prefer to build Knative yourself, follow these steps.
+
+#### Prerequisites for building from source
+
+-   A Docker-compatible registry (e.g. Harbor, Docker Hub)
+-   Ubuntu 20.04 or newer
+-   Basic `git`, `curl`, and `kubectl` installed
+-   [Docker](https://docs.docker.com/get-docker/) installed (needed for container registry interaction and `ko` builds)
+-   [Go](https://go.dev/doc/install) (>= 1.23, tested with [[ versions.go ]]) installed
+-   [`ko`](https://ko.build/install/) installed
+
+#### Set your container registry  
+
+> Note: You should be able to use Docker Hub for this. e.g. `<yourdockerhubid>/knative`
+
+```bash
+export KO_DOCKER_REPO='<your-registry>/knative'
+```
+
+#### Clone urunc-enabled Knative Serving and build
+
+```bash
+git clone https://github.com/nubificus/serving -b feat_urunc
+cd serving/
+ko resolve -Rf ./config/core/ > knative-custom.yaml
+```
+
+#### Apply knative's manifests to the local k8s
+
+```bash
+kubectl apply -f knative-custom.yaml
+```
+
+## Setup Networking ([Kourier](https://github.com/knative-extensions/net-kourier))
 
 ### Install kourier, patch ingress and domain configs
 
 ```bash
-kubectl apply -f https://github.com/knative/net-kourier/releases/latest/download/kourier.yaml 
-kubectl patch configmap/config-network -n knative-serving --type merge -p \ 
-  '{"data":{"ingress.class":"kourier.ingress.networking.knative.dev"}}'
-kubectl patch configmap/config-domain -n knative-serving --type merge -p \ 
-  '{"data":{"127.0.0.1.nip.io":""}}'
+kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/latest/download/kourier.yaml
+
+kubectl patch configmap/config-network -n knative-serving --type merge -p '{"data":{"ingress.class":"kourier.ingress.networking.knative.dev"}}'
+
+kubectl patch configmap/config-domain -n knative-serving --type merge -p '{"data":{"127.0.0.1.nip.io":""}}'
 ```
 
 ## Enable RuntimeClass and urunc Support
@@ -103,34 +88,68 @@ kubectl patch configmap/config-features --namespace knative-serving --type merge
 
 ## Deploy a Sample urunc Service
 
-```bash
-kubectl get ksvc -A -o wide
-```
-
-Should be empty. Create an simple httpreply
-[service](https://github.com/nubificus/c-httpreply/blob/main/service.yaml),
-based on a [simple C program](https://github.com/nubificus/c-httpreply):
+Create a simple httpreply [service](https://github.com/nubificus/c-httpreply/blob/main/service.yaml), based on a [simple C program](https://github.com/nubificus/c-httpreply):
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/nubificus/c-httpreply/refs/heads/main/service.yaml
 ```
 
 ### Check Knative Service 
- 
+
 ```bash
 kubectl get ksvc -A -o wide 
 ```
 
-### Test the service (replace IP with actual ingress IP) 
+Output should look like:
+```console
+$ kubectl get ksvc -A -o wide
+NAMESPACE   NAME              URL                                               LATESTCREATED           LATESTREADY             READY   REASON
+default     hellocontainerc   http://hellocontainerc.default.127.0.0.1.nip.io   hellocontainerc-00001   hellocontainerc-00001   True
+```
+
+### Get the ingress IP
+
+Before testing the service, get the IP address of the Kourier internal service:
+
+```bash
+kubectl get svc -n kourier-system kourier-internal -o jsonpath='{.spec.clusterIP}'
+```
+
+This command returns the internal ClusterIP (e.g., `10.244.9.220`). Use this value in the next curl command.
+
+### Test the service
+
+Replace `<INGRESS_IP>` with the IP address from the previous step:
 
 ```bash
 curl -v -H "Host: hellocontainerc.default.127.0.0.1.nip.io" http://<INGRESS_IP>
 ```
 
-Now, let's create a `urunc`-compatible function. Create a [service](https://github.com/nubificus/app-httpreply/blob/fb0ec5c7f5e6b1fedbc589cdc96477c472fef2ca/service.yaml), based on Unikraft's [httpreply example](https://github.com/nubificus/app-httpreply/tree/feat_generic): 
+Now, let's create a `urunc`-compatible function. Create a file named `unikernel-service.yaml` with the following content (based on Unikraft's [httpreply example](https://github.com/nubificus/app-httpreply/tree/feat_generic)):
 
+```yaml
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: hellounikernelfc
+spec:
+  template:
+    spec:
+      runtimeClassName: urunc
+      containers:
+        - name: user-container
+          image: harbor.nbfc.io/nubificus/knative-example-functions/httpreply-fc:latest
+          imagePullPolicy: Always
+          env:
+            - name: RUNTIMECLASS
+              value: "urunc"
+```
+
+> Note: Naming the container `user-container` is required. If a custom name is used, `urunc` will use dynamic networking (tc redirect filters), which redirects all container traffic to the VM and blocks the `queue-proxy` sidecar. Naming it `user-container` uses static networking (iptables NAT), allowing both containers to communicate correctly.
+
+Apply the manifest:
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/nubificus/app-httpreply/refs/heads/feat_generic/service.yaml
+kubectl apply -f unikernel-service.yaml
 ```
 
 You should be able to see this being created:
@@ -141,9 +160,7 @@ NAME             URL                                                  LATESTCREA
 hellounikernelfc http://hellounikernelfc.default.127.0.0.1.nip.io     hellounikernelfc-00001     hellounikernelfc-00001     True
 ```
 
-and once it's on a `Ready` state, you could issue a request:
-> Note: 10.244.9.220 is the IP of the `kourier-internal` svc. You can check your own from:
-> `kubectl get svc -n kourier-system |grep kourier-internal`
+Once it's in a `Ready` state, invoke the function using the ingress IP you obtained earlier:
 
 ```console
 $ curl -v -H "Host: hellounikernelfc.default.127.0.0.1.nip.io" http://10.244.9.220:80
@@ -165,9 +182,3 @@ $ curl -v -H "Host: hellounikernelfc.default.127.0.0.1.nip.io" http://10.244.9.2
 Hello, World!
 * Connection #0 to host 10.244.9.220 left intact
 ```
-
-## Wrapping Up
-
-You're now running unikernel-based workloads via Knative and `urunc`! With this
-setup, you can push the boundaries of lightweight, secure, and high-performance
-serverless deployments — all within a Kubernetes-native environment.
