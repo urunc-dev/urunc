@@ -34,7 +34,6 @@ jobs:
             runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
-    continue-on-error: true
 
     env:
       REGISTRY: ${{ inputs.registry }}
@@ -148,6 +147,9 @@ jobs:
 
       - name: Process runner architectures and create docker manifest
         id: create-manifest
+        # Unlike the default shell, bash sets pipefail, so a failed manifest
+        # push fails this step.
+        shell: bash
         run: |
           #FIXME: find a way to match runner_archs with the strategy matrix input
           runner_archs='${{ inputs.runner-archs }}'  # Using the input string array

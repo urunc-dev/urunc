@@ -44,20 +44,23 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" ]]; then
             base_ref="${{ github.event.before }}"
             head_ref="${{ github.sha }}"
+            git fetch origin "$base_ref" --depth=1
           else
-            base_ref="HEAD~1"
-            head_ref="HEAD"
+            # A manual run builds the image without a version tag.
+            echo "Manual run. Skipping the VERSION check."
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          git fetch origin $base_ref --depth=1 || true
-          changed=$(git diff --name-only "$base_ref" "$head_ref" | grep -c '^VERSION$' || true)
+          # A failed git diff fails the step, instead of reading as no change.
+          changed=$(git diff --name-only "$base_ref" "$head_ref")
 
-          if [[ "$changed" -gt 0 ]]; then
+          if grep -qx 'VERSION' <<< "$changed"; then
             echo "VERSION file changed"
-            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "VERSION not changed"
-            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
   build-dockerfiles-deploy:
