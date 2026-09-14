@@ -49,6 +49,11 @@ jobs:
       - name: Checkout the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # An image reference may not contain uppercase letters, while
+      # github.repository keeps the owner's case.
+      - name: Lowercase the image name
+        run: echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -92,7 +97,7 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
           DIGEST: ${{steps.build-and-push.outputs.digest}}
         run: |
-          cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy@$DIGEST \
+          cosign sign --yes "${IMAGE_NAME}@${DIGEST}" \
           -a "repo=${{github.repository}}" \
           -a "workflow=${{github.workflow}}" \
           -a "ref=${{github.sha}}" \
@@ -107,6 +112,7 @@ jobs:
       id-token: write # to complete the identity challenge with sigstore/fulcio when running outside of PRs
     env:
       REGISTRY: ${{ inputs.registry }}
+      IMAGE_NAME: ${{ inputs.registry }}/${{ github.repository }}/urunc-deploy
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -117,24 +123,29 @@ jobs:
       - name: Checkout the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # An image reference may not contain uppercase letters, while
+      # github.repository keeps the owner's case.
+      - name: Lowercase the image name
+        run: echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+
       - name: Set SHA and Docker tag based on branch or PR
         id: tag
         run: |
           # Set SHA_SHORT to be used for the manifest
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          echo "SHA_SHORT=${SHORT_SHA}" >> $GITHUB_ENV
+          echo "SHA_SHORT=${SHORT_SHA}" >> "$GITHUB_ENV"
 
           # Determine the manifests' TAG
           if [[ ${{ inputs.version-tag }} == true ]]; then
             echo "Version change detected. Using version: $( cat VERSION )."
-            echo "TAG=$( cat VERSION ) " >> $GITHUB_ENV
+            echo "TAG=$( cat VERSION )" >> "$GITHUB_ENV"
           elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
             echo "Change in main branch detected. Using latest tag."
-            echo "TAG=latest" >> $GITHUB_ENV
+            echo "TAG=latest" >> "$GITHUB_ENV"
           else
             SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
             echo "Using tag: ${SHORT_SHA}."
-            echo "TAG=${SHORT_SHA}" >> $GITHUB_ENV
+            echo "TAG=${SHORT_SHA}" >> "$GITHUB_ENV"
           fi
 
 
@@ -153,27 +164,22 @@ jobs:
         run: |
           #FIXME: find a way to match runner_archs with the strategy matrix input
           runner_archs='${{ inputs.runner-archs }}'  # Using the input string array
-          amend_command=""
+          manifests=()
 
-          # Loop over the architectures and build the amend command
-          for arch in $(echo $runner_archs | jq -r '.[]'); do
-            amend_command+=" --amend ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:$arch-${{ env.SHA_SHORT }}"
+          # Loop over the architectures and collect the per-arch images
+          for arch in $(echo "$runner_archs" | jq -r '.[]'); do
+            manifests+=("${IMAGE_NAME}:${arch}-${SHA_SHORT}")
           done
 
-          echo "-------------------- Amend command constructed -------------------"
-          echo "$amend_command"
+          echo "-------------------- Per-arch images ------------------------------"
+          printf '%s\n' "${manifests[@]}"
 
-          # Create the docker manifest with the amend command
-          docker manifest create ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.TAG }} $amend_command
+          # Push under the short SHA only. The version tag and latest follow
+          # once cosign has signed the manifest.
+          docker manifest create --amend "${IMAGE_NAME}:${SHA_SHORT}" "${manifests[@]}"
 
-          VAR=`docker manifest push ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.TAG }} | tail -1`
+          VAR=$(docker manifest push "${IMAGE_NAME}:${SHA_SHORT}" | tail -1)
           echo "manifest_sha=$VAR" >> "$GITHUB_OUTPUT"
-
-          # Also tag with commit hash on main branch
-          if [[ "${{ github.ref }}" == "refs/heads/main" && "${{ inputs.version-tag }}" != "true" ]]; then
-            docker buildx imagetools create -t ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.SHA_SHORT }} \
-              ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy:${{ env.TAG }}
-          fi
 
 
       - name: Install cosign
@@ -184,8 +190,19 @@ jobs:
           COSIGN_EXPERIMENTAL: "true"
           DIGEST: ${{steps.create-manifest.outputs.manifest_sha }}
         run: |
-          cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository }}/urunc-deploy@$DIGEST \
+          cosign sign --yes "${IMAGE_NAME}@${DIGEST}" \
           -a "repo=${{github.repository}}" \
           -a "workflow=${{github.workflow}}" \
           -a "ref=${{github.sha}}" \
           -a "author=Nubificus LTD"
+
+      # buildx keeps the digest of a single manifest list, so the signature
+      # covers these tags too. buildx would rewrite the list, and change its
+      # digest, if the images had attestations attached.
+      - name: Tag the signed manifest
+        env:
+          DIGEST: ${{ steps.create-manifest.outputs.manifest_sha }}
+        run: |
+          if [[ "$TAG" != "$SHA_SHORT" ]]; then
+            docker buildx imagetools create -t "${IMAGE_NAME}:${TAG}" "${IMAGE_NAME}@${DIGEST}"
+          fi
