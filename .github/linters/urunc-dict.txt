@@ -361,6 +361,7 @@ overlayfs
 macaddr
 copyMountfiles
 govet
+pipefail
 DEFROUTE
 Agarwal
 blockfile
