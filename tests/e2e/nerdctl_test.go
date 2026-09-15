@@ -16,20 +16,14 @@ package urunce2etesting
 
 import (
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
+var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, Serial, func() {
 	var tool *nerdctlInfo
 
 	BeforeAll(func() {
-		cases := nerdctlTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testNerdctl, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull nerdctl images")
-
 		DeferCleanup(func() {
-			removeAllImages(testNerdctl, images)
+			cleanupImages(ToolNerdctl)
 		})
 	})
 

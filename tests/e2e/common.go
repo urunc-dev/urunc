@@ -25,6 +25,7 @@ import (
 
 type testTool interface {
 	Name() string
+	ToolType() ToolType
 	getTestArgs() containerTestArgs
 	getPodID() string
 	getContainerID() string
@@ -70,12 +71,23 @@ type containerTestArgs struct {
 	ExpectOut      string
 }
 
+type ToolType string
+
 const (
-	testCtr     = "TestCtr"
-	testCrictl  = "TestCrictl"
-	testDocker  = "TestDocker"
-	testNerdctl = "TestNerdctl"
+	ToolCtr     ToolType = "TestCtr"
+	ToolCrictl  ToolType = "TestCrictl"
+	ToolDocker  ToolType = "TestDocker"
+	ToolNerdctl ToolType = "TestNerdctl"
 )
+
+func (t ToolType) LockDomain() string {
+	switch t {
+	case ToolDocker:
+		return "docker"
+	default:
+		return "containerd-k8s.io"
+	}
+}
 
 var errToolDoesNotSupport = errors.New("Operation not support")
 

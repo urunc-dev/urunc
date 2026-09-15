@@ -137,6 +137,10 @@ func (i *crictlInfo) Name() string {
 	return crictlName
 }
 
+func (i *crictlInfo) ToolType() ToolType {
+	return ToolCrictl
+}
+
 func (i *crictlInfo) getTestArgs() containerTestArgs {
 	return i.testArgs
 }

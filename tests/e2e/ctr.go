@@ -64,6 +64,10 @@ func (i *ctrInfo) Name() string {
 	return ctrName
 }
 
+func (i *ctrInfo) ToolType() ToolType {
+	return ToolCtr
+}
+
 func (i *ctrInfo) getTestArgs() containerTestArgs {
 	return i.testArgs
 }

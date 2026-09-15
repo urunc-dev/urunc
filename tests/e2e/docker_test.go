@@ -16,20 +16,14 @@ package urunce2etesting
 
 import (
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
+var _ = Describe("Docker", Ordered, ContinueOnFailure, Serial, func() {
 	var tool *dockerInfo
 
 	BeforeAll(func() {
-		cases := dockerTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testDocker, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull docker images")
-
 		DeferCleanup(func() {
-			removeAllImages(testDocker, images)
+			cleanupImages(ToolDocker)
 		})
 	})
 

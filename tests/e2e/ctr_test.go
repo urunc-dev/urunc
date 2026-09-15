@@ -16,20 +16,14 @@ package urunce2etesting
 
 import (
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
+var _ = Describe("Ctr", Ordered, ContinueOnFailure, Serial, func() {
 	var tool *ctrInfo
 
 	BeforeAll(func() {
-		cases := ctrTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testCtr, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull ctr images")
-
 		DeferCleanup(func() {
-			removeAllImages(testCtr, images)
+			cleanupImages(ToolCtr)
 		})
 	})
 
