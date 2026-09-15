@@ -52,7 +52,7 @@ func (ch *CloudHypervisor) UsesKVM() bool {
 // SupportsSharedfs returns true as Cloud Hypervisor supports virtiofs
 func (ch *CloudHypervisor) SupportsSharedfs(fsType string) bool {
 	switch fsType {
-	case "virtio":
+	case "virtio", "virtiofs":
 		return true
 	default:
 		return false
