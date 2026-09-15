@@ -15,7 +15,7 @@
 package urunce2etesting
 
 func nerdctlTestCases() []containerTestArgs {
-	return []containerTestArgs{
+	cases := []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/hello-hvt-rumprun:latest",
 			Name:           "Hvt-rumprun-capture-hello",
@@ -522,10 +522,11 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 	}
+	return append(cases, optionalJSONTestCases("testdata/nerdctl_extra_test_cases.json")...)
 }
 
 func ctrTestCases() []containerTestArgs {
-	return []containerTestArgs{
+	cases := []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/hello-hvt-rumprun-nonet:latest",
 			Name:           "Hvt-rumprun-hello",
@@ -833,10 +834,11 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 	}
+	return append(cases, optionalJSONTestCases("testdata/ctr_extra_test_cases.json")...)
 }
 
 func crictlTestCases() []containerTestArgs {
-	return []containerTestArgs{
+	cases := []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/redis-hvt-rumprun-raw:latest",
 			Name:           "Hvt-rumprun-redis",
@@ -1046,10 +1048,11 @@ func crictlTestCases() []containerTestArgs {
 			TestFunc:       userGroupTest,
 		},
 	}
+	return cases
 }
 
 func dockerTestCases() []containerTestArgs {
-	return []containerTestArgs{
+	cases := []containerTestArgs{
 		{
 			Image:          "harbor.nbfc.io/nubificus/urunc/net-spt-mirage:latest",
 			Name:           "Spt-mirage-net",
@@ -1323,4 +1326,5 @@ func dockerTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 	}
+	return cases
 }
