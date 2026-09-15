@@ -527,12 +527,14 @@ sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
 
 #### Option 3: Install from latest artifacts (tip of the main branch)
 
-Alternatively, to get a `urunc` binary based on the main branch:
+Alternatively, to get a `urunc` binary based on the main branch, use the
+rolling [`nightly`](https://github.com/urunc-dev/urunc/releases/tag/nightly)
+pre-release.
 
 ```bash
-URUNC_VERSION=main
+URUNC_VERSION=nightly
 URUNC_BINARY_FILENAME="urunc_static_$(dpkg --print-architecture)"
-wget -q https://s3.nbfc.io/nbfc-assets/github/urunc/dist/$URUNC_VERSION/$(dpkg --print-architecture)/$URUNC_BINARY_FILENAME
+wget -q https://github.com/urunc-dev/urunc/releases/download/$URUNC_VERSION/$URUNC_BINARY_FILENAME
 chmod +x $URUNC_BINARY_FILENAME
 sudo mv $URUNC_BINARY_FILENAME /usr/local/bin/urunc
 ```
@@ -541,7 +543,7 @@ And for `containerd-shim-urunc-v2`:
 
 ```bash
 CONTAINERD_BINARY_FILENAME="containerd-shim-urunc-v2_static_$(dpkg --print-architecture)"
-wget -q https://s3.nbfc.io/nbfc-assets/github/urunc/dist/$URUNC_VERSION/$(dpkg --print-architecture)/$CONTAINERD_BINARY_FILENAME
+wget -q https://github.com/urunc-dev/urunc/releases/download/$URUNC_VERSION/$CONTAINERD_BINARY_FILENAME
 chmod +x $CONTAINERD_BINARY_FILENAME
 sudo mv $CONTAINERD_BINARY_FILENAME /usr/local/bin/containerd-shim-urunc-v2
 ```
