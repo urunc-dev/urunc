@@ -125,3 +125,42 @@ func TestMirageBlkDevName(t *testing.T) {
 		assert.Equal(t, "storage", args[0].ID)
 	})
 }
+
+func TestMirageDNS(t *testing.T) {
+	m := newMirage()
+
+	err := m.Init(types.UnikernelParams{
+		CmdLine: []string{"app"},
+		Net: types.NetDevParams{
+			IP:        "10.0.0.2",
+			Mask:      "255.255.255.0",
+			Gateway:   "10.0.0.1",
+			DNSServer: "1.1.1.1",
+		},
+	})
+
+	assert.NoError(t, err)
+
+	cmd, err := m.CommandString()
+	assert.NoError(t, err)
+	assert.Contains(t, cmd, "--dns-servers=1.1.1.1")
+}
+
+func TestMirageDNSMissing(t *testing.T) {
+	m := newMirage()
+
+	err := m.Init(types.UnikernelParams{
+		CmdLine: []string{"app"},
+		Net: types.NetDevParams{
+			IP:      "10.0.0.2",
+			Mask:    "255.255.255.0",
+			Gateway: "10.0.0.1",
+		},
+	})
+
+	assert.NoError(t, err)
+
+	cmd, err := m.CommandString()
+	assert.NoError(t, err)
+	assert.NotContains(t, cmd, "--dns-servers=")
+}
