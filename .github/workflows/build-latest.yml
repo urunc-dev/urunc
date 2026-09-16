@@ -110,6 +110,7 @@ jobs:
       contents: read # to check the repository out
       packages: write # for uploading the finished container
       id-token: write # to complete the identity challenge with sigstore/fulcio when running outside of PRs
+      actions: read # to find the newest run on main
     env:
       REGISTRY: ${{ inputs.registry }}
       IMAGE_NAME: ${{ inputs.registry }}/${{ github.repository }}/urunc-deploy
@@ -128,8 +129,7 @@ jobs:
       - name: Lowercase the image name
         run: echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
 
-      - name: Set SHA and Docker tag based on branch or PR
-        id: tag
+      - name: Set the short SHA and the version tag
         run: |
           # Set SHA_SHORT to be used for the manifest
           SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
@@ -139,11 +139,7 @@ jobs:
           if [[ ${{ inputs.version-tag }} == true ]]; then
             echo "Version change detected. Using version: $( cat VERSION )."
             echo "TAG=$( cat VERSION )" >> "$GITHUB_ENV"
-          elif [[ "${GITHUB_REF##*/}" == "main" ]]; then
-            echo "Change in main branch detected. Using latest tag."
-            echo "TAG=latest" >> "$GITHUB_ENV"
           else
-            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
             echo "Using tag: ${SHORT_SHA}."
             echo "TAG=${SHORT_SHA}" >> "$GITHUB_ENV"
           fi
@@ -202,7 +198,28 @@ jobs:
       - name: Tag the signed manifest
         env:
           DIGEST: ${{ steps.create-manifest.outputs.manifest_sha }}
+          GH_TOKEN: ${{ github.token }}
+          WF_REF: ${{ github.workflow_ref }}
         run: |
           if [[ "$TAG" != "$SHA_SHORT" ]]; then
             docker buildx imagetools create -t "${IMAGE_NAME}:${TAG}" "${IMAGE_NAME}@${DIGEST}"
+          fi
+          # Runs on main can overlap, and a re-run keeps its old commit. So
+          # only the newest run on main moves latest. A newer run has a
+          # higher run number, and a re-run keeps its number. Look for a
+          # newer run among the runs created since this commit.
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            # GITHUB_RUN_NUMBER counts the runs of the calling workflow.
+            workflow=${WF_REF%@*}
+            workflow=${workflow##*/}
+            since=$(git show -s --format=%cI "$GITHUB_SHA")
+            newer=$(gh run list --repo "$GITHUB_REPOSITORY" \
+              --workflow "$workflow" --branch main \
+              --created ">=$since" --limit 100 --json number \
+              --jq "map(select(.number > $GITHUB_RUN_NUMBER)) | length")
+            if [[ "$newer" == 0 ]]; then
+              docker buildx imagetools create -t "${IMAGE_NAME}:latest" "${IMAGE_NAME}@${DIGEST}"
+            else
+              echo "::notice::A newer run on main moves latest."
+            fi
           fi

@@ -16,9 +16,11 @@ on:
       - 'go.sum'
   workflow_dispatch:
 
+# Runs of the same commit push the same per-arch tags, so they wait for
+# each other. No run cancels a running build, and only the newest run on
+# main moves latest.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.sha }}
 
 permissions:
   contents: read
@@ -72,6 +74,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      actions: read
     uses: ./.github/workflows/build-latest.yml
     with:
       runner-archs: '["amd64", "arm64"]'
