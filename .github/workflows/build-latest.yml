@@ -3,9 +3,11 @@ name: 🍜 Build/publish urunc-deploy image
 on:
   workflow_call:
     inputs:
+      # build-all builds one image per entry, and the manifest job combines
+      # the images.
       runner-archs:
         type: string
-        default: '["amd64", "aarch64"]'
+        default: '["amd64", "arm64"]'
       dockerfiles:
         type: string
         default: 'deployment/urunc-deploy/Dockerfile'
@@ -21,7 +23,8 @@ permissions:
 
 jobs:
   build-all:
-    runs-on: ${{ matrix.runner }}
+    # The arm64 runner for arm64, and the amd64 runner for any other entry.
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 600
     permissions:
       contents: read # to check the repository out
@@ -29,11 +32,7 @@ jobs:
       id-token: write # to complete the identity challenge with sigstore/fulcio when running outside of PRs
     strategy:
       matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-24.04
-          - arch: arm64
-            runner: ubuntu-24.04-arm
+        arch: ${{ fromJSON(inputs.runner-archs) }}
 
     env:
       REGISTRY: ${{ inputs.registry }}
@@ -45,6 +44,16 @@ jobs:
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
+
+      # Stop an entry without a runner, instead of building it on the amd64
+      # runner.
+      - name: Check the runner architecture
+        run: |
+          runner_arch=$(dpkg --print-architecture)
+          if [[ "$runner_arch" != "$ARCH" ]]; then
+            echo "::error::No runner for ${ARCH}. This runner is ${runner_arch}."
+            exit 1
+          fi
 
       - name: Checkout the repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -157,7 +166,6 @@ jobs:
         # push fails this step.
         shell: bash
         run: |
-          #FIXME: find a way to match runner_archs with the strategy matrix input
           runner_archs='${{ inputs.runner-archs }}'  # Using the input string array
           manifests=()
 
