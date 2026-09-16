@@ -31,9 +31,10 @@ type Hermit struct {
 }
 
 type HermitNet struct {
-	Address string
-	Mask    int
-	Gateway string
+	Address   string
+	Mask      int
+	Gateway   string
+	DNSServer string
 }
 
 func (h *Hermit) CommandString() (string, error) {
@@ -46,6 +47,9 @@ func (h *Hermit) CommandString() (string, error) {
 			ip += ":" + h.Net.Gateway
 		}
 		args = append(args, "ip="+ip)
+	}
+	if h.Net.DNSServer != "" {
+		args = append(args, fmt.Sprintf("env=HERMIT_DNS1=%s", h.Net.DNSServer))
 	}
 
 	// Add separator ONLY if we have net args AND a command
@@ -121,6 +125,7 @@ func (h *Hermit) Init(data types.UnikernelParams) error {
 		h.Net.Address = data.Net.IP
 		h.Net.Gateway = data.Net.Gateway
 		h.Net.Mask = mask
+		h.Net.DNSServer = data.Net.DNSServer
 	}
 
 	h.Command = strings.Join(data.CmdLine, " ")
