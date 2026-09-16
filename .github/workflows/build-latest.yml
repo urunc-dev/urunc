@@ -100,8 +100,7 @@ jobs:
           cosign sign --yes "${IMAGE_NAME}@${DIGEST}" \
           -a "repo=${{github.repository}}" \
           -a "workflow=${{github.workflow}}" \
-          -a "ref=${{github.sha}}" \
-          -a "author=Nubificus LTD"
+          -a "ref=${{github.sha}}"
 
   manifest:
     needs: [build-all]
@@ -189,8 +188,7 @@ jobs:
           cosign sign --yes "${IMAGE_NAME}@${DIGEST}" \
           -a "repo=${{github.repository}}" \
           -a "workflow=${{github.workflow}}" \
-          -a "ref=${{github.sha}}" \
-          -a "author=Nubificus LTD"
+          -a "ref=${{github.sha}}"
 
       # buildx keeps the digest of a single manifest list, so the signature
       # covers these tags too. buildx would rewrite the list, and change its
