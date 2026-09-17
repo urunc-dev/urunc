@@ -248,6 +248,42 @@ func convertUint32ToIntSlice(valSlice []uint32, size int) []int {
 
 // spawnProcess starts the process described by argv, whose first element is the
 // binary. An empty argv is a no-op.
+//
+// vhostSocketPath returns the --socket-path argument of a virtiofsd PreStartCmd,
+// or "" when the command creates no such socket (e.g. 9pfs, block, no rootfs).
+func vhostSocketPath(argv []string) string {
+	for _, a := range argv {
+		if sock, ok := strings.CutPrefix(a, "--socket-path="); ok {
+			return sock
+		}
+	}
+	return ""
+}
+
+// waitAndChmodSocket waits for a unix socket to be created, then sets its mode.
+// virtiofsd is spawned while urunc is still root (so it can translate ids and
+// write the shared rootfs) and creates its vhost-user socket root-owned. The
+// monitor then drops to the container user and would not be able to connect, so
+// while still root we wait for the socket and relax its mode. Waiting also
+// absorbs virtiofsd's startup race, where the socket does not yet exist when
+// spawnProcess returns. The socket lives in the pivoted monitor rootfs, so
+// widening its mode does not expose it beyond this container's namespace.
+func waitAndChmodSocket(path string, mode os.FileMode, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
+			if err := os.Chmod(path, mode); err != nil {
+				return fmt.Errorf("could not chmod vhost-user socket %s: %w", path, err)
+			}
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("vhost-user socket %s did not appear within %s", path, timeout)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func spawnProcess(argv []string) error {
 	if len(argv) == 0 {
 		return nil

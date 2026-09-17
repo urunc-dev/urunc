@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/network"
@@ -480,6 +481,8 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			memory:         memory,
 			bootKernelHost: u.State.Annotations[annotBootKernel],
 			bootInitrdHost: u.State.Annotations[annotBootInitrd],
+			containerUID:   u.Spec.Process.User.UID,
+			containerGID:   u.Spec.Process.User.GID,
 		}
 	default:
 		return noRootfs{
@@ -779,6 +782,24 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// Spawn virtiofsd (when the shared-fs rootfs needs it) while still root: it
+	// has to write the shared rootfs on the guest's behalf and to translate the
+	// container user onto the host owner of its volumes (see the --translate-uid/
+	// --translate-gid options in sharedfsRootfs.preStartCmd), both of which need
+	// privileges the monitor no longer has after the drop below. The vhost-user
+	// socket it creates is then root-owned; while still root, wait for it and
+	// relax its mode so the monitor can connect after dropping to the container
+	// user.
+	err = spawnProcess(monRes.PreStartCmd)
+	if err != nil {
+		return err
+	}
+	if sock := vhostSocketPath(monRes.PreStartCmd); sock != "" {
+		if err = waitAndChmodSocket(sock, 0o666, 5*time.Second); err != nil {
+			return err
+		}
+	}
+
 	// uid/gid
 	// Setup uid, gid and additional groups for the monitor process
 	err = setupUser(u.Spec.Process.User)
@@ -793,11 +814,6 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// we should treat this hook, because it might refer to operations like
 	// ldconfig etc.
 	err = u.ExecuteHooks("StartContainer")
-	if err != nil {
-		return err
-	}
-
-	err = spawnProcess(monRes.PreStartCmd)
 	if err != nil {
 		return err
 	}
