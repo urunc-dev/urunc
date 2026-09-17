@@ -25,6 +25,7 @@ import (
 	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 // TODO: Find and set the correct size for the tmpfs in the host
@@ -43,6 +44,12 @@ type sharedfsRootfs struct {
 	// monitor boots them in place of a kernel from the image.
 	bootKernelHost string
 	bootInitrdHost string
+	// containerUID and containerGID are the identity the guest runs the
+	// container process as (Spec.Process.User). virtiofsd maps this identity onto
+	// the host owner of the shared files so a non-root guest owns its volumes
+	// (see virtiofsIDTranslations).
+	containerUID uint32
+	containerGID uint32
 }
 
 func (s sharedfsRootfs) hasContainerBoot() bool {
@@ -135,7 +142,87 @@ func (s sharedfsRootfs) preStartCmd() []string {
 		argv = append(argv, strings.Fields(s.vfsdConfig.Options)...)
 	}
 
+	// Map the container's user onto the host owner of the shared files, so a
+	// non-root guest process owns its bind-mounted volumes and its writes persist
+	// under the host owner. A single virtiofsd shares the whole rootfs tree, so
+	// there is one owner to map to: the first non-root owner among the volumes.
+	argv = append(argv, virtiofsIDTranslations(bindMountOwners(s.mounts), s.containerUID, s.containerGID)...)
+
 	return argv
+}
+
+// bindMountOwner is the host uid/gid owning the source of a bind mount that is
+// shared into the guest.
+type bindMountOwner struct {
+	uid uint32
+	gid uint32
+}
+
+// bindMountOwners stats the source of every bind mount in mounts (in the order
+// they appear) and returns its host owner. A source that cannot be stat'd is
+// skipped with a warning rather than failing the container, since it only costs
+// the id translation, not the mount itself.
+func bindMountOwners(mounts []specs.Mount) []bindMountOwner {
+	var owners []bindMountOwner
+	for _, m := range mounts {
+		if !isBindMount(m) {
+			continue
+		}
+		var st unix.Stat_t
+		if err := unix.Stat(m.Source, &st); err != nil {
+			uniklog.Warnf("virtiofs id-map: could not stat bind mount source %s: %v", m.Source, err)
+			continue
+		}
+		owners = append(owners, bindMountOwner{uid: st.Uid, gid: st.Gid})
+	}
+	return owners
+}
+
+// virtiofsIDTranslations builds the virtiofsd --translate-uid/--translate-gid
+// options that map the container's user (gUID/gGID, the identity the guest runs
+// the container process as) onto the host owner of the shared files.
+//
+// One virtiofsd shares the whole container rootfs tree with the volumes on top,
+// so a translation applies to the entire share and there is a single owner to
+// map to. We pick the first non-root owner among the bind mount sources: the
+// rootfs itself is unpacked as root, whereas a volume carries the host owner the
+// user chose, so its uid/gid is the one a non-root guest's writes should land
+// as. virtiofsd runs as root and therefore has the rights to perform the 1:1
+// bidirectional map, spelled "map:<guest>:<host>:1" in virtiofsd 1.13+.
+//
+// The uid and gid are chosen independently, since a source may be owned by
+// root:group or user:root. A translation is emitted only when both ends are
+// non-root and they actually differ:
+//   - the container's own id must be non-root: the container process runs as
+//     root by default, and remapping guest root would shift the whole shared
+//     rootfs (unpacked as root), not just a volume;
+//   - the host owner must be non-root: a root-owned source needs no shift, and
+//     with no non-root owner among the volumes there is nothing to map to.
+func virtiofsIDTranslations(owners []bindMountOwner, gUID, gGID uint32) []string {
+	var args []string
+	if gUID != 0 {
+		for _, o := range owners {
+			if o.uid == 0 {
+				continue
+			}
+			if o.uid != gUID {
+				args = append(args, "--translate-uid", fmt.Sprintf("map:%d:%d:1", gUID, o.uid))
+			}
+			break
+		}
+	}
+	if gGID != 0 {
+		for _, o := range owners {
+			if o.gid == 0 {
+				continue
+			}
+			if o.gid != gGID {
+				args = append(args, "--translate-gid", fmt.Sprintf("map:%d:%d:1", gGID, o.gid))
+			}
+			break
+		}
+	}
+	return args
 }
 
 func chooseTmpfsSize(sfsType string, mem uint64) string {
