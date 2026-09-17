@@ -176,7 +176,7 @@ func copyMountfiles(targetPath string, mounts []specs.Mount) error {
 	var err error
 	for _, m := range mounts {
 		err = fileFromHost(targetPath, m.Source, m.Destination)
-		if (err != nil) && !errors.Is(err, ErrCopyDir) {
+		if (err != nil) && !errors.Is(err, ErrNotRegularFile) {
 			return err
 		}
 	}
