@@ -57,7 +57,7 @@ func (s sharedfsRootfs) getMounts() ([]specs.Mount, error) {
 	tmpfsSize := chooseTmpfsSize(s.sfsType, s.memory)
 	mounts = append(mounts, tmpfsMount("/tmp", tmpfsSize))
 
-	bindMounts, err := filterBindMounts(s.mountedPath, s.mounts)
+	bindMounts, err := rebaseBindMounts(s.mountedPath, s.mounts)
 	if err != nil {
 		return nil, err
 	}
@@ -115,18 +115,12 @@ func chooseTmpfsSize(sfsType string, mem uint64) string {
 	return tmpMountMemStr
 }
 
-// filterBindMounts filters the mounts form the container's spec keeping only the
-// bind mounts and adjusts the Destination path to the mountpoint of the
-// container's rootfs inside the monitor rootfs.
-func filterBindMounts(containerRootfs string, mounts []specs.Mount) ([]specs.Mount, error) {
+// rebaseBindMounts adjusts the Destination path of the bind mounts passed to the
+// guest, as selected by onlyBindMounts, to the mountpoint of the container's
+// rootfs inside the monitor rootfs.
+func rebaseBindMounts(containerRootfs string, mounts []specs.Mount) ([]specs.Mount, error) {
 	var result []specs.Mount
 	for _, m := range mounts {
-		// Skip non-bind mounts
-		// TODO handle other types of mounts too
-		if !isBindMount(m) {
-			continue
-		}
-
 		// Resolve the destination against the real container rootfs,
 		// and then re-root the resolved path under the container
 		// rootfs mount inside the monitor rootfs, where the mount is

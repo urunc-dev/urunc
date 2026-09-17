@@ -450,16 +450,83 @@ func isBindMount(m specs.Mount) bool {
 	return slices.Contains(m.Options, "bind") || slices.Contains(m.Options, "rbind")
 }
 
+// Magic numbers of host kernel filesystems that golang.org/x/sys/unix does not
+// define, from the kernel's include/uapi/linux/magic.h.
+const (
+	configfsMagic = 0x62656570
+	fusectlMagic  = 0x65735543
+	mqueueMagic   = 0x19800202
+)
+
+// isHostKernelFS reports whether path resides on one of the filesystems
+// through which the host kernel exposes its state and configuration (sysfs,
+// procfs, cgroupfs, ...).
+func isHostKernelFS(path string) (bool, error) {
+	var st unix.Statfs_t
+	err := unix.Statfs(path, &st)
+	if err != nil {
+		return false, fmt.Errorf("failed to statfs %s: %w", path, err)
+	}
+
+	// Statfs_t.Type is an int64 on amd64 and arm64; the conversion only
+	// matters on architectures where it is narrower.
+	switch int64(st.Type) {
+	case unix.SYSFS_MAGIC,
+		unix.PROC_SUPER_MAGIC,
+		unix.CGROUP_SUPER_MAGIC,
+		unix.CGROUP2_SUPER_MAGIC,
+		unix.SECURITYFS_MAGIC,
+		unix.DEBUGFS_MAGIC,
+		unix.TRACEFS_MAGIC,
+		unix.BPF_FS_MAGIC,
+		unix.EFIVARFS_MAGIC,
+		unix.PSTOREFS_MAGIC,
+		unix.BINFMTFS_MAGIC,
+		unix.NSFS_MAGIC,
+		unix.SELINUX_MAGIC,
+		unix.SMACK_MAGIC,
+		configfsMagic,
+		fusectlMagic,
+		mqueueMagic:
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // onlyBindMounts returns the bind mounts among mounts, as recognized by
-// isBindMount.
-func onlyBindMounts(mounts []specs.Mount) []specs.Mount {
+// isBindMount, which urunc passes to the guest. It leaves out bind mounts
+// whose source resides on a host kernel filesystem, which the guest should not
+// have access to. The guest has its own kernel and its own instances of these
+// filesystems. Only the filesystem of the source itself is checked: kernel
+// filesystems mounted below it, which an rbind brings along (e.g. /proc and
+// /sys under -v /:/host), are kept, so this is not a boundary against host
+// paths a mount explicitly asks for. A mount with Type "bind" or "rbind" but
+// neither option is an error, as it is for runc.
+func onlyBindMounts(mounts []specs.Mount) ([]specs.Mount, error) {
 	var result []specs.Mount
 	for _, m := range mounts {
-		if isBindMount(m) {
-			result = append(result, m)
+		if !isBindMount(m) {
+			// TODO: Reject such mounts once, while validating the spec in
+			// New(), so that every rootfs type does, without another loop
+			// over the mounts.
+			if m.Type == "bind" || m.Type == "rbind" {
+				return nil, fmt.Errorf("mount of %s to %s has type %q but no bind or rbind option", m.Source, m.Destination, m.Type)
+			}
+			continue
 		}
+		kernelFS, err := isHostKernelFS(m.Source)
+		if err != nil {
+			return nil, err
+		}
+		if kernelFS {
+			uniklog.Warnf("skipping bind mount of %s to %s: its source is a host kernel filesystem", m.Source, m.Destination)
+			continue
+		}
+		result = append(result, m)
 	}
-	return result
+
+	return result, nil
 }
 
 // createMountPoint creates the mountpoint of a mount.
