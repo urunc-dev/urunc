@@ -15,6 +15,8 @@
 package unikontainers
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -39,12 +41,47 @@ func TestIsBindMount(t *testing.T) {
 
 	// filterBindMounts keeps such volumes and re-roots them under the shared rootfs.
 	dir := t.TempDir()
+	vol := t.TempDir()
 	mounts, err := filterBindMounts(dir, []specs.Mount{
-		{Type: "none", Source: "/host/vol", Destination: "/data", Options: []string{"rbind", "rw"}},
+		{Type: "none", Source: vol, Destination: "/data", Options: []string{"rbind", "rw"}},
 		{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
 	})
 	require.NoError(t, err)
 	require.Len(t, mounts, 1)
-	assert.Equal(t, "/host/vol", mounts[0].Source)
+	assert.Equal(t, vol, mounts[0].Source)
 	assert.Equal(t, containerRootfsMountPath+"/data", mounts[0].Destination)
+}
+
+func TestOnlyBindMounts(t *testing.T) {
+	t.Parallel()
+
+	vol := t.TempDir()
+	file := filepath.Join(vol, "file")
+	require.NoError(t, os.WriteFile(file, []byte("data"), 0o600))
+
+	mounts := []specs.Mount{
+		{Type: "bind", Source: vol, Destination: "/data", Options: []string{"rbind"}},
+		{Type: "none", Source: file, Destination: "/etc/file", Options: []string{"bind", "ro"}},
+		{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
+		{Type: "sysfs", Source: "sysfs", Destination: "/sys"},
+		// Rootless runtimes emit an rbind of the host's /sys in place of sysfs.
+		{Type: "none", Source: "/sys", Destination: "/sys", Options: []string{"rbind", "nosuid", "noexec", "nodev", "ro"}},
+		{Type: "bind", Source: "/proc", Destination: "/host/proc", Options: []string{"rbind"}},
+		{Type: "bind", Source: "/proc/cpuinfo", Destination: "/cpuinfo", Options: []string{"bind"}},
+	}
+	// cgroupfs is a separate filesystem mounted under /sys.
+	if kernelFS, err := isHostKernelFS("/sys/fs/cgroup"); err == nil && kernelFS {
+		mounts = append(mounts, specs.Mount{Type: "bind", Source: "/sys/fs/cgroup", Destination: "/cgroup", Options: []string{"rbind"}})
+	}
+
+	result, err := onlyBindMounts(mounts)
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	assert.Equal(t, vol, result[0].Source)
+	assert.Equal(t, file, result[1].Source)
+
+	_, err = onlyBindMounts([]specs.Mount{
+		{Type: "bind", Source: filepath.Join(vol, "missing"), Destination: "/missing", Options: []string{"rbind"}},
+	})
+	assert.Error(t, err)
 }

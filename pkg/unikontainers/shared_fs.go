@@ -119,14 +119,14 @@ func chooseTmpfsSize(sfsType string, mem uint64) string {
 // bind mounts and adjusts the Destination path to the mountpoint of the
 // container's rootfs inside the monitor rootfs.
 func filterBindMounts(containerRootfs string, mounts []specs.Mount) ([]specs.Mount, error) {
-	var result []specs.Mount
-	for _, m := range mounts {
-		// Skip non-bind mounts
-		// TODO handle other types of mounts too
-		if !isBindMount(m) {
-			continue
-		}
+	// TODO handle other types of mounts too
+	bindMounts, err := onlyBindMounts(mounts)
+	if err != nil {
+		return nil, err
+	}
 
+	var result []specs.Mount
+	for _, m := range bindMounts {
 		// Resolve the destination against the real container rootfs,
 		// and then re-root the resolved path under the container
 		// rootfs mount inside the monitor rootfs, where the mount is

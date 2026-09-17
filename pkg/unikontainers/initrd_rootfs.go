@@ -45,7 +45,10 @@ func (i initrdRootfs) postSetup() error {
 	}
 
 	// The initrd package expects only bind mounts.
-	mounts := onlyBindMounts(i.mounts)
+	mounts, err := onlyBindMounts(i.mounts)
+	if err != nil {
+		return err
+	}
 	if i.guestType == unikernels.UnikraftUnikernel {
 		err = initrd.MergeFileMountsIntoInitrd(initrdHostFullPath, mounts)
 	} else {

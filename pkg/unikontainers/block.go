@@ -171,11 +171,12 @@ func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string,
 }
 
 func copyMountfiles(targetPath string, mounts []specs.Mount) error {
-	for _, m := range mounts {
-		if !isBindMount(m) {
-			continue
-		}
-		err := fileFromHost(targetPath, m.Source, m.Destination)
+	bindMounts, err := onlyBindMounts(mounts)
+	if err != nil {
+		return err
+	}
+	for _, m := range bindMounts {
+		err = fileFromHost(targetPath, m.Source, m.Destination)
 		if (err != nil) && !errors.Is(err, ErrCopyDir) {
 			return err
 		}
@@ -210,11 +211,12 @@ func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDe
 // find the ones that come from a block.
 func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.BlockDevParams, error) {
 	blkImgs := []types.BlockDevParams{}
-	for i, m := range mounts {
-		// We check only bind mounts
-		if !isBindMount(m) {
-			continue
-		}
+	// We check only bind mounts
+	bindMounts, err := onlyBindMounts(mounts)
+	if err != nil {
+		return nil, err
+	}
+	for i, m := range bindMounts {
 		// Get the information of the source path
 		// from /proc/thread-self/mountinfo
 		mInfo, err := getMountInfo(m.Source)
