@@ -67,7 +67,8 @@ func TestInitrdRootfsPostSetupSelectsUpdateByGuestType(t *testing.T) {
 				initrdPath:  "initrd.cpio",
 				guestType:   tt.guestType,
 				mounts: []specs.Mount{
-					{Type: "bind", Source: source, Destination: "/mounted"},
+					{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
+					{Type: "none", Source: source, Destination: "/mounted", Options: []string{"rbind", "rw"}},
 				},
 			}
 

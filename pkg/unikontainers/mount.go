@@ -389,7 +389,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// containerd's parser cannot translate propagation tokens, and the kernel
 	// ignores per-mount VFS flags (nosuid, nodev, ...) when a bind is created, so
 	// parse the options once and apply them manually later.
-	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, m.Type == "bind")
+	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, isBindMount(m))
 
 	cm := mount.Mount{
 		Type:    m.Type,
@@ -405,7 +405,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// them with a remount. In a user namespace the remount must preserve the
 	// flags locked on the source mount, otherwise the kernel rejects it with
 	// EPERM (this is what containerd's own bind remount does for us elsewhere).
-	if m.Type == "bind" && vfsFlags != 0 {
+	if isBindMount(m) && vfsFlags != 0 {
 		remount := vfsFlags | unix.MS_BIND | unix.MS_REMOUNT
 		if userns.RunningInUserNS() {
 			locked, err := getUnprivilegedMountFlags(m.Source)
@@ -441,9 +441,30 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	return nil
 }
 
+// isBindMount reports whether m is a bind mount. As the OCI runtime spec
+// defines it, a mount is a bind mount if its options include "bind" or
+// "rbind". Its Type is then a dummy and is ignored, as runc does.
+// See the Mounts section of runtime-spec v1.2.1:
+// https://github.com/opencontainers/runtime-spec/blob/524fc0e1b8ab0180e2fc9abd31837a0f4ed1fd6b/config.md#configMounts
+func isBindMount(m specs.Mount) bool {
+	return slices.Contains(m.Options, "bind") || slices.Contains(m.Options, "rbind")
+}
+
+// onlyBindMounts returns the bind mounts among mounts, as recognized by
+// isBindMount.
+func onlyBindMounts(mounts []specs.Mount) []specs.Mount {
+	var result []specs.Mount
+	for _, m := range mounts {
+		if isBindMount(m) {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
 // createMountPoint creates the mountpoint of a mount.
 func createMountPoint(target string, m specs.Mount) error {
-	if m.Type == "bind" {
+	if isBindMount(m) {
 		var st unix.Stat_t
 		err := unix.Stat(m.Source, &st)
 		if err != nil {
