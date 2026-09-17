@@ -123,7 +123,7 @@ func filterBindMounts(containerRootfs string, mounts []specs.Mount) ([]specs.Mou
 	for _, m := range mounts {
 		// Skip non-bind mounts
 		// TODO handle other types of mounts too
-		if m.Type != "bind" {
+		if !isBindMount(m) {
 			continue
 		}
 
