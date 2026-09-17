@@ -17,7 +17,6 @@ package unikernels
 import (
 	"fmt"
 	"net"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -75,9 +74,13 @@ func (l *Linux) CommandString() (string, error) {
 	consoleStr := ""
 	// TODO: Check under which conditions console should be set to
 	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
-	// and Qemu ttyAMA0 for aarch64 while for amd64 both are fine with ttyS0
-	if runtime.GOARCH == "arm64" && l.Monitor == "qemu" {
-		consoleStr = "console=ttyAMA0"
+	// for both amd64 and arm64.
+	if l.Monitor == "qemu" {
+		// QEMU provides a virtio console (hvc0). Prefer it over the
+		// emulated UART, where every output byte costs a VM exit. With
+		// no UART in use, also skip the 8250 driver probing at boot.
+		// Requires CONFIG_VIRTIO_CONSOLE=y in the guest kernel.
+		consoleStr = "console=hvc0 8250.nr_uarts=0"
 	} else {
 		consoleStr = "console=ttyS0"
 	}

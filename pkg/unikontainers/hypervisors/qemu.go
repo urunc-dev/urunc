@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -70,8 +71,21 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		"-enable-kvm",      // Enable KVM to use CPU virt extensions
 		"-display", "none", // Disable graphic output
 		"-vga", "none",
-		"-serial", "stdio",
 		"-monitor", "null",
+	}
+	// The guest boot cmdline selects the console device: a guest asking
+	// for hvc0 gets a virtio console, where console I/O rides virtqueues
+	// instead of trapping to the VMM on every UART register access. Any
+	// other guest keeps the emulated UART on stdio. signal=off leaves
+	// terminal signals (e.g. Ctrl-C) to the guest instead of QEMU.
+	if strings.Contains(args.Command, "console=hvc0") {
+		exArgs = append(exArgs,
+			"-chardev", "stdio,id=urunc-console,signal=off",
+			"-device", "virtio-serial-pci",
+			"-device", "virtconsole,chardev=urunc-console",
+		)
+	} else {
+		exArgs = append(exArgs, "-serial", "stdio")
 	}
 
 	if args.VCPUs > 0 {
