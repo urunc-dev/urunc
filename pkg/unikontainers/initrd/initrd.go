@@ -116,6 +116,22 @@ func copyFileToInitrdWithInode(w *cpio.Writer, srcFile string, destFile string, 
 	return nil
 }
 
+// isBindMount reports whether m is a bind mount, spelled either with Type
+// "bind"/"rbind" or, as containerd and nerdctl emit volumes, with Type "none"
+// and "bind"/"rbind" among the options. Mirrors unikontainers.isBindMount; kept
+// local to avoid an import cycle.
+func isBindMount(m specs.Mount) bool {
+	if m.Type == "bind" || m.Type == "rbind" {
+		return true
+	}
+	for _, o := range m.Options {
+		if o == "bind" || o == "rbind" {
+			return true
+		}
+	}
+	return false
+}
+
 func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -125,7 +141,7 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 
 	w := cpio.NewWriter(f)
 	for _, m := range mounts {
-		if m.Type != "bind" {
+		if !isBindMount(m) {
 			continue
 		}
 		err = CopyFileToInitrd(w, m.Source, m.Destination)
@@ -208,7 +224,7 @@ func MergeFileMountsIntoInitrd(oldInitrd string, mounts []specs.Mount) (retErr e
 func regularFileBindMounts(mounts []specs.Mount) ([]specs.Mount, error) {
 	var fileMounts []specs.Mount
 	for _, mount := range mounts {
-		if mount.Type != "bind" {
+		if !isBindMount(mount) {
 			continue
 		}
 		info, err := os.Stat(mount.Source)

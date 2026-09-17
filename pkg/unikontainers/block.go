@@ -179,7 +179,7 @@ func extractBootFiles(rootfsPath string, newRootfsPath string, unikernel string,
 
 func copyMountfiles(targetPath string, mounts []specs.Mount) error {
 	for _, m := range mounts {
-		if m.Type != "bind" {
+		if !isBindMount(m) {
 			continue
 		}
 		err := fileFromHost(targetPath, m.Source, m.Destination)
@@ -219,7 +219,7 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 	blkImgs := []types.BlockDevParams{}
 	for i, m := range mounts {
 		// We check only bind mounts
-		if m.Type != "bind" {
+		if !isBindMount(m) {
 			continue
 		}
 		// Get the information of the source path

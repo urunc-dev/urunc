@@ -389,7 +389,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// containerd's parser cannot translate propagation tokens, and the kernel
 	// ignores per-mount VFS flags (nosuid, nodev, ...) when a bind is created, so
 	// parse the options once and apply them manually later.
-	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, m.Type == "bind")
+	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, isBindMount(m))
 
 	cm := mount.Mount{
 		Type:    m.Type,
@@ -405,7 +405,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// them with a remount. In a user namespace the remount must preserve the
 	// flags locked on the source mount, otherwise the kernel rejects it with
 	// EPERM (this is what containerd's own bind remount does for us elsewhere).
-	if m.Type == "bind" && vfsFlags != 0 {
+	if isBindMount(m) && vfsFlags != 0 {
 		remount := vfsFlags | unix.MS_BIND | unix.MS_REMOUNT
 		if userns.RunningInUserNS() {
 			locked, err := getUnprivilegedMountFlags(m.Source)
@@ -441,9 +441,26 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	return nil
 }
 
+// isBindMount reports whether m is a bind mount. An OCI spec spells a bind
+// mount in two ways: with Type "bind" (or "rbind"), or, as containerd and
+// nerdctl emit volumes, with Type "none" (or empty) and "bind"/"rbind" among
+// the options. Both must be recognised; every other type (tmpfs, proc, ...) is
+// not a bind mount.
+func isBindMount(m specs.Mount) bool {
+	if m.Type == "bind" || m.Type == "rbind" {
+		return true
+	}
+	for _, o := range m.Options {
+		if o == "bind" || o == "rbind" {
+			return true
+		}
+	}
+	return false
+}
+
 // createMountPoint creates the mountpoint of a mount.
 func createMountPoint(target string, m specs.Mount) error {
-	if m.Type == "bind" {
+	if isBindMount(m) {
 		var st unix.Stat_t
 		err := unix.Stat(m.Source, &st)
 		if err != nil {
