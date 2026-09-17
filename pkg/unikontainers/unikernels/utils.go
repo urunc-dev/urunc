@@ -16,6 +16,7 @@ package unikernels
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -40,6 +41,28 @@ func subnetMaskToCIDR(subnetMask string) (int, error) {
 	}
 
 	return cidr, nil
+}
+
+// copyFile copies the regular file at src to dst, creating or truncating dst.
+func copyFile(src string, dst string) error {
+	source, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	target, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer target.Close()
+
+	_, err = io.Copy(target, source)
+	if err != nil {
+		return err
+	}
+
+	return target.Close()
 }
 
 func createFile(path string, content string) error {

@@ -70,6 +70,23 @@ Except of the above, `urunc` accepts the following optional annotations:
 - `com.urunc.unikernel.mountRootfs`: A boolean value that if it is `true`,
   requests from `urunc` to mount the container's image rootfs in the unikernel
   (either as a block device or through shared-fs).
+- `com.urunc.unikernel.bootKernel`: An absolute host path to a Linux kernel
+  image (e.g. a `bzImage`) used to boot an otherwise unmodified container image
+  as a Linux guest. It must be set together with `bootInitrd`.
+- `com.urunc.unikernel.bootInitrd`: An absolute host path to the generic
+  container boot initrd built by
+  `packaging/container-initrd/build-container-initrd.sh`. Its `/init` mounts the
+  container's rootfs, shared into the guest through virtiofs (or 9p), and hands
+  over to `urunit`, which starts the `urunc exec` agent and runs the
+  container's command with the image's environment, user and working
+  directory. The initrd's `urunit` must be a version that starts the agent it
+  finds at `/run/urunc/urunit-agent`. With the
+  two boot annotations set, `unikernelType` defaults to `linux`, `hypervisor`
+  to `qemu` and `mountRootfs` to `true`, and `binary` is not required; the
+  boot annotations are accepted only at runtime (never from `urunc.json`) and
+  are mutually exclusive with `binary`, `initrd` and `block`. The kernel and
+  initrd are mounted read-only inside the monitor's rootfs; the guest boots a
+  private copy of the initrd with only the `urunit` configuration appended.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container

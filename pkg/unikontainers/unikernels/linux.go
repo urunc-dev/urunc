@@ -30,12 +30,18 @@ const (
 	LinuxUnikernel   string = "linux"
 	urunitConfPath   string = "/urunit.conf"
 	retainInitrdPath string = "/sys/firmware/initrd"
-	envStartMarker   string = "UES"
-	envEndMarker     string = "UEE"
-	lpcStartMarker   string = "UCS" // Linux process config start marker
-	lpcEndMarker     string = "UCE" // Linux process config end marker
-	blkStartMarker   string = "UBS" // Block-based mounts start marker
-	blkEndMarker     string = "UBE" // Block-based mounts end marker
+	// containerBootInit is the early userspace of a generic container boot: the
+	// boot initrd's /init, which mounts the shared container rootfs, stages
+	// urunit and the exec agent (at /run/urunc/urunit-agent, where urunit
+	// starts it from) and switch_roots into urunit with the container's
+	// command.
+	containerBootInit string = "/init"
+	envStartMarker    string = "UES"
+	envEndMarker      string = "UEE"
+	lpcStartMarker    string = "UCS" // Linux process config start marker
+	lpcEndMarker      string = "UCE" // Linux process config end marker
+	blkStartMarker    string = "UBS" // Block-based mounts start marker
+	blkEndMarker      string = "UBE" // Block-based mounts end marker
 )
 
 type Linux struct {
@@ -48,6 +54,11 @@ type Linux struct {
 	RootFsType string
 	InitrdConf bool
 	ProcConfig types.ProcessConfig
+	// ContainerBoot marks a generic container boot (see types.UnikernelParams).
+	// The guest then boots BootInitrd, the host boot initrd mounted into the
+	// monitor rootfs, through a private copy carrying the urunit configuration.
+	ContainerBoot bool
+	BootInitrd    string
 }
 
 type LinuxNet struct {
@@ -109,18 +120,24 @@ func (l *Linux) CommandString() (string, error) {
 			l.Net.Mask)
 		bootParams += " " + netParams
 	}
-	if !l.InitrdConf {
+	switch {
+	case !l.InitrdConf:
 		for _, eVar := range l.Env {
 			bootParams += " " + eVar
 		}
-	} else {
-		if l.RootFsType == "initrd" {
-			bootParams += " URUNIT_CONFIG="
-			bootParams += urunitConfPath
-		} else {
-			bootParams += " retain_initrd URUNIT_CONFIG="
-			bootParams += retainInitrdPath
-		}
+	case l.ContainerBoot:
+		// The environment travels in the urunit configuration appended to the
+		// boot initrd. Its /init copies that file into the new root and points
+		// urunit at it with URUNIT_CONFIG, so nothing is needed here. The root
+		// parameters above stay: /init mounts the rootfs they describe itself,
+		// since with an initramfs the kernel leaves that to early userspace.
+		rdinit = "rd"
+	case l.RootFsType == "initrd":
+		bootParams += " URUNIT_CONFIG="
+		bootParams += urunitConfPath
+	default:
+		bootParams += " retain_initrd URUNIT_CONFIG="
+		bootParams += retainInitrdPath
 	}
 	if !IsIPInSubnet(l.Net) {
 		bootParams += " URUNIT_DEFROUTE=1"
@@ -215,12 +232,12 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 		extraCliArgs := types.MonitorCliArgs{
 			OtherArgs: []string{"-no-reboot", "-nodefaults"},
 		}
-		if l.InitrdConf && l.RootFsType != "initrd" {
+		if l.urunitConfAsInitrd() {
 			extraCliArgs.ExtraInitrd = urunitConfPath
 		}
 		return extraCliArgs
 	case "firecracker", "cloud-hypervisor":
-		if l.InitrdConf && l.RootFsType != "initrd" {
+		if l.urunitConfAsInitrd() {
 			return types.MonitorCliArgs{
 				ExtraInitrd: urunitConfPath,
 			}
@@ -231,8 +248,25 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	}
 }
 
+// urunitConfAsInitrd reports whether the urunit configuration is handed to the
+// guest as the initrd itself (read back through /sys/firmware/initrd). That is
+// the case for a urunit guest with a non-initrd rootfs, except for a generic
+// container boot, which has a real boot initrd and appends the configuration
+// to it.
+func (l *Linux) urunitConfAsInitrd() bool {
+	return l.InitrdConf && l.RootFsType != "initrd" && !l.ContainerBoot
+}
+
 func (l *Linux) Init(data types.UnikernelParams) error {
-	err := l.parseCmdLine(data.CmdLine)
+	l.ContainerBoot = data.ContainerBoot
+	l.BootInitrd = data.InitrdPath
+
+	var err error
+	if l.ContainerBoot {
+		err = l.parseContainerBootCmdLine(data.CmdLine)
+	} else {
+		err = l.parseCmdLine(data.CmdLine)
+	}
 	if err != nil {
 		return err
 	}
@@ -247,8 +281,9 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	// if the application contains urunit, then we assume
 	// that the init process is based on our urunit
 	// and hence it can handle the information we pass to
-	// it through initrd.
-	l.InitrdConf = strings.Contains(l.App, "urunit")
+	// it through initrd. A generic container boot always hands over to the
+	// urunit shipped in its boot initrd.
+	l.InitrdConf = l.ContainerBoot || strings.Contains(l.App, "urunit")
 	if l.InitrdConf {
 		err := l.setupUrunitConfig(data.Rootfs)
 		if err != nil {
@@ -266,7 +301,35 @@ func (l *Linux) parseCmdLine(cmdLine []string) error {
 		return fmt.Errorf("no init was specified")
 	}
 
-	// Wrap multi-word arguments in quotes for urunit
+	normalizedArgs := normalizeArgs(cmdLine)
+	l.App = normalizedArgs[0]
+	if len(normalizedArgs) > 1 {
+		l.Command = strings.Join(normalizedArgs[1:], " ")
+	} else {
+		l.Command = ""
+	}
+
+	return nil
+}
+
+// parseContainerBootCmdLine sets up the command line of a generic container
+// boot: the boot initrd's /init is the guest init and the whole container
+// command (entrypoint and arguments) is passed to it, to be handed over to
+// urunit after the switch_root.
+func (l *Linux) parseContainerBootCmdLine(cmdLine []string) error {
+	if len(cmdLine) == 0 {
+		return fmt.Errorf("no command was specified for the container")
+	}
+
+	l.App = containerBootInit
+	l.Command = strings.Join(normalizeArgs(cmdLine), " ")
+
+	return nil
+}
+
+// normalizeArgs trims the arguments and wraps multi-word ones in single quotes
+// for urunit compatibility.
+func normalizeArgs(cmdLine []string) []string {
 	normalizedArgs := make([]string, len(cmdLine))
 	for i, arg := range cmdLine {
 		arg = strings.TrimSpace(arg)
@@ -277,14 +340,7 @@ func (l *Linux) parseCmdLine(cmdLine []string) error {
 		}
 	}
 
-	l.App = normalizedArgs[0]
-	if len(normalizedArgs) > 1 {
-		l.Command = strings.Join(normalizedArgs[1:], " ")
-	} else {
-		l.Command = ""
-	}
-
-	return nil
+	return normalizedArgs
 }
 
 // configureNetwork sets up network parameters.
@@ -299,14 +355,17 @@ func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
 	urunitConfig := l.buildUrunitConfig()
 
 	var err error
-	if l.RootFsType == "initrd" {
+	switch {
+	case l.ContainerBoot:
+		err = l.setupContainerBootInitrd(urunitConfig)
+	case l.RootFsType == "initrd":
 		var initrdToUpdate string
 		initrdToUpdate, err = securejoin.SecureJoin(constants.ContainerRootfsMountPath, rfs.Path)
 		if err != nil {
 			return fmt.Errorf("failed to setup urunit config: %w", err)
 		}
 		err = initrd.AddFileToInitrd(initrdToUpdate, urunitConfig, urunitConfPath)
-	} else {
+	default:
 		err = createFile(urunitConfPath, urunitConfig)
 	}
 
@@ -315,6 +374,27 @@ func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
 	}
 
 	return nil
+}
+
+// setupContainerBootInitrd writes the initrd a generic container boot guest
+// actually boots: a private copy of the host boot initrd, which is mounted
+// read-only into the monitor rootfs and shared by every container booting
+// from it, with only the urunit configuration of this container appended as
+// /urunit.conf. The initrd's /init copies that file into the new root and
+// points urunit at it. Everything else the guest needs (the command line, the
+// environment and the network files) reaches it through the kernel command
+// line, this configuration and the bind mounts of the shared rootfs.
+func (l *Linux) setupContainerBootInitrd(urunitConfig string) error {
+	if l.BootInitrd == "" {
+		return fmt.Errorf("container boot requires the path of the boot initrd")
+	}
+
+	err := copyFile(l.BootInitrd, constants.ContainerBootGuestInitrdPath)
+	if err != nil {
+		return fmt.Errorf("could not copy the boot initrd: %w", err)
+	}
+
+	return initrd.AddFileToInitrd(constants.ContainerBootGuestInitrdPath, urunitConfig, urunitConfPath)
 }
 
 // buildEnvConfig creates the environment configuration content for urunit.

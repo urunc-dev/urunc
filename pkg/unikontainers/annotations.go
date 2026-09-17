@@ -49,6 +49,8 @@ const (
 	annotBlock         = "com.urunc.unikernel.block"
 	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
+	annotBootKernel    = "com.urunc.unikernel.bootKernel"
+	annotBootInitrd    = "com.urunc.unikernel.bootInitrd"
 	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
 	annotBlkDev        = "com.urunc.unikernel.solo5BlkDev"
 	annotVAccel        = "com.urunc.unikernel.vAccel"
@@ -108,6 +110,12 @@ type UnikernelConfig struct {
 	// through the annotations of the spec.
 	VAccel     string `json:"-"`
 	RPCAddress string `json:"-"`
+	// BootKernel and BootInitrd select a generic container boot: an unmodified
+	// OCI image, which ships no unikernel of its own, is booted with a host
+	// kernel and a host boot initrd. Both are absolute host paths and, like the
+	// vAccel annotations, come only from the spec and never from urunc.json.
+	BootKernel string `json:"-"`
+	BootInitrd string `json:"-"`
 }
 
 // solo5DevNameRe constrains the valid values of a network or block device
@@ -124,10 +132,19 @@ func (c *UnikernelConfig) validate() error {
 	if c.Hypervisor == "" {
 		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotHypervisor)
 	}
-	if c.UnikernelBinary == "" {
+	// A generic container boot has no unikernel binary inside the image: the
+	// kernel comes from the bootKernel annotation instead.
+	if c.UnikernelBinary == "" && !c.hasContainerBoot() {
 		return fmt.Errorf("unikernel configuration is missing mandatory field: %s", annotBinary)
 	}
 	return nil
+}
+
+// hasContainerBoot reports whether the config asks for a generic container
+// boot, i.e. at least one of the boot annotations is set. validateValues checks
+// that both are set.
+func (c *UnikernelConfig) hasContainerBoot() bool {
+	return c.BootKernel != "" || c.BootInitrd != ""
 }
 
 // GetUnikernelConfig tries to get the Unikernel config from the bundle annotations.
@@ -172,6 +189,11 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 	// configured through urunc.json can still use vAccel
 	jsonConf.VAccel = spec.Annotations[annotVAccel]
 	jsonConf.RPCAddress = spec.Annotations[annotRPCAddress]
+	// The boot annotations are host paths and therefore runtime specific too.
+	// Carry them so that validateValues can reject them for an image that also
+	// ships its own unikernel through urunc.json.
+	jsonConf.BootKernel = spec.Annotations[annotBootKernel]
+	jsonConf.BootInitrd = spec.Annotations[annotBootInitrd]
 
 	return jsonConf, nil
 }
@@ -186,10 +208,33 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	block := spec.Annotations[annotBlock]
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
 	MountRootfs := spec.Annotations[annotMountRootfs]
+	bootKernel := spec.Annotations[annotBootKernel]
+	bootInitrd := spec.Annotations[annotBootInitrd]
 	netDev := spec.Annotations[annotNetDev]
 	blkDev := spec.Annotations[annotBlkDev]
 	vAccel := spec.Annotations[annotVAccel]
 	rpcAddress := spec.Annotations[annotRPCAddress]
+
+	// Generic container boot: the image ships no unikernel, so the host kernel
+	// and boot initrd stand in for it. The rest of the contract is the same for
+	// every such image (a Linux guest on qemu, booting from its own rootfs
+	// shared into the guest), so default it here instead of requiring every
+	// caller to spell it out. Explicit annotations still win and are validated
+	// against that contract in validateValues. A single boot annotation counts
+	// too, so that a half-specified boot is rejected there with a clear error
+	// instead of falling through as a non-urunc container that then runs
+	// natively.
+	if bootKernel != "" || bootInitrd != "" {
+		if unikernelType == "" {
+			unikernelType = unikernels.LinuxUnikernel
+		}
+		if hypervisor == "" {
+			hypervisor = string(hypervisors.QemuVmm)
+		}
+		if MountRootfs == "" {
+			MountRootfs = "true"
+		}
+	}
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    unikernelType,
 		"unikernelVersion": unikernelVersion,
@@ -199,6 +244,8 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"block":            block,
 		"blkMntPoint":      blkMntPoint,
 		"mountRootfs":      MountRootfs,
+		"bootKernel":       bootKernel,
+		"bootInitrd":       bootInitrd,
 		"netDev":           netDev,
 		"blkDev":           blkDev,
 		"vAccel":           vAccel,
@@ -214,6 +261,8 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		Block:            block,
 		BlkMntPoint:      blkMntPoint,
 		MountRootfs:      MountRootfs,
+		BootKernel:       bootKernel,
+		BootInitrd:       bootInitrd,
 		NetDev:           netDev,
 		BlkDev:           blkDev,
 		VAccel:           vAccel,
@@ -375,6 +424,12 @@ func (c *UnikernelConfig) Map() map[string]string {
 	if c.RPCAddress != "" {
 		myMap[annotRPCAddress] = c.RPCAddress
 	}
+	if c.BootKernel != "" {
+		myMap[annotBootKernel] = c.BootKernel
+	}
+	if c.BootInitrd != "" {
+		myMap[annotBootInitrd] = c.BootInitrd
+	}
 
 	return myMap
 }
@@ -433,6 +488,11 @@ func (c *UnikernelConfig) validateValues() error {
 		return err
 	}
 
+	err = c.validateContainerBoot()
+	if err != nil {
+		return err
+	}
+
 	if c.VAccel == "" {
 		if c.RPCAddress != "" {
 			return fmt.Errorf("%s is set, but %s is not", annotRPCAddress, annotVAccel)
@@ -460,6 +520,75 @@ func (c *UnikernelConfig) validateValues() error {
 
 	if !regex.MatchString(c.RPCAddress) {
 		return fmt.Errorf("invalid value %q for %s: it does not match the expected format for %s", c.RPCAddress, annotRPCAddress, c.Hypervisor)
+	}
+
+	return nil
+}
+
+// validateContainerBoot checks the generic container boot annotations. Both
+// must be set together, each must be a clean absolute host path, and the rest
+// of the configuration must describe the only supported shape of such a boot:
+// a Linux guest on qemu that boots from the container rootfs shared into the
+// guest, with no unikernel, initrd or block image coming from the image itself.
+func (c *UnikernelConfig) validateContainerBoot() error {
+	if !c.hasContainerBoot() {
+		return nil
+	}
+
+	if c.BootKernel == "" || c.BootInitrd == "" {
+		return fmt.Errorf("%s and %s must be set together", annotBootKernel, annotBootInitrd)
+	}
+
+	err := validateAnnotationHostPath(annotBootKernel, c.BootKernel)
+	if err != nil {
+		return err
+	}
+
+	err = validateAnnotationHostPath(annotBootInitrd, c.BootInitrd)
+	if err != nil {
+		return err
+	}
+
+	if c.UnikernelType != unikernels.LinuxUnikernel {
+		return fmt.Errorf("%s requires %s to be %q, got %q", annotBootKernel, annotType, unikernels.LinuxUnikernel, c.UnikernelType)
+	}
+
+	if hypervisors.VmmType(c.Hypervisor) != hypervisors.QemuVmm {
+		return fmt.Errorf("%s requires %s to be %q, got %q", annotBootKernel, annotHypervisor, hypervisors.QemuVmm, c.Hypervisor)
+	}
+
+	if c.UnikernelBinary != "" {
+		return fmt.Errorf("%s and %s are mutually exclusive: the kernel comes from the host", annotBootKernel, annotBinary)
+	}
+
+	if c.Initrd != "" {
+		return fmt.Errorf("%s and %s are mutually exclusive: the initrd comes from the host", annotBootInitrd, annotInitrd)
+	}
+
+	if c.Block != "" {
+		return fmt.Errorf("%s does not support a block image from %s", annotBootKernel, annotBlock)
+	}
+
+	// MountRootfs was already parsed above; a generic boot has no other rootfs
+	// to offer the guest than the container's own.
+	mountRootfs, _ := strconv.ParseBool(c.MountRootfs)
+	if !mountRootfs {
+		return fmt.Errorf("%s requires %s to be true", annotBootKernel, annotMountRootfs)
+	}
+
+	return nil
+}
+
+// validateAnnotationHostPath verifies that val is a clean, absolute path in the
+// host, with the same plain character set as every other path annotation.
+func validateAnnotationHostPath(key string, val string) error {
+	err := validateAnnotationPathClean(key, val, true)
+	if err != nil {
+		return err
+	}
+
+	if !filepath.IsAbs(val) {
+		return fmt.Errorf("%s must be an absolute host path, got %q", key, val)
 	}
 
 	return nil

@@ -456,12 +456,14 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 		}
 	case "virtiofs", "9pfs":
 		return sharedfsRootfs{
-			mounts:      u.Spec.Mounts,
-			mountedPath: rootfsParams.MountedPath,
-			sfsType:     rootfsParams.Type,
-			vfsdConfig:  u.UruncCfg.ExtraBins["virtiofsd"],
-			sharedPath:  containerRootfsMountPath,
-			memory:      memory,
+			mounts:         u.Spec.Mounts,
+			mountedPath:    rootfsParams.MountedPath,
+			sfsType:        rootfsParams.Type,
+			vfsdConfig:     u.UruncCfg.ExtraBins["virtiofsd"],
+			sharedPath:     containerRootfsMountPath,
+			memory:         memory,
+			bootKernelHost: u.State.Annotations[annotBootKernel],
+			bootInitrdHost: u.State.Annotations[annotBootInitrd],
 		}
 	default:
 		return noRootfs{
@@ -470,6 +472,13 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
 		}
 	}
+}
+
+// isContainerBoot reports whether the container is a generic container boot:
+// an unmodified image booted with the host kernel and boot initrd named by the
+// bootKernel and bootInitrd annotations.
+func (u *Unikontainer) isContainerBoot() bool {
+	return u.State.Annotations[annotBootKernel] != "" && u.State.Annotations[annotBootInitrd] != ""
 }
 
 // monitorMemoryBytes returns the guest memory size in bytes, honoring a memory
@@ -544,6 +553,18 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	}
 
 	vmmArgs.Sharedfs = monRes.Sharedfs
+
+	if u.isContainerBoot() {
+		// Generic container boot: the image ships no kernel, so the monitor
+		// boots the host kernel and boot initrd that the rootfs builder mounted
+		// into the monitor rootfs. The guest gets a private copy of that initrd
+		// carrying this container's urunit configuration, written by the Linux
+		// guest builder (see unikernels.Linux) from the mounted one.
+		vmmArgs.UnikernelPath = constants.ContainerBootKernelPath
+		vmmArgs.InitrdPath = constants.ContainerBootGuestInitrdPath
+		guest.ContainerBoot = true
+		guest.InitrdPath = constants.ContainerBootInitrdPath
+	}
 
 	mSpec.ContainerID = u.State.ID
 	mSpec.UnikernelType = unikernelType
@@ -701,14 +722,18 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// containerRootfsMountPath, so SecureJoin resolves the image's
 	// symlinks against the container's image rootfs. This must run after
 	// the pivot and before unikernel.Init/BuildExecCmd, the only consumers
-	// of these paths.
-	vmmArgs.UnikernelPath, err = confineToContainerRootfs(vmmArgs.UnikernelPath)
-	if err != nil {
-		return err
-	}
-	vmmArgs.InitrdPath, err = confineToContainerRootfs(vmmArgs.InitrdPath)
-	if err != nil {
-		return err
+	// of these paths. The exception is a generic container boot, whose boot
+	// files come from validated host paths mounted into the monitor rootfs
+	// rather than from the image.
+	if !unikernelParams.ContainerBoot {
+		vmmArgs.UnikernelPath, err = confineToContainerRootfs(vmmArgs.UnikernelPath)
+		if err != nil {
+			return err
+		}
+		vmmArgs.InitrdPath, err = confineToContainerRootfs(vmmArgs.InitrdPath)
+		if err != nil {
+			return err
+		}
 	}
 	unikernelParams.Block, err = confineBlockSources(unikernelParams.Block)
 	if err != nil {

@@ -1,0 +1,106 @@
+#!/busybox sh
+# Early userspace of a generic container boot (rdinit=/init).
+#
+# urunc boots an unmodified OCI image with a host kernel and this initrd. The
+# container rootfs reaches the guest as a shared filesystem (virtiofs or 9p),
+# described by the usual root=, rootfstype= and rootflags= parameters on the
+# kernel command line. With an initramfs present the kernel leaves mounting
+# that root to early userspace, so this script does exactly what has to happen
+# before urunit can take over as PID 1, and nothing more:
+#   1. mount the shared rootfs at /newroot;
+#   2. move urunit, urunit-agent and the urunit configuration into it, under
+#      /run/urunc (switch_root deletes the initramfs, so nothing may stay here);
+#   3. switch_root into urunit with the container command, pointing it at its
+#      configuration with URUNIT_CONFIG.
+#
+# The configuration (/urunit.conf) is the only per-container file urunc appends
+# to this initrd: the container's environment, user and working directory.
+# urunit, as PID 1, starts the agent it finds at /run/urunc/urunit-agent
+# before the container command and reaps it, which is why this script only
+# stages the agent there and never starts it.
+# Everything else (the command line, the network files bind-mounted over
+# /etc/resolv.conf, /etc/hosts and /etc/hostname, the volumes) already reaches
+# the guest through the kernel command line and the shared rootfs itself.
+#
+# urunit mounts /proc and /sys in the new root itself and fails when they are
+# already mounted, so they are not mounted there here. The devtmpfs this script
+# needs for the console is moved into the new root rather than mounted twice,
+# since urunit opens the console device and nothing else would provide /dev;
+# devpts is mounted on it because the agent's tty sessions need /dev/pts.
+BB=/busybox
+
+fail() {
+  echo "container-init: $*" >&2
+  # Exiting as PID 1 panics the kernel; with panic=-1 that reboots the guest,
+  # which the monitor turns into an exit, so the container fails instead of
+  # hanging with a dead init.
+  exit 1
+}
+
+$BB mount -t proc proc /proc || fail "could not mount /proc"
+$BB mount -t devtmpfs dev /dev || fail "could not mount /dev"
+
+# The root the kernel was told about: root=<tag> rootfstype=<fs> [rootflags=<opts>].
+# Parameters after "--" belong to the container command and are not looked at.
+root=""
+fstype=""
+flags=""
+for _p in $($BB cat /proc/cmdline); do
+  case "$_p" in
+    --)           break ;;
+    root=*)       root="${_p#root=}" ;;
+    rootfstype=*) fstype="${_p#rootfstype=}" ;;
+    rootflags=*)  flags="${_p#rootflags=}" ;;
+  esac
+done
+[ -n "$root" ] && [ -n "$fstype" ] || fail "no root= and rootfstype= on the kernel command line"
+
+$BB mkdir -p /newroot
+if [ -n "$flags" ]; then
+  $BB mount -t "$fstype" -o "$flags" "$root" /newroot || fail "could not mount $fstype root $root ($flags)"
+else
+  $BB mount -t "$fstype" "$root" /newroot || fail "could not mount $fstype root $root"
+fi
+$BB umount /proc
+
+# urunit, the agent and the configuration live in this initramfs, which
+# switch_root deletes; keep them in the new root's /run/urunc, where urunit
+# looks for the agent.
+[ -x /urunit ] || fail "this initrd carries no urunit"
+run=/newroot/run/urunc
+$BB mkdir -p "$run" || fail "could not create $run"
+$BB cp /urunit "$run/urunit" || fail "could not copy urunit into the new root"
+$BB chmod 0755 "$run/urunit"
+if [ -x /urunit-agent ]; then
+  $BB cp /urunit-agent "$run/urunit-agent" || fail "could not copy urunit-agent into the new root"
+  $BB chmod 0755 "$run/urunit-agent"
+fi
+if [ -f /urunit.conf ]; then
+  $BB cp /urunit.conf "$run/urunit.conf" || fail "could not copy urunit.conf into the new root"
+  export URUNIT_CONFIG=/run/urunc/urunit.conf
+else
+  echo "container-init: no urunit.conf in the initrd; urunit runs the command as root with no environment" >&2
+fi
+
+$BB mkdir -p /newroot/dev
+$BB mount --move /dev /newroot/dev || fail "could not move /dev into the new root"
+$BB mkdir -p /newroot/dev/pts
+$BB mount -t devpts -o gid=5,mode=0620,ptmxmode=0666 devpts /newroot/dev/pts || fail "could not mount devpts"
+
+# switch_root execs urunit directly, so a bare command such as "bash" is
+# resolved against the new root's standard directories first.
+cmd="$1"
+shift 2>/dev/null || true
+case "$cmd" in
+  /*) ;;
+  *)
+    for d in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do
+      if [ -x "/newroot$d/$cmd" ]; then
+        cmd="$d/$cmd"
+        break
+      fi
+    done
+    ;;
+esac
+
+exec $BB switch_root /newroot /run/urunc/urunit "$cmd" "$@"

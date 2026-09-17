@@ -95,14 +95,17 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 	// Confine the boot file paths under containerRootfsMountPath. In the
 	// libcontainer setup the pivot to the new rootfs has already taken
 	// place and SecureJoin resolves the image's symlinks against the
-	// container's image rootfs
-	ms.ExecArgs.UnikernelPath, err = confineToContainerRootfs(ms.ExecArgs.UnikernelPath)
-	if err != nil {
-		return err
-	}
-	ms.ExecArgs.InitrdPath, err = confineToContainerRootfs(ms.ExecArgs.InitrdPath)
-	if err != nil {
-		return err
+	// container's image rootfs. A generic container boot is exempt: its boot
+	// files are validated host paths mounted into the monitor rootfs.
+	if !ms.GuestParams.ContainerBoot {
+		ms.ExecArgs.UnikernelPath, err = confineToContainerRootfs(ms.ExecArgs.UnikernelPath)
+		if err != nil {
+			return err
+		}
+		ms.ExecArgs.InitrdPath, err = confineToContainerRootfs(ms.ExecArgs.InitrdPath)
+		if err != nil {
+			return err
+		}
 	}
 	ms.GuestParams.Block, err = confineBlockSources(ms.GuestParams.Block)
 	if err != nil {

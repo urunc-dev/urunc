@@ -100,6 +100,11 @@ type UnikernelParams struct {
 	Block      []BlockDevParams
 	Rootfs     RootfsParams  // Information about rootfs
 	ProcConf   ProcessConfig // Information for the process execution inside the guest
+	// ContainerBoot marks a generic container boot: an unmodified OCI image
+	// booted with a host kernel and boot initrd, whose /init mounts the shared
+	// container rootfs and hands over to urunit. InitrdPath then names the
+	// boot initrd inside the monitor rootfs.
+	ContainerBoot bool
 }
 
 // ExecArgs holds the data required by Execve to start the VMM
