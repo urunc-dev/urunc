@@ -22,6 +22,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 func TestIsBindMount(t *testing.T) {
@@ -105,4 +106,32 @@ func TestOnlyBindMounts(t *testing.T) {
 		})
 		assert.ErrorContains(t, err, "no bind or rbind option")
 	}
+}
+
+func TestCopyMountfilesSkipsSpecialFiles(t *testing.T) {
+	t.Parallel()
+
+	src := t.TempDir()
+	file := filepath.Join(src, "file")
+	require.NoError(t, os.WriteFile(file, []byte("data"), 0o600))
+	fifo := filepath.Join(src, "fifo")
+	require.NoError(t, unix.Mkfifo(fifo, 0o600))
+
+	assert.ErrorIs(t, fileFromHost(t.TempDir(), fifo, "/fifo"), ErrNotRegularFile)
+	assert.ErrorIs(t, fileFromHost(t.TempDir(), "/dev/null", "/dev/null"), ErrNotRegularFile)
+	assert.ErrorIs(t, fileFromHost(t.TempDir(), src, "/data"), ErrNotRegularFile)
+
+	target := t.TempDir()
+	require.NoError(t, copyMountfiles(target, []specs.Mount{
+		{Type: "none", Source: file, Destination: "/etc/file", Options: []string{"rbind"}},
+		{Type: "none", Source: fifo, Destination: "/run/fifo", Options: []string{"rbind"}},
+		{Type: "bind", Source: "/dev/null", Destination: "/dev/null", Options: []string{"rbind"}},
+		{Type: "none", Source: src, Destination: "/data", Options: []string{"rbind"}},
+	}))
+
+	content, err := os.ReadFile(filepath.Join(target, "etc/file"))
+	require.NoError(t, err)
+	assert.Equal(t, "data", string(content))
+	assert.NoFileExists(t, filepath.Join(target, "run/fifo"))
+	assert.NoFileExists(t, filepath.Join(target, "dev/null"))
 }
