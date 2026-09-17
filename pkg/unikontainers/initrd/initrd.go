@@ -116,6 +116,8 @@ func copyFileToInitrdWithInode(w *cpio.Writer, srcFile string, destFile string, 
 	return nil
 }
 
+// CopyFileMountsToInitrd appends the files of the given mounts to the initrd
+// as a new archive member. The caller should pass only bind mounts.
 func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 	f, err := os.OpenFile(oldInitrd, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -125,9 +127,6 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 
 	w := cpio.NewWriter(f)
 	for _, m := range mounts {
-		if m.Type != "bind" {
-			continue
-		}
 		err = CopyFileToInitrd(w, m.Source, m.Destination)
 		if err != nil {
 			return fmt.Errorf("could not add file %s to initrd: %w", m.Source, err)
@@ -143,7 +142,7 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 
 // MergeFileMountsIntoInitrd adds regular-file bind mounts before the trailer
 // of an uncompressed newc archive. The archive is fully parsed before the
-// disposable initrd is updated in place.
+// disposable initrd is updated in place. The caller should pass only bind mounts.
 func MergeFileMountsIntoInitrd(oldInitrd string, mounts []specs.Mount) (retErr error) {
 	fileMounts, err := regularFileBindMounts(mounts)
 	if err != nil {
@@ -208,9 +207,6 @@ func MergeFileMountsIntoInitrd(oldInitrd string, mounts []specs.Mount) (retErr e
 func regularFileBindMounts(mounts []specs.Mount) ([]specs.Mount, error) {
 	var fileMounts []specs.Mount
 	for _, mount := range mounts {
-		if mount.Type != "bind" {
-			continue
-		}
 		info, err := os.Stat(mount.Source)
 		if err != nil {
 			return nil, fmt.Errorf("could not stat file %s: %w", mount.Source, err)
