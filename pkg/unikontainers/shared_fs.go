@@ -15,11 +15,14 @@
 package unikontainers
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -34,9 +37,36 @@ type sharedfsRootfs struct {
 	mountedPath string
 	sfsType     string
 	memory      uint64
+	// bootKernelHost and bootInitrdHost are the host kernel and boot initrd of
+	// a generic container boot (the bootKernel/bootInitrd annotations). When
+	// set, they are mounted read-only into the monitor rootfs so that the
+	// monitor boots them in place of a kernel from the image.
+	bootKernelHost string
+	bootInitrdHost string
+}
+
+func (s sharedfsRootfs) hasContainerBoot() bool {
+	return s.bootKernelHost != "" && s.bootInitrdHost != ""
 }
 
 func (s sharedfsRootfs) preSetup() error {
+	if !s.hasContainerBoot() {
+		return nil
+	}
+
+	// The annotations were validated as clean absolute paths; make sure they
+	// name real files now, so a typo fails at create with a clear message
+	// instead of as a failed mount when the container starts.
+	for key, path := range map[string]string{annotBootKernel: s.bootKernelHost, annotBootInitrd: s.bootInitrdHost} {
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s must be a regular file, got %s", key, path)
+		}
+	}
+
 	return nil
 }
 
@@ -48,6 +78,17 @@ func (s sharedfsRootfs) getMounts() ([]specs.Mount, error) {
 	// Mount the container's rootfs inside the monitor rootfs and then the
 	// container's volumes on top of it.
 	mounts := []specs.Mount{bindMount(s.mountedPath, containerRootfsMountPath, true, false, "nodev", "nosuid", "noexec")}
+
+	if s.hasContainerBoot() {
+		// Generic container boot: the host kernel and boot initrd are mounted
+		// read-only into the monitor rootfs, next to (not inside) the container
+		// rootfs, which is shared with the guest. The guest boots a private copy
+		// of the initrd (see unikernels.Linux), so the host file is never written.
+		mounts = append(mounts,
+			bindMount(s.bootKernelHost, constants.ContainerBootKernelPath, true, true, "nodev", "nosuid", "noexec"),
+			bindMount(s.bootInitrdHost, constants.ContainerBootInitrdPath, true, true, "nodev", "nosuid", "noexec"),
+		)
+	}
 
 	if s.sfsType == "virtiofs" {
 		// Get the virtiofsd binary from host in monRootfs

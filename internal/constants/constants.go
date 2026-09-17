@@ -26,3 +26,24 @@ const MonitorRootfsDirName = "monRootfs"
 // VAccelMountPath is the directory inside the monitor rootfs with the vAccel
 // unix sockets: the agent's socket from the host and the monitor's own one.
 const VAccelMountPath = "/vaccel"
+
+// ContainerBootDir is the directory inside the monitor rootfs that holds the
+// boot files of a generic container boot: the host kernel and boot initrd are
+// bind-mounted read-only here, and the per-container initrd is written next to
+// them. It is a sibling of ContainerRootfsMountPath and never shared with the
+// guest, so the boot files do not leak into the container's rootfs.
+const ContainerBootDir = "/urunc-boot"
+
+// ContainerBootKernelPath is the monitor rootfs path of the host kernel
+// selected with the bootKernel annotation.
+const ContainerBootKernelPath = ContainerBootDir + "/kernel"
+
+// ContainerBootInitrdPath is the monitor rootfs path of the host boot initrd
+// selected with the bootInitrd annotation. It is mounted read-only, since the
+// same file is shared by every container booting from it.
+const ContainerBootInitrdPath = ContainerBootDir + "/initrd"
+
+// ContainerBootGuestInitrdPath is the initrd the guest actually boots: a
+// private copy of ContainerBootInitrdPath with the urunit configuration of this
+// container appended to it.
+const ContainerBootGuestInitrdPath = ContainerBootDir + "/initrd.urunc"
