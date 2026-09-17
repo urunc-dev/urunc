@@ -214,7 +214,10 @@ func (u *Unikontainer) InitialSetup() error {
 
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
 	memory := monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources)
-	rfsBuilder := u.newRootfsBuilder(rootfsDir, rootfsParams, unikernel, unikernelPath, initrdPath, memory)
+	rfsBuilder, err := u.newRootfsBuilder(rootfsDir, rootfsParams, unikernel, unikernelPath, initrdPath, memory)
+	if err != nil {
+		return err
+	}
 
 	err = rfsBuilder.preSetup()
 	if err != nil {
@@ -481,11 +484,24 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 // because MountedPath is empty and this is the only way to reach the container
 // rootfs that holds the image and the boot files.
 // TODO: Find a better way for the explicit block image case to reduce arguments.
-func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) rootfsBuilder {
+func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) (rootfsBuilder, error) {
+	// Select the bind mounts passed to the guest once, for every step of the
+	// rootfs setup. Without a guest rootfs, no mount is passed to the guest.
+	// TODO handle other types of mounts too
+	var mounts []specs.Mount
+	switch rootfsParams.Type {
+	case "block", "initrd", "virtiofs", "9pfs":
+		var err error
+		mounts, err = onlyBindMounts(u.Spec.Mounts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	switch rootfsParams.Type {
 	case "block":
 		return blockRootfs{
-			mounts:          u.Spec.Mounts,
+			mounts:          mounts,
 			monRootfs:       rootfsParams.MonRootfs,
 			mountedPath:     rootfsParams.MountedPath,
 			containerRootfs: containerRootfs,
@@ -495,29 +511,29 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			uruncJSONPath:   uruncJSONFilename,
 			guestType:       u.State.Annotations[annotType],
 			guest:           unikernel,
-		}
+		}, nil
 	case "initrd":
 		return initrdRootfs{
-			mounts:      u.Spec.Mounts,
+			mounts:      mounts,
 			mountedPath: rootfsParams.MountedPath,
 			initrdPath:  rootfsParams.Path,
 			guestType:   u.State.Annotations[annotType],
-		}
+		}, nil
 	case "virtiofs", "9pfs":
 		return sharedfsRootfs{
-			mounts:      u.Spec.Mounts,
+			mounts:      mounts,
 			mountedPath: rootfsParams.MountedPath,
 			sfsType:     rootfsParams.Type,
 			vfsdConfig:  u.UruncCfg.ExtraBins["virtiofsd"],
 			sharedPath:  containerRootfsMountPath,
 			memory:      memory,
-		}
+		}, nil
 	default:
 		return noRootfs{
 			containerRootfsPath:  rootfsParams.MountedPath,
 			annotBlockPath:       u.State.Annotations[annotBlock],
 			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
-		}
+		}, nil
 	}
 }
 

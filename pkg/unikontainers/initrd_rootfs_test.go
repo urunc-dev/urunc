@@ -34,10 +34,57 @@ func TestNewRootfsBuilderPassesGuestTypeToInitrd(t *testing.T) {
 		Spec:  &specs.Spec{},
 	}
 
-	builder := u.newRootfsBuilder("", types.RootfsParams{Type: "initrd"}, nil, "", "", 0)
+	builder, err := u.newRootfsBuilder("", types.RootfsParams{Type: "initrd"}, nil, "", "", 0)
+	require.NoError(t, err)
 	rfs, ok := builder.(initrdRootfs)
 	require.True(t, ok)
 	require.Equal(t, unikernels.UnikraftUnikernel, rfs.guestType)
+}
+
+func TestNewRootfsBuilderSelectsBindMounts(t *testing.T) {
+	t.Parallel()
+
+	vol := t.TempDir()
+	u := &Unikontainer{
+		State:    &specs.State{Annotations: map[string]string{}},
+		UruncCfg: defaultUruncConfig(),
+		Spec: &specs.Spec{Mounts: []specs.Mount{
+			{Type: "bind", Source: vol, Destination: "/data", Options: []string{"rbind"}},
+			{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
+			{Type: "none", Source: "/sys", Destination: "/sys", Options: []string{"rbind", "ro"}},
+		}},
+	}
+	guestRootfs := []string{"block", "initrd", "virtiofs", "9pfs"}
+
+	// Each guest rootfs gets the bind mounts passed to the guest, selected once.
+	for _, typ := range guestRootfs {
+		builder, err := u.newRootfsBuilder("", types.RootfsParams{Type: typ}, nil, "", "", 0)
+		require.NoError(t, err)
+		var mounts []specs.Mount
+		switch rfs := builder.(type) {
+		case blockRootfs:
+			mounts = rfs.mounts
+		case initrdRootfs:
+			mounts = rfs.mounts
+		case sharedfsRootfs:
+			mounts = rfs.mounts
+		default:
+			t.Fatalf("unexpected builder %T for %q", builder, typ)
+		}
+		require.Len(t, mounts, 1, typ)
+		require.Equal(t, vol, mounts[0].Source, typ)
+	}
+
+	// The mounts are selected only for a guest rootfs, so a bind or rbind Type
+	// without such an option fails only there.
+	u.Spec.Mounts = []specs.Mount{{Type: "bind", Source: vol, Destination: "/data"}}
+	for _, typ := range guestRootfs {
+		_, err := u.newRootfsBuilder("", types.RootfsParams{Type: typ}, nil, "", "", 0)
+		require.ErrorContains(t, err, "no bind or rbind option", typ)
+	}
+	builder, err := u.newRootfsBuilder("", types.RootfsParams{}, nil, "", "", 0)
+	require.NoError(t, err)
+	require.IsType(t, noRootfs{}, builder)
 }
 
 func TestInitrdRootfsPostSetupSelectsUpdateByGuestType(t *testing.T) {
@@ -67,7 +114,6 @@ func TestInitrdRootfsPostSetupSelectsUpdateByGuestType(t *testing.T) {
 				initrdPath:  "initrd.cpio",
 				guestType:   tt.guestType,
 				mounts: []specs.Mount{
-					{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
 					{Type: "none", Source: source, Destination: "/mounted", Options: []string{"rbind", "rw"}},
 				},
 			}

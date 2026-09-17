@@ -44,12 +44,11 @@ func (i initrdRootfs) postSetup() error {
 		return fmt.Errorf("failed to resolve guest's initrd path: %w", err)
 	}
 
-	// The initrd package expects only bind mounts.
-	mounts := onlyBindMounts(i.mounts)
+	// i.mounts holds only bind mounts, as the initrd package expects.
 	if i.guestType == unikernels.UnikraftUnikernel {
-		err = initrd.MergeFileMountsIntoInitrd(initrdHostFullPath, mounts)
+		err = initrd.MergeFileMountsIntoInitrd(initrdHostFullPath, i.mounts)
 	} else {
-		err = initrd.CopyFileMountsToInitrd(initrdHostFullPath, mounts)
+		err = initrd.CopyFileMountsToInitrd(initrdHostFullPath, i.mounts)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update guest's initrd: %w", err)
