@@ -26,31 +26,46 @@ import (
 )
 
 func TestIdToGuestCID(t *testing.T) {
-	tests := []struct {
-		name        string
-		id          string
-		expectedCID int
-	}{
-		{
-			name:        "empty string",
-			id:          "",
-			expectedCID: 3,
-		},
-		{
-			name:        "simple id",
-			id:          "container123",
-			expectedCID: 49,
-		},
+	t.Parallel()
+
+	ids := []string{
+		"",
+		"container123",
+		// containerd IDs: 64 hex digits, often differing in a few characters.
+		"359ba00f1ea2be560fd5e291cc819ef7f523a09501f9c398f20fdc1c27478cf6",
+		"359ba00f1ea2be560fd5e291cc819ef7f523a09501f9c398f20fdc1c27478cf7",
+		"459ba00f1ea2be560fd5e291cc819ef7f523a09501f9c398f20fdc1c27478cf6",
+		"b5dd62f96cc6c64e16388d439540cd18d4b21756b6d0e3f0ca1e9a6968dbeba6",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := idToGuestCID(tt.id)
+	seen := map[int]string{}
+	for _, id := range ids {
+		got := idToGuestCID(id)
 
-			assert.Equal(t, tt.expectedCID, got, "CID should match expected value")
-		})
+		// Every CID is valid for a guest: not 0, 1 (reserved), 2 (the host)
+		// or 2^32-1 (any), and it fits in 32 bits.
+		assert.GreaterOrEqual(t, got, minGuestCID, "CID of %q below the guest range", id)
+		assert.LessOrEqual(t, got, maxGuestCID, "CID of %q above the guest range", id)
+
+		// Deterministic: the monitor, urunc exec and vAccel must all agree.
+		assert.Equal(t, got, idToGuestCID(id), "CID of %q is not stable", id)
+
+		// Distinct for these IDs, including ones differing in one character,
+		// which the old character-sum hash mapped to nearby or equal values.
+		if prev, dup := seen[got]; dup {
+			t.Errorf("IDs %q and %q share CID %d", prev, id, got)
+		}
+		seen[got] = id
 	}
+
+	// The whole 32-bit range is used, not a small window of it.
+	spread := false
+	for _, id := range ids {
+		if idToGuestCID(id) > 1<<16 {
+			spread = true
+		}
+	}
+	assert.True(t, spread, "CIDs should span the full 32-bit range")
 }
 
 func TestIsValidVSockAddress(t *testing.T) {

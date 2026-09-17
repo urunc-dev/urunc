@@ -17,6 +17,8 @@ package unikontainers
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"math"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -53,19 +55,30 @@ var vAccelAddressRe = map[string]*regexp.Regexp{
 	"firecracker": regexp.MustCompile(`^` + vAccelUnixScheme + `(` + vAccelSockDirRe + `)/vaccel\.sock_(` + vAccelPortRe + `)$`),
 }
 
-// idToGuestCID generates a deterministic guest CID (Context Identifier)
-// for vsock communication based on a container or VM ID.
-func idToGuestCID(id string) int {
-	sum := 0
-	for _, c := range id {
-		sum += int(c)
-	}
-	const minVal = 3
-	const maxVal = 99
-	const valRange = maxVal - minVal + 1
-	val := (sum % valRange) + minVal
+// Guest CIDs (vsock Context Identifiers) are 32-bit. 0 and 1 are reserved and 2
+// is the host, so a guest may use anything from 3 up to 2^32-2 (2^32-1 means
+// "any"). The CID lives in the host's global vsock namespace, so two running
+// VMs must not share one.
+const (
+	minGuestCID = 3
+	maxGuestCID = math.MaxUint32 - 1
+)
 
-	return val
+// idToGuestCID derives a deterministic guest CID for vsock communication from
+// a container or VM ID, so that every consumer (the monitor, urunc exec,
+// vAccel) computes the same value without sharing state. The ID is hashed with
+// FNV-1a and mapped onto the whole valid CID range: with 2^32-4 possible
+// values the chance that two concurrently running containers collide is
+// negligible, whereas a small range (this used to be 3..99, with a character
+// sum) collided for a handful of containers.
+func idToGuestCID(id string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+
+	const valRange = uint64(maxGuestCID - minGuestCID + 1)
+	val := uint64(h.Sum32())%valRange + minGuestCID
+
+	return int(val) //nolint:gosec // val fits in 32 bits by construction
 }
 
 // isValidVSockAddress validates a vsock address string and ensures
