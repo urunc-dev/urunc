@@ -53,6 +53,10 @@ const (
 
 var uniklog = logrus.WithField("subsystem", "unikontainers")
 
+// vhostVsockDevice is the host device qemu opens to back the guest's
+// vhost-vsock device, which carries the exec agent's transport.
+const vhostVsockDevice = "/dev/vhost-vsock"
+
 var ErrQueueProxy = errors.New("this a queue proxy container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
 
@@ -226,6 +230,18 @@ func (u *Unikontainer) InitialSetup() error {
 		return err
 	}
 	monRes.Rootfs = rootfsParams
+
+	if u.isContainerBoot() {
+		// qemu opens /dev/vhost-vsock to back the guest's vhost-vsock device,
+		// over which urunc exec reaches the in-guest agent, but it runs in the
+		// pivoted monitor rootfs, which has no device nodes of its own. Create
+		// just that node there, in both the libcontainer and the plain path.
+		vhostDev, err := deviceFromHost(vhostVsockDevice)
+		if err != nil {
+			return fmt.Errorf("the exec agent of a container boot needs %s on the host: %w", vhostVsockDevice, err)
+		}
+		monRes.Devices = append(monRes.Devices, vhostDev)
+	}
 
 	err = rfsBuilder.postSetup()
 	if err != nil {
@@ -474,6 +490,15 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 	}
 }
 
+// AgentVsockCID returns the guest CID of the in-guest urunit-agent for this
+// container. The qemu monitor gives the VM a vhost-vsock device with this CID,
+// the agent listens on agentproto.DefaultVsockPort, and urunc exec dials
+// (CID, port) over AF_VSOCK. The CID is derived from the container id, exactly
+// as the monitor spec derives it.
+func (u *Unikontainer) AgentVsockCID() uint32 {
+	return uint32(idToGuestCID(u.State.ID)) //nolint:gosec // idToGuestCID returns a small positive CID
+}
+
 // isContainerBoot reports whether the container is a generic container boot:
 // an unmodified image booted with the host kernel and boot initrd named by the
 // bootKernel and bootInitrd annotations.
@@ -564,6 +589,11 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		vmmArgs.InitrdPath = constants.ContainerBootGuestInitrdPath
 		guest.ContainerBoot = true
 		guest.InitrdPath = constants.ContainerBootInitrdPath
+		// The boot initrd starts urunit-agent in the guest. Give the VM a
+		// vhost-vsock device with a deterministic guest CID, so that urunc exec
+		// can dial (CID, agent port) and open exec sessions. vsock accepts many
+		// connections, so exec sessions are concurrent and independent.
+		vmmArgs.AgentVsockCID = idToGuestCID(u.State.ID)
 	}
 
 	mSpec.ContainerID = u.State.ID

@@ -116,6 +116,20 @@ func TestQemuBuildExecCmd(t *testing.T) {
 			},
 		},
 		{
+			// The exec agent rides vsock: the CID gives the guest a vhost-vsock
+			// device even without vAccel.
+			name: "AgentVsockCID renders a vhost-vsock device",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+				AgentVsockCID: 42,
+			},
+			unikernel: &fakeUnikernel{},
+			mustContain: []string{
+				"-device vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=42",
+			},
+		},
+		{
 			name: "custom MemSizeB renders -m in MB",
 			args: types.ExecArgs{
 				UnikernelPath: testKernelPath,

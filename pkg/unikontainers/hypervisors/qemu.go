@@ -170,8 +170,15 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 	}
 	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
 
+	// A single vhost-vsock device carries the guest CID for both the exec agent
+	// and vAccel: both derive it from the container id, so the values agree and
+	// the device is emitted once when either transport needs it.
+	vsockCID := args.AgentVsockCID
 	if args.VAccelType == "vsock" {
-		vsockArg := fmt.Sprintf("vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=%d", args.VSockDevID)
+		vsockCID = args.VSockDevID
+	}
+	if vsockCID != 0 {
+		vsockArg := fmt.Sprintf("vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=%d", vsockCID)
 		exArgs = append(exArgs, "-device", vsockArg)
 	}
 
