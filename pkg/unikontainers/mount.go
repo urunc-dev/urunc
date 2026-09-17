@@ -35,7 +35,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
-var ErrCopyDir = errors.New("can not copy a directory")
+var ErrNotRegularFile = errors.New("not a regular file")
 
 // setupDevices creates every device from the list inside monitor's rootfs
 func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) error {
@@ -138,8 +138,8 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 // is placed at the same path it has on the host.
 // A copy is preferred for monitor binaries: none of the monitor processes share
 // memory with other processes of the same monitor, at the cost of being slower
-// and consuming more space. Copying a directory is not supported and returns
-// ErrCopyDir.
+// and consuming more space. Only regular files can be copied; for anything
+// else (a directory, socket, FIFO or device node) it returns ErrNotRegularFile.
 func fileFromHost(monRootfs string, hostPath string, target string) error {
 	// Get the info of the original file
 	var fileInfo unix.Stat_t
@@ -148,8 +148,11 @@ func fileFromHost(monRootfs string, hostPath string, target string) error {
 		return err
 	}
 
-	if (fileInfo.Mode & unix.S_IFMT) == unix.S_IFDIR {
-		return ErrCopyDir
+	// Only a regular file has content to copy: a directory would need a
+	// recursive copy, opening a FIFO blocks, opening a socket fails with ENXIO
+	// and reading a device like /dev/urandom never ends.
+	if (fileInfo.Mode & unix.S_IFMT) != unix.S_IFREG {
+		return ErrNotRegularFile
 	}
 
 	if target == "" {
