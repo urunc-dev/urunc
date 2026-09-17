@@ -307,6 +307,12 @@ func (rs *rootfsSelector) tryContainerSharedFS() (types.RootfsParams, bool) {
 	return types.RootfsParams{}, false
 }
 
+// hasContainerBoot reports whether the guest is a generic container boot, i.e.
+// an unmodified image booted with a host kernel and boot initrd.
+func (rs *rootfsSelector) hasContainerBoot() bool {
+	return rs.annot[annotBootKernel] != "" && rs.annot[annotBootInitrd] != ""
+}
+
 // tryContainerRootfs tries to use container rootfs as a rootfs for the guest
 // trying first using it as block device and if not possible as a shared-fs
 func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
@@ -314,14 +320,18 @@ func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	// Try block-based rootfs first
-	result, ok := rs.tryContainerBlockRootfs()
-	if ok {
-		return result, true
+	// Try block-based rootfs first. A generic container boot always shares the
+	// container rootfs: its boot initrd mounts the share by the tag the kernel
+	// command line names and switch_roots into it.
+	if !rs.hasContainerBoot() {
+		result, ok := rs.tryContainerBlockRootfs()
+		if ok {
+			return result, true
+		}
 	}
 
 	// Fallback to shared fs
-	result, ok = rs.tryContainerSharedFS()
+	result, ok := rs.tryContainerSharedFS()
 	if ok {
 		return result, true
 	}
