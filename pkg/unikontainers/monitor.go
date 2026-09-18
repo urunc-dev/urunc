@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	m "github.com/urunc-dev/urunc/internal/metrics"
@@ -121,6 +122,15 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		return err
 	}
 	metrics.Capture(m.TS17)
+
+	// Create the socket directory after setupUser, so the monitor's user owns
+	// it and a non-root monitor can bind there. The monitor creates the socket.
+	if vmm.SupportsControlSocket() && ms.ExecArgs.SocketPath != "" {
+		sockDir := filepath.Dir(ms.ExecArgs.SocketPath)
+		if err = os.MkdirAll(sockDir, 0o700); err != nil {
+			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		}
+	}
 
 	err = spawnProcess(ms.PreStartCmd)
 	if err != nil {

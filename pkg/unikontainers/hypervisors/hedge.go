@@ -51,6 +51,11 @@ func (h *Hedge) SupportsSharedfs(_ string) bool {
 	return false
 }
 
+// SupportsControlSocket reports that Hedge exposes no control socket.
+func (h *Hedge) SupportsControlSocket() bool {
+	return false
+}
+
 func (h *Hedge) Path() string {
 	return ""
 }
