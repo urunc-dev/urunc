@@ -513,8 +513,8 @@ type AgentTransport struct {
 	CID uint32
 	// VsockUDS, when set, is the host path of the monitor's hybrid-vsock unix
 	// socket: exec connects to it and asks for the agent port with a CONNECT
-	// line. firecracker works this way. When empty (qemu), exec dials
-	// AF_VSOCK(CID, port) through the host vhost-vsock.
+	// line. firecracker and cloud-hypervisor work this way. When empty (qemu),
+	// exec dials AF_VSOCK(CID, port) through the host vhost-vsock.
 	VsockUDS string
 }
 
@@ -522,9 +522,10 @@ type AgentTransport struct {
 // from the same state the monitor used to configure the vsock device.
 func (u *Unikontainer) AgentTransportInfo() AgentTransport {
 	t := AgentTransport{CID: u.AgentVsockCID()}
-	// firecracker exposes vsock as a host unix socket in the monitor rootfs;
-	// qemu uses the host's /dev/vhost-vsock (no socket path).
-	if hypervisors.VmmType(u.State.Annotations[annotHypervisor]) == hypervisors.FirecrackerVmm {
+	// firecracker and cloud-hypervisor expose vsock as a host unix socket in the
+	// monitor rootfs; qemu uses the host's /dev/vhost-vsock (no socket path).
+	switch hypervisors.VmmType(u.State.Annotations[annotHypervisor]) {
+	case hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm:
 		monRootfs := filepath.Join(filepath.Clean(u.State.Bundle), monitorRootfsDirName)
 		t.VsockUDS = filepath.Join(monRootfs, constants.AgentVsockUDSPath)
 	}

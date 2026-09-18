@@ -142,8 +142,17 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 		// No shared filesystem
 	}
 
-	if args.VAccelType == "vsock" {
+	// Cloud Hypervisor allows a single vsock device, a host unix socket that
+	// multiplexes guest ports. vAccel (guest-initiated) and the exec agent
+	// (host-initiated) share it; both derive the same guest CID from the id.
+	switch {
+	case args.VAccelType == "vsock":
 		vsockArg := fmt.Sprintf("cid=%d,socket=%s/vaccel.sock", args.VSockDevID, args.VSockDevPath)
+		exArgs = append(exArgs, "--vsock", vsockArg)
+	case args.AgentVsockCID != 0:
+		// Container boot: expose the vsock so urunc exec can reach the in-guest
+		// agent by connecting to this socket and asking for the agent port.
+		vsockArg := fmt.Sprintf("cid=%d,socket=%s", args.AgentVsockCID, args.AgentVsockUDS)
 		exArgs = append(exArgs, "--vsock", vsockArg)
 	}
 
