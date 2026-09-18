@@ -51,8 +51,6 @@ jobs:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: |
-          PR_BRANCH=${{ github.event.pull_request.base.ref }}
-
           # Create the pull request
           PR_URL=$(gh pr create \
             --head "$PR_BRANCH" \
