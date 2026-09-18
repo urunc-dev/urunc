@@ -93,6 +93,10 @@ type RootfsParams struct {
 	Path        string // The path in the host where rootfs resides
 	MountedPath string // The mountpoint in the host where the rootfs is mounted
 	MonRootfs   string // The rootfs for the monitor process
+	// FsType is the filesystem of a block rootfs (e.g. ext2, ext4). A generic
+	// container boot on a block device needs it on the kernel command line so the
+	// boot initrd's /init can mount /dev/vda; other rootfs types leave it empty.
+	FsType string
 }
 
 // Specific to Linux
@@ -137,6 +141,7 @@ type ExecArgs struct {
 	InitrdPath    string   // The path to the initrd of the unikernel
 	SnapshotPath  string   // The directory of a saved hluk snapshot inside the image; empty boots the kernel and initrd
 	AgentVsockCID int      // Guest CID of the vhost-vsock device for the in-guest exec agent; 0 disables it
+	AgentVsockUDS string   // firecracker only: monitor-rootfs path of the agent's vsock unix socket (qemu uses host vhost-vsock instead)
 	VAccelType    string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
 	VSockDevPath  string   // The directory inside the monitor rootfs with the vAccel unix sockets
 	VSockDevID    int      // The guest-cid
