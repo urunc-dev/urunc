@@ -56,7 +56,10 @@ type Linux struct {
 	// container boot uses it to spell rootfstype= on the kernel command line so
 	// the boot initrd's /init can mount /dev/vda.
 	RootFsFsType string
-	InitrdConf   bool
+	// Verbose mirrors urunc's log verbosity: when false the guest kernel boots
+	// quietly (see CommandString).
+	Verbose    bool
+	InitrdConf bool
 	ProcConfig types.ProcessConfig
 	// ContainerBoot marks a generic container boot (see types.UnikernelParams).
 	// The guest then boots BootInitrd, the host boot initrd mounted into the
@@ -86,6 +89,14 @@ func (l *Linux) CommandString() (string, error) {
 
 	// TODO: Check if this check causes any performance drop
 	// or explore alternative implementations
+	// Mirror urunc's log verbosity onto the guest kernel console. When urunc is
+	// not in a debug level, boot quietly (quiet lowers the console log level so
+	// only warnings and worse are printed); a debug level leaves the kernel's
+	// default verbose console output in place.
+	if !l.Verbose {
+		bootParams += " quiet"
+	}
+
 	consoleStr := ""
 	// TODO: Check under which conditions console should be set to
 	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
@@ -293,6 +304,7 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	l.Blk = data.Block
 	l.RootFsType = data.Rootfs.Type
 	l.RootFsFsType = data.Rootfs.FsType
+	l.Verbose = data.Verbose
 	l.Env = data.EnvVars
 	l.Monitor = data.Monitor
 	l.ProcConfig = data.ProcConf
