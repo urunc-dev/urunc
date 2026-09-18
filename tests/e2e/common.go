@@ -70,13 +70,6 @@ type containerTestArgs struct {
 	ExpectOut      string
 }
 
-const (
-	testCtr     = "TestCtr"
-	testCrictl  = "TestCrictl"
-	testDocker  = "TestDocker"
-	testNerdctl = "TestNerdctl"
-)
-
 var errToolDoesNotSupport = errors.New("Operation not support")
 
 func commonNewContainerCmd(a containerTestArgs) string {
