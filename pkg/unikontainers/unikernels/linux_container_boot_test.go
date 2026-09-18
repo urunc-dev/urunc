@@ -72,6 +72,29 @@ func TestLinuxContainerBootCommandString(t *testing.T) {
 	assert.Contains(t, cmdline, "root=fs0 rw rootfstype=9p rootflags=trans=virtio")
 }
 
+func TestLinuxCommandStringVerbosity(t *testing.T) {
+	t.Parallel()
+
+	base := Linux{
+		App:        containerBootInit,
+		Command:    "/bin/sh",
+		Monitor:    "qemu",
+		RootFsType: "virtiofs",
+	}
+
+	quiet := base
+	quiet.Verbose = false
+	cmdline, err := quiet.CommandString()
+	require.NoError(t, err)
+	assert.Contains(t, cmdline, "quiet", "a non-debug log level boots the guest quietly")
+
+	verbose := base
+	verbose.Verbose = true
+	cmdline, err = verbose.CommandString()
+	require.NoError(t, err)
+	assert.NotContains(t, cmdline, "quiet", "a debug log level leaves the guest verbose")
+}
+
 func TestLinuxContainerBootUrunitConfig(t *testing.T) {
 	t.Parallel()
 

@@ -109,6 +109,11 @@ type UnikernelParams struct {
 	// container rootfs and hands over to urunit. InitrdPath then names the
 	// boot initrd inside the monitor rootfs.
 	ContainerBoot bool
+	// Verbose asks the guest to be more talkative on its console, mirroring
+	// urunc's own log verbosity (the [log] level in the config). A Linux guest
+	// boots quietly by default and only logs the full kernel messages when this
+	// is set.
+	Verbose bool
 }
 
 // ExecArgs holds the data required by Execve to start the VMM

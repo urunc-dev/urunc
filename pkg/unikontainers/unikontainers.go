@@ -552,6 +552,16 @@ func monitorMemoryBytes(defaultMem uint, resources *specs.LinuxResources) uint64
 	return mem
 }
 
+// verboseGuestLogs reports whether the guest should log fully, mirroring
+// urunc's own effective log verbosity. Every urunc process sets the global
+// logger level from the live config (and the --debug flag) at startup, so it is
+// read from there rather than from u.UruncCfg, which is rebuilt from state.json
+// and deliberately does not carry the log level. A debug (or trace) level is
+// verbose; anything quieter keeps the guest quiet.
+func verboseGuestLogs() bool {
+	return logrus.GetLevel() >= logrus.DebugLevel
+}
+
 // buildMonitorSpec assembles the base MonitorSpec: everything the monitor needs
 // that can be derived from the OCI spec, the container's annotations and the
 // monitor resources gathered during InitialSetup.
@@ -608,6 +618,9 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		BlkDevName: u.State.Annotations[annotBlkDev],
 		Rootfs:     rootfsParams,
 		Block:      monRes.BlockArgs,
+		// Mirror urunc's own log verbosity onto the guest: only a debug (or more
+		// verbose) level lets the guest log fully; otherwise it boots quietly.
+		Verbose: verboseGuestLogs(),
 	}
 
 	vmmArgs.Sharedfs = monRes.Sharedfs
