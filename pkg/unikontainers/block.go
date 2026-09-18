@@ -27,6 +27,7 @@ import (
 	"github.com/moby/sys/mountinfo"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
 )
@@ -47,6 +48,14 @@ type blockRootfs struct {
 	uruncJSONPath   string
 	guestType       string
 	guest           types.Unikernel
+	// containerBoot marks a generic container boot whose rootfs is the container
+	// image on a block device (e.g. firecracker, which has no shared-fs). The
+	// image ships no unikernel: the host kernel and boot initrd named below are
+	// mounted into the monitor rootfs instead of extracted from the image, and
+	// the container rootfs block device is attached to the guest as /dev/vda.
+	containerBoot  bool
+	bootKernelHost string
+	bootInitrdHost string
 }
 
 // getMountInfo determines whether the provided path is a mount point
@@ -386,6 +395,10 @@ func blockDevNodes(blockArgs []types.BlockDevParams, rootfs types.RootfsParams) 
 }
 
 func (b blockRootfs) preSetup() error {
+	if b.containerBoot {
+		return b.preSetupContainerBoot()
+	}
+
 	if b.mountedPath == "" {
 		return nil
 	}
@@ -416,8 +429,49 @@ func (b blockRootfs) postSetup() error {
 	return nil
 }
 
+// preSetupContainerBoot prepares a block-based generic container boot. The
+// image ships no unikernel, so unlike a normal block rootfs nothing is
+// extracted from it; the boot files are validated host paths mounted in by
+// getMounts. The container rootfs is a mounted block device (the devmapper
+// snapshot): copy the bind-mounted volumes into it, then unmount it so it can
+// be attached to the guest, which mounts it itself as /dev/vda.
+func (b blockRootfs) preSetupContainerBoot() error {
+	for key, path := range map[string]string{annotBootKernel: b.bootKernelHost, annotBootInitrd: b.bootInitrdHost} {
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s must be a regular file, got %s", key, path)
+		}
+	}
+
+	if b.mountedPath == "" {
+		return fmt.Errorf("container boot on a block device requires the container rootfs to be a mounted block device")
+	}
+
+	err := copyMountfiles(b.mountedPath, b.mounts)
+	if err != nil {
+		return fmt.Errorf("failed to copy files from mount list: %w", err)
+	}
+
+	return unmount(b.mountedPath)
+}
+
 func (b blockRootfs) getMounts() ([]specs.Mount, error) {
 	mounts := []specs.Mount{tmpfsMount("/tmp", tmpfsSizeForBlockRootfs)}
+
+	if b.containerBoot {
+		// The host kernel and boot initrd are mounted read-only into the monitor
+		// rootfs under /urunc-boot, next to (not inside) the container rootfs,
+		// which is attached to the guest as a block device. The guest boots a
+		// private copy of the initrd (see unikernels.Linux).
+		mounts = append(mounts,
+			bindMount(b.bootKernelHost, constants.ContainerBootKernelPath, true, true, "nodev", "nosuid", "noexec"),
+			bindMount(b.bootInitrdHost, constants.ContainerBootInitrdPath, true, true, "nodev", "nosuid", "noexec"),
+		)
+		return mounts, nil
+	}
 
 	if b.mountedPath == "" {
 		// In the case of explicit block image the kernel and the block

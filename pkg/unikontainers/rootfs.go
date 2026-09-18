@@ -257,7 +257,11 @@ func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs), true
+	result := newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs)
+	// Carry the filesystem so a generic container boot can put rootfstype= on the
+	// kernel command line for the boot initrd to mount /dev/vda.
+	result.FsType = rootFsDevice.FsType
+	return result, true
 }
 
 // tryVirtiofs checks if virtiofs can be used
@@ -320,18 +324,31 @@ func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	// Try block-based rootfs first. A generic container boot always shares the
-	// container rootfs: its boot initrd mounts the share by the tag the kernel
-	// command line names and switch_roots into it.
-	if !rs.hasContainerBoot() {
-		result, ok := rs.tryContainerBlockRootfs()
-		if ok {
+	if rs.hasContainerBoot() {
+		// A generic container boot shares the image rootfs into the guest. It
+		// prefers a shared filesystem, where the boot initrd mounts the share by
+		// the tag the kernel command line names and switch_roots into it. When the
+		// monitor has no shared-fs (firecracker), it falls back to the container
+		// rootfs as a block device, which requires it to be a real block device
+		// (e.g. the devmapper snapshotter, not overlayfs).
+		if result, ok := rs.tryContainerSharedFS(); ok {
 			return result, true
 		}
+		if result, ok := rs.tryContainerBlockRootfs(); ok {
+			return result, true
+		}
+		uniklog.Error("can not use the container rootfs as the guest rootfs through shared-fs or block")
+		return types.RootfsParams{}, false
+	}
+
+	// Try block-based rootfs first.
+	result, ok := rs.tryContainerBlockRootfs()
+	if ok {
+		return result, true
 	}
 
 	// Fallback to shared fs
-	result, ok := rs.tryContainerSharedFS()
+	result, ok = rs.tryContainerSharedFS()
 	if ok {
 		return result, true
 	}

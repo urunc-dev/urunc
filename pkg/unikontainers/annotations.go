@@ -553,8 +553,15 @@ func (c *UnikernelConfig) validateContainerBoot() error {
 		return fmt.Errorf("%s requires %s to be %q, got %q", annotBootKernel, annotType, unikernels.LinuxUnikernel, c.UnikernelType)
 	}
 
-	if hypervisors.VmmType(c.Hypervisor) != hypervisors.QemuVmm {
-		return fmt.Errorf("%s requires %s to be %q, got %q", annotBootKernel, annotHypervisor, hypervisors.QemuVmm, c.Hypervisor)
+	// A generic container boot shares the image rootfs into the guest: over a
+	// shared filesystem on qemu, or as a block device on firecracker (which has
+	// no shared-fs). Both boot the host kernel and initrd. Other monitors are not
+	// supported yet.
+	switch hypervisors.VmmType(c.Hypervisor) {
+	case hypervisors.QemuVmm, hypervisors.FirecrackerVmm:
+	default:
+		return fmt.Errorf("%s requires %s to be %q or %q, got %q", annotBootKernel, annotHypervisor,
+			hypervisors.QemuVmm, hypervisors.FirecrackerVmm, c.Hypervisor)
 	}
 
 	if c.UnikernelBinary != "" {

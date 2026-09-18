@@ -463,6 +463,9 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			uruncJSONPath:   uruncJSONFilename,
 			guestType:       u.State.Annotations[annotType],
 			guest:           unikernel,
+			containerBoot:   u.isContainerBoot(),
+			bootKernelHost:  u.State.Annotations[annotBootKernel],
+			bootInitrdHost:  u.State.Annotations[annotBootInitrd],
 		}
 	case "initrd":
 		return initrdRootfs{
@@ -500,6 +503,32 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 // as the monitor spec derives it.
 func (u *Unikontainer) AgentVsockCID() uint32 {
 	return uint32(idToGuestCID(u.State.ID)) //nolint:gosec // idToGuestCID returns a small positive CID
+}
+
+// AgentTransport describes how urunc exec reaches the in-guest exec agent. The
+// agent listens on the same vsock port for every monitor; only the host side of
+// the transport differs.
+type AgentTransport struct {
+	// CID is the guest's vsock context id.
+	CID uint32
+	// VsockUDS, when set, is the host path of the monitor's hybrid-vsock unix
+	// socket: exec connects to it and asks for the agent port with a CONNECT
+	// line. firecracker works this way. When empty (qemu), exec dials
+	// AF_VSOCK(CID, port) through the host vhost-vsock.
+	VsockUDS string
+}
+
+// AgentTransportInfo returns how to reach this container's exec agent, derived
+// from the same state the monitor used to configure the vsock device.
+func (u *Unikontainer) AgentTransportInfo() AgentTransport {
+	t := AgentTransport{CID: u.AgentVsockCID()}
+	// firecracker exposes vsock as a host unix socket in the monitor rootfs;
+	// qemu uses the host's /dev/vhost-vsock (no socket path).
+	if hypervisors.VmmType(u.State.Annotations[annotHypervisor]) == hypervisors.FirecrackerVmm {
+		monRootfs := filepath.Join(filepath.Clean(u.State.Bundle), monitorRootfsDirName)
+		t.VsockUDS = filepath.Join(monRootfs, constants.AgentVsockUDSPath)
+	}
+	return t
 }
 
 // isContainerBoot reports whether the container is a generic container boot:
@@ -593,10 +622,13 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		guest.ContainerBoot = true
 		guest.InitrdPath = constants.ContainerBootInitrdPath
 		// The boot initrd starts urunit-agent in the guest. Give the VM a
-		// vhost-vsock device with a deterministic guest CID, so that urunc exec
-		// can dial (CID, agent port) and open exec sessions. vsock accepts many
-		// connections, so exec sessions are concurrent and independent.
+		// vsock device with a deterministic guest CID, so that urunc exec can
+		// dial (CID, agent port) and open exec sessions. vsock accepts many
+		// connections, so exec sessions are concurrent and independent. On qemu
+		// the host reaches it through /dev/vhost-vsock; firecracker multiplexes
+		// vsock over a host unix socket, created at this monitor-rootfs path.
 		vmmArgs.AgentVsockCID = idToGuestCID(u.State.ID)
+		vmmArgs.AgentVsockUDS = constants.AgentVsockUDSPath
 	}
 
 	mSpec.ContainerID = u.State.ID

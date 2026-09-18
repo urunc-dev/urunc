@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -165,7 +166,10 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 			IsRootDev: false,
 			HostPath:  blockArg.Path,
 		}
-		if blockArg.ID == "rootfs" {
+		// MonitorBlockCli prefixes firecracker drive ids with "FC", so the rootfs
+		// drive arrives as "FCrootfs"; match the suffix to flag it as the root
+		// device (which is how firecracker exposes it as /dev/vda).
+		if strings.HasSuffix(blockArg.ID, "rootfs") {
 			aBlock.IsRootDev = true
 		}
 		FCDrives = append(FCDrives, aBlock)
@@ -176,12 +180,24 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 		InitrdPath: initrdPath,
 	}
 
+	// Firecracker allows a single vsock device, multiplexed by port over a host
+	// unix socket. vAccel (guest-initiated RPC) and the exec agent (host-initiated
+	// sessions) share it: both derive the same guest CID from the container id.
 	var FCVSockDev FirecrackerVSockDev
-	if args.VAccelType == "vsock" {
+	switch {
+	case args.VAccelType == "vsock":
 		FCVSockDev = FirecrackerVSockDev{
 			GuestCID: args.VSockDevID,
 			UDSPath:  args.VSockDevPath + "/vaccel.sock",
 			VSockID:  "root",
+		}
+	case args.AgentVsockCID != 0:
+		// Container boot: expose the vsock so urunc exec can reach the in-guest
+		// agent by connecting to this unix socket and asking for the agent port.
+		FCVSockDev = FirecrackerVSockDev{
+			GuestCID: args.AgentVsockCID,
+			UDSPath:  args.AgentVsockUDS,
+			VSockID:  "agent",
 		}
 	}
 

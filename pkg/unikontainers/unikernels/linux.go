@@ -52,7 +52,11 @@ type Linux struct {
 	Net        LinuxNet
 	Blk        []types.BlockDevParams
 	RootFsType string
-	InitrdConf bool
+	// RootFsFsType is the filesystem of a block rootfs (e.g. ext2). A generic
+	// container boot uses it to spell rootfstype= on the kernel command line so
+	// the boot initrd's /init can mount /dev/vda.
+	RootFsFsType string
+	InitrdConf   bool
 	ProcConfig types.ProcessConfig
 	// ContainerBoot marks a generic container boot (see types.UnikernelParams).
 	// The guest then boots BootInitrd, the host boot initrd mounted into the
@@ -100,6 +104,12 @@ func (l *Linux) CommandString() (string, error) {
 	switch l.RootFsType {
 	case "block":
 		rootParams := "root=/dev/vda rw"
+		// A generic container boot hands mounting to the boot initrd's /init,
+		// which needs the filesystem to mount /dev/vda. A urunit guest mounts the
+		// rootfs itself and does not need it on the command line.
+		if l.ContainerBoot && l.RootFsFsType != "" {
+			rootParams += " rootfstype=" + l.RootFsFsType
+		}
 		bootParams += " " + rootParams
 	case "initrd":
 		rootParams := "root=/dev/ram0 rw"
@@ -274,6 +284,7 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	l.configureNetwork(data.Net)
 	l.Blk = data.Block
 	l.RootFsType = data.Rootfs.Type
+	l.RootFsFsType = data.Rootfs.FsType
 	l.Env = data.EnvVars
 	l.Monitor = data.Monitor
 	l.ProcConfig = data.ProcConf

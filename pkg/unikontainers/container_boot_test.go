@@ -71,6 +71,17 @@ func TestContainerBootAnnotations(t *testing.T) {
 		require.NoError(t, config.validateValues())
 	})
 
+	t.Run("firecracker is accepted (block rootfs)", func(t *testing.T) {
+		t.Parallel()
+		config := getConfigFromSpec(containerBootSpec(map[string]string{
+			annotType:        unikernels.LinuxUnikernel,
+			annotHypervisor:  string(hypervisors.FirecrackerVmm),
+			annotMountRootfs: "true",
+		}))
+		require.NoError(t, config.validate())
+		require.NoError(t, config.validateValues())
+	})
+
 	rejected := []struct {
 		name  string
 		extra map[string]string
@@ -84,7 +95,7 @@ func TestContainerBootAnnotations(t *testing.T) {
 		{"a guest initrd as well", map[string]string{annotInitrd: "/initrd.img"}, "mutually exclusive"},
 		{"a block image as well", map[string]string{annotBlock: "/rootfs.img", annotBlockMntPoint: "/"}, "block image"},
 		{"a non-linux guest", map[string]string{annotType: unikernels.UnikraftUnikernel}, annotType},
-		{"a non-qemu monitor", map[string]string{annotHypervisor: string(hypervisors.FirecrackerVmm)}, annotHypervisor},
+		{"an unsupported monitor", map[string]string{annotHypervisor: string(hypervisors.CloudHypervisorVmm)}, annotHypervisor},
 		{"mountRootfs disabled", map[string]string{annotMountRootfs: "false"}, annotMountRootfs},
 	}
 	for _, tc := range rejected {
