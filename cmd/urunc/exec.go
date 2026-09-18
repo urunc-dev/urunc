@@ -22,10 +22,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -130,10 +133,21 @@ func runExecSession(cmd *cli.Command, ready *execReady) error {
 		return fmt.Errorf("exec requires a command to run")
 	}
 
-	cid := unikontainer.AgentVsockCID()
-	conn, err := dialAgent(cid, agentproto.DefaultVsockPort, 15*time.Second)
-	if err != nil {
-		return fmt.Errorf("could not reach the in-guest exec agent at vsock(%d,%d): %w", cid, agentproto.DefaultVsockPort, err)
+	// The agent listens on the same vsock port for every monitor; only the host
+	// side of the transport differs (qemu: host vhost-vsock; firecracker and
+	// cloud-hypervisor: a host unix socket).
+	transport := unikontainer.AgentTransportInfo()
+	var conn io.ReadWriteCloser
+	if transport.VsockUDS != "" {
+		conn, err = dialAgentHybridVsock(transport.VsockUDS, agentproto.DefaultVsockPort, 15*time.Second)
+		if err != nil {
+			return fmt.Errorf("could not reach the in-guest exec agent over hybrid vsock %s (port %d): %w", transport.VsockUDS, agentproto.DefaultVsockPort, err)
+		}
+	} else {
+		conn, err = dialAgent(transport.CID, agentproto.DefaultVsockPort, 15*time.Second)
+		if err != nil {
+			return fmt.Errorf("could not reach the in-guest exec agent at vsock(%d,%d): %w", transport.CID, agentproto.DefaultVsockPort, err)
+		}
 	}
 	defer conn.Close()
 
@@ -418,6 +432,86 @@ func dialAgent(cid, port uint32, timeout time.Duration) (io.ReadWriteCloser, err
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// dialAgentHybridVsock reaches the agent over a hybrid vsock, which firecracker
+// and cloud-hypervisor expose to the host as a unix socket that multiplexes
+// guest ports. To open a connection to a guest port, the host connects to that
+// socket and sends "CONNECT <port>"; the monitor answers "OK <hostport>" once
+// the guest is accepting, after which the stream carries the session exactly as
+// an AF_VSOCK connection would.
+//
+// The socket lives deep under the monitor rootfs, past the AF_UNIX sun_path
+// limit, so it is dialed from its own directory by basename. The container may
+// still be starting, so this retries until the socket exists, the monitor
+// answers OK (the guest agent is listening) or the timeout elapses.
+func dialAgentHybridVsock(udsPath string, guestPort uint32, timeout time.Duration) (io.ReadWriteCloser, error) {
+	dir := filepath.Dir(udsPath)
+	base := filepath.Base(udsPath)
+	deadline := time.Now().Add(timeout)
+	for {
+		conn, err := dialUnixFrom(dir, base)
+		if err == nil {
+			if err = hybridVsockConnect(conn, guestPort); err == nil {
+				return conn, nil
+			}
+			_ = conn.Close()
+		}
+		if time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// dialUnixFrom dials a unix socket by basename from its directory, so the path
+// on the wire stays within the AF_UNIX limit. The chdir is restored before it
+// returns.
+func dialUnixFrom(dir, base string) (net.Conn, error) {
+	prev, err := os.Getwd()
+	if err != nil {
+		prev = "/"
+	}
+	if err = os.Chdir(dir); err != nil {
+		return nil, fmt.Errorf("could not chdir to agent socket dir %s: %w", dir, err)
+	}
+	defer func() { _ = os.Chdir(prev) }()
+	return net.Dial("unix", base)
+}
+
+// hybridVsockConnect performs the host-initiated hybrid-vsock handshake (used by
+// firecracker and cloud-hypervisor) for the given guest port. The reply line is
+// read one byte at a time so no session bytes that follow "OK <hostport>\n" are
+// swallowed by a buffer.
+func hybridVsockConnect(conn net.Conn, port uint32) error {
+	if _, err := fmt.Fprintf(conn, "CONNECT %d\n", port); err != nil {
+		return err
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
+
+	var line []byte
+	buf := make([]byte, 1)
+	for {
+		n, err := conn.Read(buf)
+		if n == 1 {
+			if buf[0] == '\n' {
+				break
+			}
+			line = append(line, buf[0])
+			if len(line) > 64 {
+				return fmt.Errorf("hybrid vsock CONNECT reply too long")
+			}
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("hybrid vsock did not answer CONNECT %d: %w", port, err)
+		}
+	}
+	if !strings.HasPrefix(string(line), "OK ") {
+		return fmt.Errorf("hybrid vsock refused CONNECT %d: %q", port, strings.TrimSpace(string(line)))
+	}
+	return nil
 }
 
 // runStreamSession drives a non-tty exec: stdin is forwarded to the guest and
