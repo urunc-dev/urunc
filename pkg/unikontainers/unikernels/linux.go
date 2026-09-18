@@ -152,6 +152,14 @@ func (l *Linux) CommandString() (string, error) {
 	if !IsIPInSubnet(l.Net) {
 		bootParams += " URUNIT_DEFROUTE=1"
 	}
+	// Cloud Hypervisor restarts the VM on a guest reset instead of exiting (it
+	// has no -no-reboot), which would loop a block boot forever and fail a
+	// shared-fs one on the gone virtiofsd. Tell urunit to power the guest off
+	// instead, which Cloud Hypervisor turns into a clean exit. qemu (-no-reboot)
+	// and firecracker already exit on a reset, so they keep urunit's default.
+	if l.ContainerBoot && l.Monitor == "cloud-hypervisor" {
+		bootParams += " URUNIT_POWEROFF=1"
+	}
 	if l.App != "" {
 		initParams := rdinit + "init=" + l.App + " -- " + l.Command
 		bootParams += " " + initParams
