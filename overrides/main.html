@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% if page.ancestors %}
+<nav class="breadcrumbs">
+	{% for ancestor in page.ancestors %}
+	<a href="{{ ancestor.url }}">{{ ancestor.title }}</a> /
+	{% endfor %}
+	{{ page.title }}
+</nav>
+{% endif %}
+
+{% block outdated %}
+  You're not viewing the latest version.
+  <a href="{{ '../' ~ base_url }}" class="md-content__link"> 
+    <strong>Click here to go to latest.</strong>
+  </a>
+{% endblock %}
+
+{% block container %}
+  <div class="md-content" data-md-component="content">
+    {% include "partials/breadcrumb.html" %}
+    <article class="md-content__inner md-typeset">
+      {% block content %}
+        {% include "partials/content.html" %}
+      {% endblock %}
+    </article>
+  </div>
+{% endblock %}
