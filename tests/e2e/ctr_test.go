@@ -19,17 +19,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var ctrImages = newImageCache()
+
 var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 	var tool *ctrInfo
 
 	BeforeAll(func() {
-		cases := ctrTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testCtr, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull ctr images")
-
 		DeferCleanup(func() {
-			removeAllImages(testCtr, images)
+			removeAllImages(testCtr, ctrImages.images())
 		})
 	})
 
@@ -46,6 +43,7 @@ var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 	DescribeTable("unikernel containers",
 		func(tc containerTestArgs) {
 			skipMissingVolumes(tc)
+			Expect(ctrImages.ensure(testCtr, tc.Image)).To(Succeed(), "Failed to pull "+tc.Image)
 			tool = newCtrTool(tc)
 			runForegroundTest(tool, tc)
 		},
