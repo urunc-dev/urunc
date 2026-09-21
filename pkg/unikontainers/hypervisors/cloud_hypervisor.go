@@ -126,7 +126,11 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 	if args.Net.TapDev != "" {
 		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
 		if len(netCli) == 0 {
-			// Default network configuration for Cloud Hypervisor
+			// No mtu= here. urunc sets the tap's MTU when it creates the
+			// device, from the interface it redirects, so naming it again
+			// only makes the monitor repeat the work. It cannot: the monitor
+			// runs as the container's user and SIOCSIFMTU needs CAP_NET_ADMIN,
+			// so an image running as anyone but root fails to boot here.
 			netArg := fmt.Sprintf("tap=%s,mac=%s", args.Net.TapDev, args.Net.MAC)
 			exArgs = append(exArgs, "--net", netArg)
 		} else {

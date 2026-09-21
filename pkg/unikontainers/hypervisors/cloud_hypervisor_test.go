@@ -178,3 +178,28 @@ func TestCloudHypervisorBuildExecCmdRefuses(t *testing.T) {
 	}, &fakeUnikernel{})
 	assert.Error(t, err)
 }
+
+// The monitor runs as the container's user, and setting a tap's MTU needs
+// CAP_NET_ADMIN, which that user does not have for an image that runs as
+// anyone but root. urunc sets the MTU itself while it still can, so asking
+// Cloud Hypervisor to set it again fails the boot for every non-root image
+// and gains nothing when it works.
+func TestCloudHypervisorNetLeavesTheTapMTUAlone(t *testing.T) {
+	ch := &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: "/usr/bin/cloud-hypervisor"}
+	argv, err := ch.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: "/rootfs/unikernel.bin",
+		Command:       "init=/bin/sh",
+		Net:           types.NetDevParams{TapDev: "tap0", MAC: "52:54:00:12:34:56", MTU: 1500},
+	}, &fakeUnikernel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(argv, " ")
+	if !strings.Contains(joined, "tap=tap0") || !strings.Contains(joined, "mac=52:54:00:12:34:56") {
+		t.Errorf("expected the tap and mac in:\n%s", joined)
+	}
+	if strings.Contains(joined, "mtu=") {
+		t.Errorf("mtu= makes Cloud Hypervisor call SIOCSIFMTU, which a non-root monitor "+
+			"cannot do:\n%s", joined)
+	}
+}
