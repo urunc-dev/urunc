@@ -509,6 +509,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	unikernelVersion := u.State.Annotations[annotVersion]
 	unikernelPath := u.State.Annotations[annotBinary]
 	initrdPath := u.State.Annotations[annotInitrd]
+	snapshotPath := u.State.Annotations[annotSnapshot]
 
 	uniklog.WithFields(logrus.Fields{
 		"vmm type":          vmmType,
@@ -516,6 +517,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		"unikernel version": unikernelVersion,
 		"unikernel Path":    unikernelPath,
 		"initrd Path":       initrdPath,
+		"snapshot Path":     snapshotPath,
 	}).Debug("Initialization values")
 
 	defaultVCPUs := u.UruncCfg.Monitors[vmmType].DefaultVCPUs
@@ -529,6 +531,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		ContainerID:   u.State.ID,
 		UnikernelPath: unikernelPath,
 		InitrdPath:    initrdPath,
+		SnapshotPath:  snapshotPath,
 		Seccomp:       true, // Enable Seccomp by default
 		MemSizeB:      monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources),
 		VCPUs:         uint(defaultVCPUs),
@@ -722,6 +725,10 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 	vmmArgs.InitrdPath, err = confineToContainerRootfs(vmmArgs.InitrdPath)
+	if err != nil {
+		return err
+	}
+	vmmArgs.SnapshotPath, err = confineToContainerRootfs(vmmArgs.SnapshotPath)
 	if err != nil {
 		return err
 	}

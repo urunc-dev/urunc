@@ -46,6 +46,7 @@ const (
 	annotBinary        = "com.urunc.unikernel.binary"
 	annotHypervisor    = "com.urunc.unikernel.hypervisor"
 	annotInitrd        = "com.urunc.unikernel.initrd"
+	annotSnapshot      = "com.urunc.unikernel.snapshot"
 	annotBlock         = "com.urunc.unikernel.block"
 	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
@@ -98,6 +99,7 @@ type UnikernelConfig struct {
 	UnikernelBinary  string `json:"com.urunc.unikernel.binary"`
 	Hypervisor       string `json:"com.urunc.unikernel.hypervisor"`
 	Initrd           string `json:"com.urunc.unikernel.initrd,omitempty"`
+	Snapshot         string `json:"com.urunc.unikernel.snapshot,omitempty"`
 	Block            string `json:"com.urunc.unikernel.block,omitempty"`
 	BlkMntPoint      string `json:"com.urunc.unikernel.blkMntPoint,omitempty"`
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
@@ -190,6 +192,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	unikernelBinary := spec.Annotations[annotBinary]
 	hypervisor := spec.Annotations[annotHypervisor]
 	initrd := spec.Annotations[annotInitrd]
+	snapshot := spec.Annotations[annotSnapshot]
 	block := spec.Annotations[annotBlock]
 	blkMntPoint := spec.Annotations[annotBlockMntPoint]
 	MountRootfs := spec.Annotations[annotMountRootfs]
@@ -203,6 +206,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"unikernelBinary":  unikernelBinary,
 		"hypervisor":       hypervisor,
 		"initrd":           initrd,
+		"snapshot":         snapshot,
 		"block":            block,
 		"blkMntPoint":      blkMntPoint,
 		"mountRootfs":      MountRootfs,
@@ -218,6 +222,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		UnikernelType:    unikernelType,
 		Hypervisor:       hypervisor,
 		Initrd:           initrd,
+		Snapshot:         snapshot,
 		Block:            block,
 		BlkMntPoint:      blkMntPoint,
 		MountRootfs:      MountRootfs,
@@ -260,6 +265,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"unikernelBinary":  tryDecode(conf.UnikernelBinary),
 		"hypervisor":       tryDecode(conf.Hypervisor),
 		"initrd":           tryDecode(conf.Initrd),
+		"snapshot":         tryDecode(conf.Snapshot),
 		"block":            tryDecode(conf.Block),
 		"blkMntPoint":      tryDecode(conf.BlkMntPoint),
 		"mountRootfs":      tryDecode(conf.MountRootfs),
@@ -311,6 +317,12 @@ func (c *UnikernelConfig) decode() error {
 	}
 	c.Initrd = string(decoded)
 
+	decoded, err = base64.StdEncoding.DecodeString(c.Snapshot)
+	if err != nil {
+		return fmt.Errorf("failed to decode Snapshot: %v", err)
+	}
+	c.Snapshot = string(decoded)
+
 	decoded, err = base64.StdEncoding.DecodeString(c.Block)
 	if err != nil {
 		return fmt.Errorf("failed to decode Block: %v", err)
@@ -361,6 +373,9 @@ func (c *UnikernelConfig) Map() map[string]string {
 	if c.Initrd != "" {
 		myMap[annotInitrd] = c.Initrd
 	}
+	if c.Snapshot != "" {
+		myMap[annotSnapshot] = c.Snapshot
+	}
 	if c.Block != "" {
 		myMap[annotBlock] = c.Block
 	}
@@ -398,6 +413,17 @@ func (c *UnikernelConfig) validateValues() error {
 	if !supportedGuestMonitorPairs[guestMonitorPair{monitor, c.UnikernelType}] {
 		return fmt.Errorf("unsupported guest monitor pair %s %s", c.Hypervisor, c.UnikernelType)
 	}
+	// A snapshot is a saved hluk guest, kernel and rootfs included, so it
+	// stands in for both the binary and the initrd, and hluk refuses either
+	// alongside it. No other monitor can resume one.
+	if c.Snapshot != "" {
+		if monitor != hypervisors.HyperlightVmm {
+			return fmt.Errorf("%s is only supported by %s", annotSnapshot, hypervisors.HyperlightVmm)
+		}
+		if c.UnikernelBinary != "" || c.Initrd != "" {
+			return fmt.Errorf("%s cannot be combined with %s or %s", annotSnapshot, annotBinary, annotInitrd)
+		}
+	}
 
 	if len(c.UnikernelVersion) > maxAnnotationValueLen {
 		return fmt.Errorf("%s value is longer than %d bytes", annotVersion, maxAnnotationValueLen)
@@ -409,6 +435,11 @@ func (c *UnikernelConfig) validateValues() error {
 	}
 
 	err = validateAnnotationPathClean(annotInitrd, c.Initrd, true)
+	if err != nil {
+		return err
+	}
+
+	err = validateAnnotationPathClean(annotSnapshot, c.Snapshot, true)
 	if err != nil {
 		return err
 	}
