@@ -313,6 +313,14 @@ version, so the images that
 [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
 publishes for a release are the ones to build on for that release.
 
+An image can also carry a saved `hluk` snapshot instead of a kernel and an
+initrd, through the `com.urunc.unikernel.snapshot` annotation. It names a
+directory inside the image, written by `hluk snapshot save`, which `urunc`
+hands to `hluk snapshot run`, so the guest resumes from the saved state, with
+its runtime already initialized, instead of booting. A snapshot stands in for
+both the `binary` and the `initrd` annotations and cannot be combined with
+them. It is tied to the exact `hluk` release that saved it.
+
 The command line of the container is passed to `hluk` through its
 `--guest-exec` option. It names a file inside the initrd along with its
 arguments, which the runtime driver of the guest executes. An empty command
