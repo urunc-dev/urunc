@@ -333,7 +333,7 @@ default_vcpus = 1
 # path is not set by default - urunc will search in PATH
 
 [monitors.hyperlight-unikraft]
-default_memory_mb = 256
+# default_memory_mb is not applied: without a limit, hluk sizes the guest itself
 default_vcpus = 1
 # path is not set by default - urunc will search in PATH
 ```

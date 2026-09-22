@@ -23,7 +23,7 @@ We plan to create and maintain multi-platform images soon, as well as enrich thi
 - harbor.nbfc.io/nubificus/urunc/hello-env-firecracker-unikraft-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/hello-exec-env-firecracker-linux-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/hello-world-qemu-hermit-initrd:latest
-- docker.io/urunc/hello-hyperlight-unikraft:latest
+- docker.io/urunc/hello-hyperlight-unikraft:v0.18.0
 - harbor.nbfc.io/nubificus/urunc/nginx-qemu-unikraft-initrd:latest
 - harbor.nbfc.io/nubificus/urunc/nginx-qemu-linux-raw:latest
 - harbor.nbfc.io/nubificus/urunc/nginx-qemu-linux-block:latest
