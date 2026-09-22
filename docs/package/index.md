@@ -55,7 +55,8 @@ required annotations are the following:
   unikernel. Currently supported values: a) `qemu`, b) `firecracker`, c)
   `cloud-hypervisor`, d) `spt`,  e) `hvt`, f) `hyperlight-unikraft`.
 - `com.urunc.unikernel.binary`: The path to the unikernel binary inside the
-  container's rootfs
+  container's rootfs. Optional for `hyperlight-unikraft`, whose `hluk` boots
+  an embedded kernel when the image ships none.
 
 Apart from the above, `urunc` accepts the following optional annotations:
 
