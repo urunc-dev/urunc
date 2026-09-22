@@ -15,6 +15,7 @@
 package hypervisors
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -23,8 +24,10 @@ import (
 
 const (
 	HyperlightVmm    VmmType = "hyperlight-unikraft"
-	HyperlightBinary string  = "hyperlight-unikraft"
+	HyperlightBinary string  = "hluk"
 )
+
+var ErrHyperlightNoInitrd = errors.New("hyperlight-unikraft requires an initrd")
 
 type Hyperlight struct {
 	binaryPath string
@@ -51,12 +54,12 @@ func (h *Hyperlight) SupportsControlSocket() bool {
 	return false
 }
 
-// Path returns the path to the hyperlight binary.
+// Path returns the path to the hluk binary.
 func (h *Hyperlight) Path() string {
 	return h.binaryPath
 }
 
-// Ok checks if the hyperlight-unikraft binary is available.
+// Ok checks if the hluk binary is available.
 // Binary availability is already verified by getVMMPath via exec.LookPath.
 func (h *Hyperlight) Ok() error {
 	return nil
@@ -66,16 +69,27 @@ func (h *Hyperlight) Signal(pid int, signal unix.Signal) error {
 	return signalProcess(pid, signal)
 }
 
-// BuildExecCmd constructs the hyperlight-unikraft command line.
-func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]string, error) {
-	cmdArgs := []string{h.binaryPath, args.UnikernelPath}
-	if args.InitrdPath != "" {
-		cmdArgs = append(cmdArgs, "--initrd", args.InitrdPath)
+// BuildExecCmd constructs the hluk command line. hluk embeds the Unikraft
+// kernel it boots, so the unikernel binary of the image is never handed to
+// it: the guest is the initrd (the rootfs CPIO), sized by its scratch memory,
+// plus whatever the unikernel asks for through MonitorCli, such as the guest
+// command.
+func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
+	extraMonArgs := ukernel.MonitorCli()
+	// Without an initrd hluk has nothing to boot but its kernel, so fail
+	// here rather than let the guest start with no filesystem.
+	if args.InitrdPath == "" {
+		return nil, ErrHyperlightNoInitrd
 	}
-	if args.MemSizeB > 0 {
-		memArg := strconv.FormatUint(args.MemSizeB, 10)
-		cmdArgs = append(cmdArgs, "--memory", memArg)
+
+	cmdArgs := []string{h.binaryPath, "run", "--initrd", args.InitrdPath}
+	// hluk sizes the guest by its scratch memory in MiB. A limit too small
+	// to express in MiB is left to hluk's own default.
+	if memMiB := bytesToMiB(args.MemSizeB); memMiB > 0 {
+		cmdArgs = append(cmdArgs, "--scratch-mb", strconv.FormatUint(memMiB, 10))
 	}
+	cmdArgs = append(cmdArgs, extraMonArgs.OtherArgs...)
+
 	return cmdArgs, nil
 }
 
