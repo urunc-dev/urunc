@@ -52,12 +52,24 @@ jobs:
           PR_BRANCH: ${{ github.event.pull_request.base.ref }}
         run: |
           PR_BRANCH=${{ github.event.pull_request.base.ref }}
+          PR_NUMBER=${PR_BRANCH#main-pr}
+
+          # Use GitHub's API to get issues referenced with closing keywords
+          CLOSING_ISSUES=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences \
+            --jq '.closingIssuesReferences[].number' || true)
+
+          BODY="This PR was automatically created by GitHub Actions to merge changes from $PR_BRANCH into main."
+          if [ -n "$CLOSING_ISSUES" ]; then
+            while IFS= read -r issue; do
+              BODY="$BODY"$'\n'"Closes #$issue"
+            done <<< "$CLOSING_ISSUES"
+          fi
 
           # Create the pull request
           PR_URL=$(gh pr create \
             --head "$PR_BRANCH" \
             --base main \
             --title "Merge External PR: Merge $PR_BRANCH into main" \
-            --body "This PR was automatically created by GitHub Actions to merge changes from $PR_BRANCH into main.")
+            --body "$BODY")
 
           gh pr merge "$PR_URL" --rebase --admin --delete-branch
