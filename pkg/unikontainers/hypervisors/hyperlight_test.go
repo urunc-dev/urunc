@@ -73,6 +73,33 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--scratch-mb", "512", "--guest-exec=/entrypoint.py --fast"},
 		},
 		{
+			name: "snapshot resumes the guest instead of booting it",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot"},
+		},
+		{
+			name: "snapshot with MonitorCli OtherArgs appended verbatim",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+			},
+			unikernel: &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: []string{"--guest-exec=/entrypoint.py", "--env=FOO=bar"}}},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--guest-exec=/entrypoint.py", "--env=FOO=bar"},
+		},
+		{
+			name: "snapshot takes no kernel, initrd or memory",
+			args: types.ExecArgs{
+				UnikernelPath: "/unikernel/kernel",
+				InitrdPath:    "/unikernel/initrd.cpio",
+				SnapshotPath:  "/unikernel/snapshot",
+				MemSizeB:      1024 * 1024 * 256,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot"},
+		},
+		{
 			name: "no initrd is an error",
 			args: types.ExecArgs{
 				UnikernelPath: "/unikernel/kernel",
