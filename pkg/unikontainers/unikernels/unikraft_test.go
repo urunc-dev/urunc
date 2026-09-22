@@ -54,6 +54,30 @@ func TestUnikraftMonitorCli(t *testing.T) {
 			unikraft: &Unikraft{Monitor: "hyperlight-unikraft"},
 			expected: types.MonitorCliArgs{},
 		},
+		{
+			name: "hyperlight forwards the environment as --env",
+			unikraft: &Unikraft{
+				Monitor: "hyperlight-unikraft",
+				Command: "/entrypoint.py",
+				Env:     []string{"FOO=bar", "PATH=/usr/bin:/bin", "EMPTY="},
+			},
+			expected: types.MonitorCliArgs{OtherArgs: []string{
+				"--guest-exec=/entrypoint.py",
+				"--env=FOO=bar",
+				"--env=PATH=/usr/bin:/bin",
+				"--env=EMPTY=",
+			}},
+		},
+		{
+			name:     "hyperlight forwards the environment without a command",
+			unikraft: &Unikraft{Monitor: "hyperlight-unikraft", Env: []string{"FOO=bar"}},
+			expected: types.MonitorCliArgs{OtherArgs: []string{"--env=FOO=bar"}},
+		},
+		{
+			name:     "qemu never forwards the environment as --env",
+			unikraft: &Unikraft{Monitor: "qemu", Env: []string{"FOO=bar"}},
+			expected: types.MonitorCliArgs{},
+		},
 	}
 
 	for _, tc := range testCases {
