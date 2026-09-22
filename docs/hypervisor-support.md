@@ -271,36 +271,56 @@ typed host function calls, rather than through paravirtual devices.
 
 #### Installing Hyperlight
 
-[Hyperlight](https://github.com/hyperlight-dev/hyperlight) is not available
-through a package manager. The host binary that `urunc` invokes is built from
-the [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
-repository, which requires [Rust](https://rustup.rs/) 1.89 or newer.
+The host binary that `urunc` invokes is `hluk`, the CLI of the
+[hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
+project. It embeds the Unikraft kernel it boots, so there is nothing else to
+install. Every release provides a prebuilt, statically linked `hluk` for
+x86_64 Linux:
 
 ```bash
-sudo apt-get install build-essential
-git clone https://github.com/hyperlight-dev/hyperlight-unikraft.git
-cd hyperlight-unikraft/host
-cargo build --release
+VERSION="v[[ versions["hyperlight-unikraft"] ]]"
+release_url="https://github.com/hyperlight-dev/hyperlight-unikraft/releases"
+curl -fsSL "${release_url}/download/${VERSION}/hluk-${VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
 ```
 
-It is important to note that `urunc` expects to find the `hyperlight-unikraft`
-binary located in the `$PATH` and named `hyperlight-unikraft`. Otherwise, the
-path should be declared in the [urunc
-configuration](../configuration#monitor-configuration). Therefore, to
+Alternatively, `hluk` can be installed from
+[crates.io](https://crates.io/crates/hyperlight-unikraft) with
+`cargo install hyperlight-unikraft`, or built from source with
+`cargo build --release` at the root of the repository, which pins the
+[Rust](https://rustup.rs/) toolchain it requires.
+
+It is important to note that `urunc` expects to find the `hluk` binary located
+in the `$PATH` and named `hluk`. Otherwise, the path should be declared in the
+[urunc configuration](../configuration#monitor-configuration). Therefore, to
 install it:
 
 ```bash
-sudo cp target/release/hyperlight-unikraft /usr/local/bin
+sudo install -m0755 hluk /usr/local/bin/hluk
 ```
 
 #### Hyperlight and `urunc`
 
 In the case of [Hyperlight](https://github.com/hyperlight-dev/hyperlight),
-`urunc` only supports plain examples. It passes the unikernel image as the
-kernel argument of `hyperlight-unikraft` and uses its initrd option in order to
-provide the unikernel with an initial RamFS (initramfs). Consequently, the
-`binary` and `initrd` annotations keep the same meaning as with the rest of the
-supported VMMs.
+`urunc` boots the guest with `hluk run`. Since `hluk` embeds the Unikraft
+kernel it boots, the unikernel binary of the image is not passed to it. The
+`binary` annotation remains mandatory, but `hluk` never boots the file it
+names. The `initrd` annotation keeps its meaning: it is the rootfs CPIO that
+`hluk` maps into the guest as its initial RamFS (initramfs). The runtime driver
+inside that rootfs speaks the protocol of a specific `hluk` version, so the
+rootfs has to be built for the installed one.
+
+The command line of the container is passed to `hluk` through its
+`--guest-exec` option. It names a file inside the initrd along with its
+arguments, which the runtime driver of the guest executes. An empty command
+line leaves the guest to its conventional entrypoint (`/entrypoint.py`,
+`/entrypoint` etc.). The environment variables of the container are set in the
+guest (`--env`).
+
+A memory limit of the container becomes the scratch memory of the guest
+(`--scratch-mb`). Without a limit, `urunc` does not apply the
+`default_memory_mb` of the monitor, as it does for the rest of the VMMs, and
+leaves the size to `hluk`, which gives each guest runtime the memory it is
+tested with (e.g. 256 MiB for Python, 1536 MiB for the agent image).
 
 [Hyperlight](https://github.com/hyperlight-dev/hyperlight) does not provide any
 VirtIO devices, nor a tap-based network interface. As a result, networking is
@@ -308,9 +328,16 @@ not available for unikernels running on top of Hyperlight and, for the time
 being, initramfs is the only supported storage option. Neither virtio-block nor
 devmapper-backed block storage can be used.
 
-Upstream `hyperlight-unikraft` can preopen a host directory for the guest and
-forward POSIX file operations to it. We plan to add support for this option,
-along with networking as it becomes available.
+Upstream `hluk` can preopen host directories for the guest and forward POSIX
+file operations to them, as well as forward the sockets of the guest to the
+host. We plan to add support for these options.
+
+Rootfs images for every guest runtime that `hluk` supports (Python, Node.js,
+.NET, Go, Rust, C, Bash and more) are published under
+`ghcr.io/hyperlight-dev/hyperlight-unikraft`, and the `demos/urunc` directory
+of the [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
+repository shows how to package one of them, along with its annotations, as an
+OCI image for `urunc`.
 
 Supported unikernel frameworks with `urunc`:
 
@@ -319,7 +346,7 @@ Supported unikernel frameworks with `urunc`:
 An example unikernel:
 
 ```bash
-sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 docker.io/urunc/hello-hyperlight-unikraft:latest
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 docker.io/urunc/hello-hyperlight-unikraft:v[[ versions["hyperlight-unikraft"] ]]
 ```
 
 ## Software-based isolation monitors
