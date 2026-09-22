@@ -69,20 +69,25 @@ func (h *Hyperlight) Signal(pid int, signal unix.Signal) error {
 	return signalProcess(pid, signal)
 }
 
-// BuildExecCmd constructs the hluk command line. hluk embeds the Unikraft
-// kernel it boots, so the unikernel binary of the image is never handed to
-// it: the guest is the initrd (the rootfs CPIO), sized by its scratch memory,
-// plus whatever the unikernel asks for through MonitorCli, such as the guest
-// command.
+// BuildExecCmd constructs the hluk command line: the kernel of the image,
+// the initrd (the rootfs CPIO) sized by its scratch memory, plus whatever the
+// unikernel asks for through MonitorCli, such as the guest command. hluk
+// embeds a Unikraft kernel of its own, so the unikernel binary is passed as
+// --kernel, which boots it in place of the embedded one, and an image
+// without one is left to the embedded kernel.
 func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	extraMonArgs := ukernel.MonitorCli()
-	// Without an initrd hluk has nothing to boot but its kernel, so fail
+	// Without an initrd hluk has nothing to boot but a kernel, so fail
 	// here rather than let the guest start with no filesystem.
 	if args.InitrdPath == "" {
 		return nil, ErrHyperlightNoInitrd
 	}
 
-	cmdArgs := []string{h.binaryPath, "run", "--initrd", args.InitrdPath}
+	cmdArgs := []string{h.binaryPath, "run"}
+	if args.UnikernelPath != "" {
+		cmdArgs = append(cmdArgs, "--kernel", args.UnikernelPath)
+	}
+	cmdArgs = append(cmdArgs, "--initrd", args.InitrdPath)
 	// hluk sizes the guest by its scratch memory in MiB. A limit too small
 	// to express in MiB is left to hluk's own default.
 	if memMiB := bytesToMiB(args.MemSizeB); memMiB > 0 {
