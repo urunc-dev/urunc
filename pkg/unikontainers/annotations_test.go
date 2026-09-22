@@ -37,6 +37,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 				annotBinary:        "binary1",
 				annotHypervisor:    "hypervisor1",
 				annotInitrd:        "initrd1",
+				annotSnapshot:      "snapshot1",
 				annotBlock:         "block1",
 				annotBlockMntPoint: "point1",
 				annotMountRootfs:   "true",
@@ -50,6 +51,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 			UnikernelType:   "type1",
 			Hypervisor:      "hypervisor1",
 			Initrd:          "initrd1",
+			Snapshot:        "snapshot1",
 			Block:           "block1",
 			BlkMntPoint:     "point1",
 			MountRootfs:     "true",
@@ -189,12 +191,14 @@ func TestDecode(t *testing.T) {
 		encodedType := base64.StdEncoding.EncodeToString([]byte("testType"))
 		encodedBinary := base64.StdEncoding.EncodeToString([]byte("testBinary"))
 		encodedInitrd := base64.StdEncoding.EncodeToString([]byte("testInitrd"))
+		encodedSnapshot := base64.StdEncoding.EncodeToString([]byte("testSnapshot"))
 
 		config := &UnikernelConfig{
 			Hypervisor:      encodedHypervisor,
 			UnikernelType:   encodedType,
 			UnikernelBinary: encodedBinary,
 			Initrd:          encodedInitrd,
+			Snapshot:        encodedSnapshot,
 		}
 
 		// Call the decode method
@@ -206,6 +210,7 @@ func TestDecode(t *testing.T) {
 		assert.Equal(t, "testType", config.UnikernelType)
 		assert.Equal(t, "testBinary", config.UnikernelBinary)
 		assert.Equal(t, "testInitrd", config.Initrd)
+		assert.Equal(t, "testSnapshot", config.Snapshot)
 	})
 
 	t.Run("decode invalid base64", func(t *testing.T) {
@@ -235,6 +240,7 @@ func TestMap(t *testing.T) {
 			UnikernelType:   "type_value",
 			Hypervisor:      "hypervisor_value",
 			Initrd:          "initrd_value",
+			Snapshot:        "snapshot_value",
 			Block:           "block_value",
 			BlkMntPoint:     "point_value",
 			MountRootfs:     "false",
@@ -248,6 +254,7 @@ func TestMap(t *testing.T) {
 			annotHypervisor:    "hypervisor_value",
 			annotBinary:        "binary_value",
 			annotInitrd:        "initrd_value",
+			annotSnapshot:      "snapshot_value",
 			annotBlock:         "block_value",
 			annotBlockMntPoint: "point_value",
 			annotMountRootfs:   "false",
@@ -839,4 +846,88 @@ func writeBundleWithUruncJSON(t *testing.T, annots map[string]string) string {
 	assert.NoError(t, os.WriteFile(filepath.Join(rootfs, uruncJSONFilename), data, 0o600))
 
 	return bundle
+}
+
+// A snapshot is a saved hluk guest, so it replaces the binary and the initrd
+// and only hyperlight-unikraft can resume it.
+func TestValidateValuesSnapshot(t *testing.T) {
+	t.Parallel()
+
+	hyperlight := string(hypervisors.HyperlightVmm)
+	testCases := []struct {
+		name    string
+		annots  map[string]string
+		wantErr bool
+	}{
+		{
+			name: "snapshot alone on hyperlight-unikraft",
+			annots: map[string]string{
+				annotType:       unikernels.UnikraftUnikernel,
+				annotHypervisor: hyperlight,
+				annotSnapshot:   "/unikernel/snapshot",
+			},
+		},
+		{
+			name: "snapshot with an initrd is rejected",
+			annots: map[string]string{
+				annotType:       unikernels.UnikraftUnikernel,
+				annotHypervisor: hyperlight,
+				annotSnapshot:   "/unikernel/snapshot",
+				annotInitrd:     "/unikernel/initrd.cpio",
+			},
+			wantErr: true,
+		},
+		{
+			name: "snapshot with a binary is rejected",
+			annots: map[string]string{
+				annotType:       unikernels.UnikraftUnikernel,
+				annotHypervisor: hyperlight,
+				annotSnapshot:   "/unikernel/snapshot",
+				annotBinary:     "/unikernel/kernel",
+			},
+			wantErr: true,
+		},
+		{
+			name: "snapshot on qemu is rejected",
+			annots: map[string]string{
+				annotType:       unikernels.UnikraftUnikernel,
+				annotHypervisor: string(hypervisors.QemuVmm),
+				annotBinary:     "/unikernel/app",
+				annotSnapshot:   "/unikernel/snapshot",
+			},
+			wantErr: true,
+		},
+		{
+			name: "snapshot on firecracker is rejected",
+			annots: map[string]string{
+				annotType:       unikernels.UnikraftUnikernel,
+				annotHypervisor: string(hypervisors.FirecrackerVmm),
+				annotBinary:     "/unikernel/app",
+				annotSnapshot:   "/unikernel/snapshot",
+			},
+			wantErr: true,
+		},
+		{
+			name: "snapshot path escaping the image is rejected",
+			annots: map[string]string{
+				annotType:       unikernels.UnikraftUnikernel,
+				annotHypervisor: hyperlight,
+				annotSnapshot:   "../snapshot",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateAnnots(tc.annots)
+			if tc.wantErr {
+				assert.Error(t, err)
+				assert.ErrorContains(t, err, annotSnapshot, "Expected error to mention the annotation")
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
 }
