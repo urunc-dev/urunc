@@ -18,34 +18,83 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func TestHyperlightBuildExecCmd(t *testing.T) {
+	t.Parallel()
+
 	h := &Hyperlight{
-		binaryPath: "/usr/local/bin/hyperlight-unikraft",
-	}
-	args := types.ExecArgs{
-		UnikernelPath: "/path/to/unikernel",
-		InitrdPath:    "/path/to/initrd",
-		MemSizeB:      1024 * 1024 * 256,
+		binaryPath: "/usr/local/bin/hluk",
 	}
 
-	cmd, err := h.BuildExecCmd(args, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, []string{"/usr/local/bin/hyperlight-unikraft", "/path/to/unikernel", "--initrd", "/path/to/initrd", "--memory", "268435456"}, cmd)
-}
-
-func TestHyperlightBuildExecCmdNoInitrd(t *testing.T) {
-	h := &Hyperlight{
-		binaryPath: "/usr/local/bin/hyperlight-unikraft",
+	testCases := []struct {
+		name      string
+		args      types.ExecArgs
+		unikernel types.Unikernel
+		expected  []string
+		wantErr   error
+	}{
+		{
+			name: "initrd and memory",
+			args: types.ExecArgs{
+				UnikernelPath: "/unikernel/kernel",
+				InitrdPath:    "/unikernel/initrd.cpio",
+				MemSizeB:      1024 * 1024 * 256,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--scratch-mb", "256"},
+		},
+		{
+			name: "the unikernel binary is never passed",
+			args: types.ExecArgs{
+				UnikernelPath: "/unikernel/kernel",
+				InitrdPath:    "/unikernel/initrd.cpio",
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio"},
+		},
+		{
+			name: "memory below one MiB is left to hluk",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				MemSizeB:   1024,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio"},
+		},
+		{
+			name: "MonitorCli OtherArgs are appended verbatim",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				MemSizeB:   1024 * 1024 * 512,
+			},
+			unikernel: &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: []string{"--guest-exec=/entrypoint.py --fast"}}},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--scratch-mb", "512", "--guest-exec=/entrypoint.py --fast"},
+		},
+		{
+			name: "no initrd is an error",
+			args: types.ExecArgs{
+				UnikernelPath: "/unikernel/kernel",
+				MemSizeB:      1024 * 1024 * 256,
+			},
+			unikernel: &fakeUnikernel{},
+			wantErr:   ErrHyperlightNoInitrd,
+		},
 	}
-	args := types.ExecArgs{
-		UnikernelPath: "/path/to/unikernel",
-		MemSizeB:      1024 * 1024 * 256,
-	}
 
-	cmd, err := h.BuildExecCmd(args, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, []string{"/usr/local/bin/hyperlight-unikraft", "/path/to/unikernel", "--memory", "268435456"}, cmd)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd, err := h.BuildExecCmd(tc.args, tc.unikernel)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				assert.Nil(t, cmd)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, cmd)
+		})
+	}
 }

@@ -485,6 +485,19 @@ func monitorMemoryBytes(defaultMem uint, resources *specs.LinuxResources) uint64
 	return mem
 }
 
+// guestDefaultMemoryMB returns the memory, in MiB, to give a guest when the
+// container has no memory limit, 0 leaving it to the monitor. hluk sizes a
+// guest by the runtime its rootfs carries, from 64 MiB to 1536 MiB, so a
+// default from the urunc configuration would starve the larger runtimes: on
+// hyperlight-unikraft only a memory limit of the container sizes the guest.
+func guestDefaultMemoryMB(vmmType string, defaultMem uint) uint {
+	if hypervisors.VmmType(vmmType) == hypervisors.HyperlightVmm {
+		return 0
+	}
+
+	return defaultMem
+}
+
 // buildMonitorSpec assembles the base MonitorSpec: everything the monitor needs
 // that can be derived from the OCI spec, the container's annotations and the
 // monitor resources gathered during InitialSetup.
@@ -509,7 +522,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	if defaultVCPUs < 1 {
 		defaultVCPUs = 1
 	}
-	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
+	defaultMemSizeMB := guestDefaultMemoryMB(vmmType, u.UruncCfg.Monitors[vmmType].DefaultMemoryMB)
 	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
 
 	vmmArgs := types.ExecArgs{

@@ -17,9 +17,11 @@ package unikontainers
 import (
 	"testing"
 
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -108,6 +110,42 @@ func TestConfineToContainerRootfs(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+// Every monitor gets the memory limit of the container. Without one, the
+// others fall back to the configured default, while hyperlight-unikraft
+// leaves the size to hluk, which knows what the runtime of the rootfs needs.
+func TestGuestMemory(t *testing.T) {
+	t.Parallel()
+
+	const limitB = 1536 * 1024 * 1024
+	limit := int64(limitB)
+	limited := &specs.LinuxResources{Memory: &specs.LinuxMemory{Limit: &limit}}
+	unlimited := &specs.LinuxResources{Memory: &specs.LinuxMemory{}}
+	hyperlight := string(hypervisors.HyperlightVmm)
+	qemu := string(hypervisors.QemuVmm)
+
+	tests := []struct {
+		name      string
+		vmm       string
+		resources *specs.LinuxResources
+		expected  uint64
+	}{
+		{name: "qemu with a limit", vmm: qemu, resources: limited, expected: limitB},
+		{name: "qemu without a limit", vmm: qemu, resources: unlimited, expected: 256 * 1024 * 1024},
+		{name: "qemu without resources", vmm: qemu, resources: nil, expected: 256 * 1024 * 1024},
+		{name: "hyperlight-unikraft with a limit", vmm: hyperlight, resources: limited, expected: limitB},
+		{name: "hyperlight-unikraft without a limit", vmm: hyperlight, resources: unlimited, expected: 0},
+		{name: "hyperlight-unikraft without resources", vmm: hyperlight, resources: nil, expected: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			defaultMem := guestDefaultMemoryMB(tt.vmm, 256)
+			assert.Equal(t, tt.expected, monitorMemoryBytes(defaultMem, tt.resources))
 		})
 	}
 }
