@@ -731,3 +731,112 @@ func TestNewAnnotationsSanity(t *testing.T) {
 		assert.ErrorIs(t, err, ErrNotUnikernel, "Expected ErrNotUnikernel for a plain container")
 	})
 }
+
+// The unikernel binary is mandatory for every monitor that boots it, but
+// hyperlight-unikraft embeds its own kernel, so an image may leave it out.
+func TestValidateUnikernelBinaryRequirement(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		hypervisor string
+		binary     string
+		wantErr    bool
+	}{
+		{"qemu requires a binary", string(hypervisors.QemuVmm), "", true},
+		{"firecracker requires a binary", string(hypervisors.FirecrackerVmm), "", true},
+		{"qemu with a binary", string(hypervisors.QemuVmm), "/unikernel/app", false},
+		{"hyperlight-unikraft boots its embedded kernel without one", string(hypervisors.HyperlightVmm), "", false},
+		{"hyperlight-unikraft boots a kernel from the image instead", string(hypervisors.HyperlightVmm), "/unikernel/kernel", false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			conf := &UnikernelConfig{
+				UnikernelType:   unikernels.UnikraftUnikernel,
+				Hypervisor:      tc.hypervisor,
+				UnikernelBinary: tc.binary,
+			}
+			err := conf.validate()
+			if tc.wantErr {
+				assert.Error(t, err)
+				assert.ErrorContains(t, err, annotBinary)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// What urunc does with an image whose annotations name a type and a monitor
+// but no binary must not change for the monitors that need one: such a
+// container is not a unikernel one and goes to runc, as before.
+func TestNewWithoutBinary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("qemu without a binary still falls back to runc", func(t *testing.T) {
+		t.Parallel()
+		annots := validAnnots()
+		delete(annots, annotBinary)
+
+		_, err := New(writeBundle(t, annots), "test-container", t.TempDir(), defaultUruncConfig())
+		assert.ErrorIs(t, err, ErrNotUnikernel, "Expected ErrNotUnikernel without a binary on qemu")
+	})
+
+	t.Run("hyperlight-unikraft without a binary is a unikernel container", func(t *testing.T) {
+		t.Parallel()
+		annots := validAnnots()
+		delete(annots, annotBinary)
+		annots[annotHypervisor] = string(hypervisors.HyperlightVmm)
+		annots[annotInitrd] = "/unikernel/initrd.cpio"
+
+		u, err := New(writeBundle(t, annots), "test-container", t.TempDir(), defaultUruncConfig())
+		assert.NoError(t, err, "Expected New to succeed without a binary on hyperlight-unikraft")
+		assert.Equal(t, "", u.State.Annotations[annotBinary])
+	})
+
+	// urunc.json stores its values base64-encoded, so the monitor is only
+	// recognizable once decoded: the same two outcomes must hold there.
+	t.Run("qemu without a binary in urunc.json still falls back to runc", func(t *testing.T) {
+		t.Parallel()
+		annots := validAnnots()
+		delete(annots, annotBinary)
+
+		_, err := New(writeBundleWithUruncJSON(t, annots), "test-container", t.TempDir(), defaultUruncConfig())
+		assert.ErrorIs(t, err, ErrNotUnikernel, "Expected ErrNotUnikernel without a binary on qemu")
+	})
+
+	t.Run("hyperlight-unikraft without a binary in urunc.json is a unikernel container", func(t *testing.T) {
+		t.Parallel()
+		annots := validAnnots()
+		delete(annots, annotBinary)
+		annots[annotHypervisor] = string(hypervisors.HyperlightVmm)
+		annots[annotInitrd] = "/unikernel/initrd.cpio"
+
+		u, err := New(writeBundleWithUruncJSON(t, annots), "test-container", t.TempDir(), defaultUruncConfig())
+		assert.NoError(t, err, "Expected New to succeed without a binary on hyperlight-unikraft")
+		assert.Equal(t, string(hypervisors.HyperlightVmm), u.State.Annotations[annotHypervisor])
+		assert.Equal(t, "", u.State.Annotations[annotBinary])
+	})
+}
+
+// writeBundleWithUruncJSON writes a bundle whose spec carries no urunc
+// annotations and whose rootfs holds them in urunc.json, base64-encoded as
+// the packaging tools write it.
+func writeBundleWithUruncJSON(t *testing.T, annots map[string]string) string {
+	t.Helper()
+
+	bundle := writeBundle(t, map[string]string{})
+	encoded := make(map[string]string, len(annots))
+	for k, v := range annots {
+		encoded[k] = base64.StdEncoding.EncodeToString([]byte(v))
+	}
+	data, err := json.Marshal(encoded)
+	assert.NoError(t, err)
+	rootfs := filepath.Join(bundle, rootfsDirName)
+	assert.NoError(t, os.MkdirAll(rootfs, 0o755))
+	assert.NoError(t, os.WriteFile(filepath.Join(rootfs, uruncJSONFilename), data, 0o600))
+
+	return bundle
+}

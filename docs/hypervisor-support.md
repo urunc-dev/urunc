@@ -301,14 +301,16 @@ sudo install -m0755 hluk /usr/local/bin/hluk
 #### Hyperlight and `urunc`
 
 In the case of [Hyperlight](https://github.com/hyperlight-dev/hyperlight),
-`urunc` boots the guest with `hluk run`. The `binary` and `initrd` annotations
-keep the same meaning as with the rest of the supported VMMs: the unikernel
-binary is the Unikraft kernel that `hluk` boots (its `--kernel` option) in
-place of the kernel it embeds, and the initrd is the rootfs CPIO that `hluk`
-maps into the guest as its initial RamFS (initramfs). Both are tied to the
-installed `hluk` version: the kernel has to match its host ABI and the runtime
-driver inside the rootfs speaks the protocol of that version, so the images
-that [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
+`urunc` boots the guest with `hluk run`. The `initrd` annotation keeps the
+same meaning as with the rest of the supported VMMs: it is the rootfs CPIO
+that `hluk` maps into the guest as its initial RamFS (initramfs). The `binary`
+annotation, on the other hand, is optional for this monitor, since `hluk`
+embeds the Unikraft kernel it boots. When an image sets it, `urunc` passes the
+file to `hluk` as the kernel to boot instead (its `--kernel` option). Both
+files are tied to the installed `hluk` version: a kernel has to match its host
+ABI and the runtime driver inside the rootfs speaks the protocol of that
+version, so the images that
+[hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
 publishes for a release are the ones to build on for that release.
 
 The command line of the container is passed to `hluk` through its
