@@ -21,12 +21,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/urunc-dev/urunc/pkg/agentproto"
+	"golang.org/x/sys/unix"
 )
 
 // dialAgent stands up the real serveConn over a unix socket (the transport
@@ -206,5 +210,99 @@ func TestAgentStdinRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "ping-pong") {
 		t.Errorf("cat did not echo stdin, got %q", out.String())
+	}
+}
+
+// dialAgentListener runs the agent's own accept loop on a unix socket and
+// returns a connected client. Unlike dialAgent, the agent accepts the
+// connection itself, as it does on vsock.
+func dialAgentListener(t *testing.T) net.Conn {
+	t.Helper()
+	sock := filepath.Join(t.TempDir(), "agent.sock")
+	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatalf("socket: %v", err)
+	}
+	if err := unix.Bind(fd, &unix.SockaddrUnix{Name: sock}); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	if err := unix.Listen(fd, 8); err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = serveListener(fd)
+		close(done)
+	}()
+	t.Cleanup(func() {
+		// Shutdown wakes the blocked accept. The fd is closed only after the
+		// loop has returned, so it cannot accept on a reused fd number.
+		_ = unix.Shutdown(fd, unix.SHUT_RDWR)
+		<-done
+		_ = unix.Close(fd)
+	})
+	cli, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = cli.Close() })
+	return cli
+}
+
+// socketLinks returns the socket:[inode] targets in an ls -l listing of a
+// /proc/<pid>/fd directory.
+func socketLinks(listing string) []string {
+	var links []string
+	for _, field := range strings.Fields(listing) {
+		if strings.HasPrefix(field, "socket:") {
+			links = append(links, field)
+		}
+	}
+	return links
+}
+
+// TestAgentExecChildHoldsNoConnection checks that a process the agent starts
+// does not inherit the agent's connection to the host. The child writes its
+// fd listing to a file, so the check does not depend on its stdout.
+func TestAgentExecChildHoldsNoConnection(t *testing.T) {
+	dir := t.TempDir()
+	script := `ls -l /proc/$$/fd > "$1"`
+
+	// Sockets that any child of the test inherits are not the agent's.
+	baseFile := filepath.Join(dir, "base")
+	if out, err := exec.Command("/bin/sh", "-c", script, "sh", baseFile).CombinedOutput(); err != nil {
+		t.Fatalf("baseline listing: %v: %s", err, out)
+	}
+	base, err := os.ReadFile(baseFile)
+	if err != nil {
+		t.Fatalf("read baseline listing: %v", err)
+	}
+
+	cli := dialAgentListener(t)
+	for _, tty := range []bool{false, true} {
+		stream := uint32(10)
+		if tty {
+			stream = 11
+		}
+		listFile := filepath.Join(dir, "fds-tty-"+strconv.FormatBool(tty))
+		_, _, code := runSession(t, cli, stream, agentproto.OpenRequest{
+			Argv: []string{"/bin/sh", "-c", script, "sh", listFile},
+			TTY:  tty,
+		})
+		if code != 0 {
+			t.Fatalf("tty=%v: exit code = %d, want 0", tty, code)
+		}
+		listing, err := os.ReadFile(listFile)
+		if err != nil {
+			t.Fatalf("tty=%v: read listing: %v", tty, err)
+		}
+		if !strings.Contains(string(listing), " 0 -> ") {
+			t.Fatalf("tty=%v: no fd listing, got %q", tty, listing)
+		}
+		for _, link := range socketLinks(string(listing)) {
+			if !strings.Contains(string(base), link) {
+				t.Errorf("tty=%v: the child holds %s, which the test process did not pass on:\n%s", tty, link, listing)
+			}
+		}
 	}
 }

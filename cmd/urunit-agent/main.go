@@ -85,8 +85,16 @@ func serveVsock() error {
 		return fmt.Errorf("vsock listen: %w", err)
 	}
 	log.Printf("listening on vsock port %d", agentproto.DefaultVsockPort)
+	return serveListener(fd)
+}
+
+// serveListener accepts connections on the listening socket fd and serves
+// each one concurrently. It returns only when accept fails.
+func serveListener(fd int) error {
 	for {
-		nfd, _, err := unix.Accept(fd)
+		// Without close-on-exec, every process the agent starts inherits
+		// the connection to the host.
+		nfd, _, err := unix.Accept4(fd, unix.SOCK_CLOEXEC)
 		if err != nil {
 			if err == unix.EINTR {
 				continue
