@@ -143,6 +143,10 @@ func (c *connState) removeSession(id uint32) {
 	delete(c.sessions, id)
 }
 
+// outputDrainTimeout bounds how long a session's exit report waits for the
+// rest of its output once the process has exited.
+const outputDrainTimeout = 2 * time.Second
+
 // session is one running exec'd process.
 type session struct {
 	cmd   *exec.Cmd
@@ -338,6 +342,28 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 	}
 
 	s := &session{cmd: cmd}
+	// outputs are the agent's ends of the process's stdout and stderr. The
+	// relays forward them to the peer, and the exit report waits for them.
+	var outputs []*os.File
+	var relays sync.WaitGroup
+	relay := func(r *os.File, typ byte) {
+		relays.Add(1)
+		go func() {
+			defer relays.Done()
+			buf := make([]byte, 32*1024)
+			for {
+				n, err := r.Read(buf)
+				if n > 0 {
+					if werr := c.writeFrame(typ, stream, buf[:n]); werr != nil {
+						return
+					}
+				}
+				if err != nil {
+					return
+				}
+			}
+		}()
+	}
 	if req.TTY {
 		ws := &pty.Winsize{Rows: req.Rows, Cols: req.Cols}
 		if ws.Rows == 0 || ws.Cols == 0 {
@@ -368,53 +394,41 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 		}
 		_ = tts.Close()
 		s.ptmx = ptmx
-		go func() {
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := ptmx.Read(buf)
-				if n > 0 {
-					if werr := c.writeFrame(agentproto.TypeStdout, stream, buf[:n]); werr != nil {
-						break
-					}
-				}
-				if err != nil {
-					break
-				}
-			}
-		}()
+		outputs = []*os.File{ptmx}
+		relay(ptmx, agentproto.TypeStdout)
 	} else {
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
 			return err
 		}
-		stdout, err := cmd.StdoutPipe()
+		// cmd.Wait closes the pipes from StdoutPipe and StderrPipe as soon
+		// as the process exits, and any output still unread in them is
+		// lost. Plain pipes stay open until the agent closes them.
+		stdoutR, stdoutW, err := os.Pipe()
 		if err != nil {
 			return err
 		}
-		stderr, err := cmd.StderrPipe()
+		stderrR, stderrW, err := os.Pipe()
 		if err != nil {
+			_ = stdoutR.Close()
+			_ = stdoutW.Close()
 			return err
 		}
-		if err := cmd.Start(); err != nil {
+		cmd.Stdout, cmd.Stderr = stdoutW, stderrW
+		err = cmd.Start()
+		// The child holds its own copies of the write ends. Closing ours lets
+		// the relays see EOF once the process and its descendants are done.
+		_ = stdoutW.Close()
+		_ = stderrW.Close()
+		if err != nil {
+			_ = stdoutR.Close()
+			_ = stderrR.Close()
 			return fmt.Errorf("start: %w", err)
 		}
 		s.stdin = stdin
-		relay := func(r io.Reader, typ byte) {
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := r.Read(buf)
-				if n > 0 {
-					if werr := c.writeFrame(typ, stream, buf[:n]); werr != nil {
-						return
-					}
-				}
-				if err != nil {
-					return
-				}
-			}
-		}
-		go relay(stdout, agentproto.TypeStdout)
-		go relay(stderr, agentproto.TypeStderr)
+		outputs = []*os.File{stdoutR, stderrR}
+		relay(stdoutR, agentproto.TypeStdout)
+		relay(stderrR, agentproto.TypeStderr)
 	}
 
 	c.addSession(stream, s)
@@ -433,8 +447,21 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 				code = 126
 			}
 		}
-		if s.ptmx != nil {
-			_ = s.ptmx.Close()
+		// The peer ends the session on the Exit frame and drops any output
+		// that follows it, so relay the output first. A process left running
+		// in the background can hold the output open, so the wait is bounded.
+		drained := make(chan struct{})
+		go func() {
+			relays.Wait()
+			close(drained)
+		}()
+		select {
+		case <-drained:
+		case <-time.After(outputDrainTimeout):
+			log.Printf("stream %d: output still open %v after exit", stream, outputDrainTimeout)
+		}
+		for _, f := range outputs {
+			_ = f.Close()
 		}
 		c.removeSession(stream)
 		_ = c.writeJSON(agentproto.TypeExit, stream, agentproto.Exit{Code: code})
