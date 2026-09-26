@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -636,6 +637,95 @@ func guestDefaultMemoryMB(vmmType string, defaultMem uint) uint {
 	return defaultMem
 }
 
+// maxCpusetCPUs bounds how many CPUs a cpuset list may name before it is
+// taken as malformed. It is far above any host, and it keeps a range such as
+// "0-4294967295" from allocating a set that size.
+const maxCpusetCPUs = 1 << 16
+
+// monitorVCPUs returns the vCPU count for a container boot guest, taken from
+// the container's CPU resources and capped at hostCPUs.
+//
+// A CPU quota gives ceil(quota/period) vCPUs, which is what `nerdctl run
+// --cpus` sets. A cpuset gives the number of CPUs it names. When both are set
+// the smaller wins. Without either, or with a cpuset that cannot be read, it
+// returns defaultVCPUs.
+func monitorVCPUs(defaultVCPUs uint, resources *specs.LinuxResources, hostCPUs uint) uint {
+	n := defaultVCPUs
+	if resources != nil && resources.CPU != nil {
+		cpu := resources.CPU
+		var fromQuota, fromSet uint
+		if cpu.Quota != nil && *cpu.Quota > 0 && cpu.Period != nil && *cpu.Period > 0 {
+			quota, period := uint64(*cpu.Quota), *cpu.Period // nolint:gosec
+			fromQuota = uint((quota + period - 1) / period)
+		}
+		if cpu.Cpus != "" {
+			count, err := cpusetCount(cpu.Cpus)
+			if err != nil {
+				uniklog.WithError(err).Warn("ignoring the container's cpuset for the vCPU count")
+			}
+			fromSet = count
+		}
+		switch {
+		case fromQuota > 0 && fromSet > 0:
+			n = min(fromQuota, fromSet)
+		case fromQuota > 0:
+			n = fromQuota
+		case fromSet > 0:
+			n = fromSet
+		}
+	}
+	if hostCPUs > 0 && n > hostCPUs {
+		uniklog.WithFields(logrus.Fields{
+			"requested": n,
+			"host CPUs": hostCPUs,
+		}).Warn("capping the guest's vCPUs at the CPUs urunc may run on")
+		n = hostCPUs
+	}
+	if n < 1 {
+		n = 1
+	}
+
+	return n
+}
+
+// cpusetCount returns how many distinct CPUs a cpuset list names, for
+// instance 5 for "0-3,6".
+func cpusetCount(list string) (uint, error) {
+	seen := map[uint64]struct{}{}
+	for _, part := range strings.Split(list, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		lo, hi, isRange := strings.Cut(part, "-")
+		first, err := strconv.ParseUint(lo, 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("cpuset %q: %w", list, err)
+		}
+		last := first
+		if isRange {
+			last, err = strconv.ParseUint(hi, 10, 32)
+			if err != nil {
+				return 0, fmt.Errorf("cpuset %q: %w", list, err)
+			}
+			if last < first {
+				return 0, fmt.Errorf("cpuset %q: range %q runs backwards", list, part)
+			}
+		}
+		if last-first >= maxCpusetCPUs || len(seen)+int(last-first) >= maxCpusetCPUs {
+			return 0, fmt.Errorf("cpuset %q names more than %d CPUs", list, maxCpusetCPUs)
+		}
+		for c := first; c <= last; c++ {
+			seen[c] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return 0, fmt.Errorf("cpuset %q names no CPU", list)
+	}
+
+	return uint(len(seen)), nil
+}
+
 // verboseGuestLogs reports whether the guest should log fully, mirroring
 // urunc's own effective log verbosity. Every urunc process sets the global
 // logger level from the live config (and the --debug flag) at startup, so it is
@@ -733,6 +823,11 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		// vsock over a host unix socket, created at this monitor-rootfs path.
 		vmmArgs.AgentVsockCID = idToGuestCID(u.State.ID)
 		vmmArgs.AgentVsockUDS = constants.AgentVsockUDSPath
+		// The guest is a generic Linux kernel, which runs SMP, so it gets the
+		// CPUs the container asked for. A unikernel keeps the monitor default:
+		// many run on one CPU whatever the VM has, and a CPU limit meant for a
+		// pod should not multiply their vCPUs.
+		vmmArgs.VCPUs = monitorVCPUs(defaultVCPUs, u.Spec.Linux.Resources, uint(runtime.NumCPU()))
 	}
 
 	mSpec.ContainerID = u.State.ID
