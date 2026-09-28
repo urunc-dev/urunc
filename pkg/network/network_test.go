@@ -15,6 +15,7 @@
 package network
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,6 +54,40 @@ func TestNewNetworkManager(t *testing.T) {
 				assert.NoError(t, err, "NewNetworkManager() should not return an error")
 				assert.NotNil(t, got, "NewNetworkManager() should return a non-nil manager")
 			}
+		})
+	}
+}
+
+func TestGetTapIndex(t *testing.T) {
+	tapCount, err := getTapIndex()
+	assert.NoError(t, err, "getTapIndex() should not error")
+	assert.GreaterOrEqual(t, tapCount, 0, "tapCount should be >= 0")
+}
+
+func TestTapDeviceRegexMatching(t *testing.T) {
+	tapRe := regexp.MustCompile(`^tap\d+(_urunc)?$`)
+
+	tests := []struct {
+		ifaceName   string
+		shouldMatch bool
+	}{
+		{"tap0_urunc", true},
+		{"tap1_urunc", true},
+		{"tap0", true},
+		{"tap12", true},
+		{"vtap0", false},
+		{"cni-tap0", false},
+		{"bootstrap0", false},
+		{"stape0", false},
+		{"tap-master", false},
+		{"eth0", false},
+		{"lo", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.ifaceName, func(t *testing.T) {
+			matched := tapRe.MatchString(tt.ifaceName)
+			assert.Equal(t, tt.shouldMatch, matched, "interface name %s match expectation failed", tt.ifaceName)
 		})
 	}
 }

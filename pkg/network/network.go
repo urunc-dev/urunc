@@ -67,9 +67,10 @@ func getTapIndex() (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	tapRe := regexp.MustCompile(`^tap\d+(_urunc)?$`)
 	tapCount := 0
 	for _, iface := range ifaces {
-		if strings.Contains(iface.Name, "tap") {
+		if tapRe.MatchString(iface.Name) {
 			tapCount++
 		}
 	}
