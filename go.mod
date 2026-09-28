@@ -7,7 +7,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/containerd/containerd v1.7.36
-	github.com/containerd/containerd/api v1.10.0
+	github.com/containerd/containerd/api v1.12.0
 	github.com/containerd/log v0.2.0
 	github.com/containerd/ttrpc v1.2.10
 	github.com/creack/pty v1.1.24
@@ -18,9 +18,9 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/moby/sys/userns v0.2.1
 	github.com/nubificus/hedge_cli v0.0.3
-	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.42.1
-	github.com/opencontainers/cgroups v0.0.4
+	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/gomega v1.44.0
+	github.com/opencontainers/cgroups v0.1.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/runc v1.3.6
 	github.com/opencontainers/runtime-spec v1.2.1
