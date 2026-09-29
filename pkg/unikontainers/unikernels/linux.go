@@ -17,6 +17,7 @@ package unikernels
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -107,6 +108,12 @@ func (l *Linux) CommandString() (string, error) {
 		// no UART in use, also skip the 8250 driver probing at boot.
 		// Requires CONFIG_VIRTIO_CONSOLE=y in the guest kernel.
 		consoleStr = "console=hvc0 8250.nr_uarts=0"
+	} else if l.Monitor == "cloud-hypervisor" && runtime.GOARCH == "arm64" {
+		// Cloud Hypervisor's arm64 UART is a PL011, ttyAMA0, with no ttyS0.
+		// Enabling it also appends earlycon= to the command line, after the
+		// "--" that starts the app's arguments. The virtio console has
+		// neither problem.
+		consoleStr = "console=hvc0"
 	} else {
 		consoleStr = "console=ttyS0"
 	}

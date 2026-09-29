@@ -17,6 +17,7 @@ package hypervisors
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -105,8 +106,13 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 	// Kernel path
 	exArgs = append(exArgs, "--kernel", args.UnikernelPath)
 
-	// Console configuration - disable graphical output
-	exArgs = append(exArgs, "--console", "off", "--serial", "tty")
+	// A guest asking for hvc0 gets a virtio console and no serial port, as
+	// with qemu. Any other guest keeps the serial port on the tty.
+	if strings.Contains(args.Command, "console=hvc0") {
+		exArgs = append(exArgs, "--console", "tty", "--serial", "off")
+	} else {
+		exArgs = append(exArgs, "--console", "off", "--serial", "tty")
+	}
 
 	// Seccomp configuration
 	if args.Seccomp {
