@@ -44,16 +44,12 @@ type MirageBlock struct {
 }
 
 func (m *Mirage) CommandString() (string, error) {
+	command := fmt.Sprintf("%s %s", m.Net.Address, m.Net.Gateway)
 	if m.Net.DNSServer != "" {
-		return fmt.Sprintf("%s %s --dns-servers=%s %s", m.Net.Address,
-			m.Net.Gateway,
-			"udp:"+m.Net.DNSServer+",tcp:"+m.Net.DNSServer,
-			m.Command), nil
+		command += fmt.Sprintf(" --dns-servers=udp:%s,tcp:%s", m.Net.DNSServer, m.Net.DNSServer)
 	}
 
-	return fmt.Sprintf("%s %s %s", m.Net.Address,
-		m.Net.Gateway,
-		m.Command), nil
+	return command + " " + m.Command, nil
 }
 
 func (m *Mirage) SupportsBlock() bool {
@@ -115,6 +111,7 @@ func (m *Mirage) MonitorCli() types.MonitorCliArgs {
 func (m *Mirage) Init(data types.UnikernelParams) error {
 	// if Mask is empty, there is no network support
 	if data.Net.Mask != "" {
+		m.Net.DNSServer = data.Net.DNSServer
 		mask, err := subnetMaskToCIDR(data.Net.Mask)
 		if err != nil {
 			return err
@@ -131,8 +128,8 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 			m.Net.Address = fmt.Sprintf("--ipv4=%s/%d", data.Net.IP, mask)
 			m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 		}
+		m.Net.DNSServer = data.Net.DNSServer
 	}
-	m.Net.DNSServer = data.Net.DNSServer
 	m.Block = make([]MirageBlock, 0, len(data.Block))
 	for _, blk := range data.Block {
 		newBlk := MirageBlock{
