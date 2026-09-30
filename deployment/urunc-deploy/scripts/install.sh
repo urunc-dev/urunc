@@ -163,7 +163,7 @@ function is_containerd_capable_of_using_drop_in_files() {
         return
     fi
 
-    local version_major=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}' | grep -oE '[0-9]+\.[0-9]+' | cut -d'.' -f1)
+    local version_major=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}' | sed -n 's|.*containerd://\([0-9][0-9]*\).*|\1|p')
     if [ $version_major -lt 2 ]; then
         # Only containerd 2.0 does the merge of the plugins section from different snippets,
         # instead of overwriting the whole section, which makes things considerably more
