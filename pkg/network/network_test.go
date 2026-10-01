@@ -15,6 +15,8 @@
 package network
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,4 +57,14 @@ func TestNewNetworkManager(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestErrNoContainerNetworkIsDetectableWhenWrapped(t *testing.T) {
+	t.Parallel()
+
+	wrapped := fmt.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %w", ErrNoContainerNetwork)
+	assert.True(t, errors.Is(wrapped, ErrNoContainerNetwork))
+
+	other := fmt.Errorf("createTapDevice(tap0_urunc) failed: %w", errors.New("permission denied"))
+	assert.False(t, errors.Is(other, ErrNoContainerNetwork))
 }

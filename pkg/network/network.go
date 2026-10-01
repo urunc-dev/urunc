@@ -33,6 +33,11 @@ const (
 
 var netlog = logrus.WithField("subsystem", "network")
 
+// ErrNoContainerNetwork is returned when the current network namespace has no
+// suitable container interface (e.g. ctr without networking, or --network none).
+// Callers may treat this as a non-fatal condition and continue without guest networking.
+var ErrNoContainerNetwork = errors.New("no suitable network interface found in namespace")
+
 type UnikernelNetworkInfo struct {
 	TapDevice string
 	EthDevice Interface
@@ -403,7 +408,7 @@ func discoverContainerIface() (netlink.Link, error) {
 		}
 		netlog.Debugf("skipping interface %s: no default route found", attrs.Name)
 	}
-	return nil, errors.New("no suitable network interface found in namespace")
+	return nil, ErrNoContainerNetwork
 }
 
 func deleteAllQDiscs(device netlink.Link) error {
