@@ -59,6 +59,11 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 	netlog.Debugf("fetching info for %s", redirectLink.Attrs().Name)
 	ifInfo, err := getInterfaceInfo(redirectLink.Attrs().Name)
 	if err != nil {
+		// networkSetup succeeded above, so the tap and its TC rules exist
+		// in the netns and must be torn down before returning the error,
+		// otherwise the leftover tap blocks every future setup attempt in
+		// this netns (see getTapIndex).
+		removeTap(newTapDevice, redirectLink, true)
 		return nil, fmt.Errorf("getInterfaceInfo(%s) failed: %w", redirectLink.Attrs().Name, err)
 	}
 
