@@ -1,0 +1,23 @@
+{
+    "name": "urunc Development Environment",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+    "runArgs": [
+        "--device=/dev/kvm",
+        "--privileged"
+    ],
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.Go",
+                "ms-vscode.makefile-tools"
+            ]
+        }
+    },
+    "remoteUser": "root"
+}
