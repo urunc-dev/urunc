@@ -16,6 +16,7 @@ package network
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,11 +30,55 @@ var StaticIPAddr = fmt.Sprintf("%s/24", constants.StaticNetworkTapIP)
 type StaticNetwork struct {
 }
 
-// Apply the following rule:
+// natRuleArgs returns the common iptables arguments identifying the NAT
+// rule that setNATRule applies, minus the leading action flag (e.g. "-A"
+// or "-C"), so that the same filter can be used both to check for the
+// rule's presence and to append it.
+func natRuleArgs(iface string, sourceIP string) []string {
+	return []string{
+		"-t", "nat",
+		"POSTROUTING",
+		"-s", sourceIP,
+		"-o", iface,
+		"-j", "MASQUERADE",
+		"--wait", "1",
+	}
+}
+
+// natRuleExists checks whether the NAT rule identified by ruleArgs is
+// already present in the POSTROUTING chain, via "iptables -C". iptables
+// exits with 0 if the rule exists and with 1 if it does not.
+func natRuleExists(path string, ruleArgs []string) (bool, error) {
+	var stdout, stderr bytes.Buffer
+
+	args := append([]string{path, "-C"}, ruleArgs...)
+	cmd := exec.Cmd{
+		Path:   path,
+		Args:   args,
+		Stdout: &stdout,
+		Stderr: &stderr,
+	}
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("iptables command %s failed: %s", cmd.String(), stderr.String())
+}
+
+// Apply the following rule, if not already present:
 // iptables -t nat -A POSTROUTING -o <IF> -s <IP> -j MASQUERADE --wait 1
 // and write 1 to /proc/sys/net/ipv4/ip_forward to enable IP forwarding.
+//
+// Since the network namespace, and therefore any iptables rules in it,
+// persists across container restarts in Kubernetes (see the equivalent
+// TAP device leak fixed for #406), we check whether the rule already
+// exists before appending it, to avoid piling up duplicate rules on
+// every restart.
 func setNATRule(iface string, sourceIP string) error {
-	var args []string
 	var stdout, stderr bytes.Buffer
 
 	path, err := exec.LookPath("iptables")
@@ -53,20 +98,18 @@ func setNATRule(iface string, sourceIP string) error {
 	}
 	netlog.Debug("Enabled IP forwarding")
 
-	args = append(args, path)
-	args = append(args, "-t")
-	args = append(args, "nat")
-	args = append(args, "-A")
-	args = append(args, "POSTROUTING")
-	args = append(args, "-s")
-	args = append(args, sourceIP)
-	args = append(args, "-o")
-	args = append(args, iface)
-	args = append(args, "-j")
-	args = append(args, "MASQUERADE")
-	args = append(args, "--wait")
-	args = append(args, "1")
+	ruleArgs := natRuleArgs(iface, sourceIP)
 
+	exists, err := natRuleExists(path, ruleArgs)
+	if err != nil {
+		return err
+	}
+	if exists {
+		netlog.Debug("iptables NAT rule already present, skipping")
+		return nil
+	}
+
+	args := append([]string{path, "-A"}, ruleArgs...)
 	cmd := exec.Cmd{
 		Path:   path,
 		Args:   args,
