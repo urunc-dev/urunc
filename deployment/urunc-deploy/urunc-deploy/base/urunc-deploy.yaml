@@ -73,16 +73,11 @@ spec:
           securityContext:
             privileged: true
           volumeMounts:
-            - name: crio-conf
-              mountPath: /etc/crio/
             - name: containerd-conf
               mountPath: /etc/containerd/
             - name: host
               mountPath: /host/
       volumes:
-        - name: crio-conf
-          hostPath:
-            path: /etc/crio/
         - name: containerd-conf
           hostPath:
             path: /etc/containerd/

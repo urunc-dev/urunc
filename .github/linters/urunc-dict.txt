@@ -478,3 +478,5 @@ Atoi
 gsub
 getpath
 ints
+tomlkit
+delpaths

@@ -123,6 +123,12 @@ sed -i "s|ghcr.io/urunc-dev/urunc/urunc-deploy:latest|ghcr.io/urunc-dev/urunc/ur
 kubectl apply -k deployment/urunc-deploy/urunc-deploy/overlays/k3s
 ```
 
+The k3s overlay mounts `/var/lib/rancher/k3s/agent/etc/containerd/`. If the
+`urunc-deploy` Pod stays in `ContainerCreating` with a `FailedMount` event, k3s
+keeps its data elsewhere (`--data-dir`); change the path in
+`deployment/urunc-deploy/urunc-deploy/overlays/k3s/mount_k3s_conf.yaml`
+accordingly.
+
 Finally, we need to create the appropriate k8s runtime class:
 
 ```bash
@@ -227,8 +233,18 @@ During installation, the following steps take place:
     * Copies hypervisor binaries to the host under `/opt/urunc/bin`.
     * Copies QEMU data files to `/opt/urunc/share`.
     * Installs a configuration file at `/etc/urunc/config.toml`.
-    * Creates a backup of the current `containerd` configuration file.
-    * Edits the `containerd` configuration file to add `urunc` as a supported runtime.
+    * Registers `urunc` as a `containerd` runtime: with containerd 2.x through a
+      drop-in file, and with containerd 1.x or k0s by adding the runtime to the
+      configuration file itself. The drop-in file goes into a directory the
+      configuration already imports (`conf.d`, or `config-v3.toml.d` on
+      k3s/rke2) if there is one, or else into `config.d`, with an import line
+      added to the configuration. A missing configuration file is created. On
+      k3s/rke2, which render `config.toml` on every start, the
+      configuration file is their template (`config-v3.toml.tmpl`, or else
+      `config.toml.tmpl`). A missing one is created as a copy of the rendered
+      configuration, named `config-v3.toml.tmpl` with containerd 2.x.
+      Do not edit the `urunc-deploy.toml` drop-in file: `urunc-deploy` rewrites
+      it on every install and deletes it on uninstall.
     * Restarts `containerd`, if necessary.
     * Labels the Node with label `urunc.io/urunc-runtime=true`.
 - Finally, `urunc` is added as a runtime class in k8s.
@@ -238,10 +254,25 @@ During cleanup, these changes are reverted:
 - The `urunc` and `containerd-shim-urunc-v2` binaries are deleted from `/usr/local/bin`.
 - The `/opt/urunc` directory containing hypervisor binaries and QEMU data files is deleted.
 - The `/etc/urunc` configuration directory is deleted.
-- The `containerd` configuration file is restored to the pre-`urunc-deploy` state.
+- The `urunc` changes are removed from the `containerd` configuration:
+    * The `urunc-deploy` drop-in file is deleted.
+    * A configuration file that `urunc-deploy` created is deleted, unless it was
+      changed after the installation. In that case it is kept and only the
+      `urunc` entries are removed from it.
+    * In any other configuration file, only the `urunc` runtime, the
+      `urunc-deploy` import and the debug level, if `urunc-deploy` set it for
+      `DEBUG=true`, are removed; everything else, including changes made after
+      the installation, is kept.
+    * Directories created during the installation are removed if they are empty.
 - `containerd` and the kubelet are restarted (on k3s/rke2, the k3s/rke2 service instead).
 - The `urunc.io/urunc-runtime=true` label is removed from the Node.
 - The RBAC role, the `urunc-deploy` Pod and the runtime class are removed.
+
+> **Note:** Whenever `urunc-deploy` edits a `containerd` configuration file
+> (to add the runtime or the import line, or to remove them during cleanup),
+> the comments and formatting of that file are lost. With containerd 2.x,
+> configurations that already import `conf.d` (or `config-v3.toml.d` on
+> k3s/rke2) are never edited.
 
 ### Customizing the urunc configuration
 
