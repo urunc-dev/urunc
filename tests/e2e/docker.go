@@ -21,8 +21,9 @@ import (
 const dockerName = "docker"
 
 type dockerInfo struct {
-	testArgs    containerTestArgs
-	containerID string
+	testArgs         containerTestArgs
+	containerID      string
+	sideContainerIDs []string
 }
 
 func newDockerTool(args containerTestArgs) *dockerInfo {
@@ -73,7 +74,20 @@ func (i *dockerInfo) startPod() (string, error) {
 }
 
 func (i *dockerInfo) startContainer(detach bool) (string, error) {
-	return commonStart(dockerName, i.containerID, detach)
+	output, err := commonStart(dockerName, i.containerID, detach)
+	if err != nil {
+		return output, err
+	}
+	if err := i.startSideContainers(); err != nil {
+		return output, err
+	}
+	return output, nil
+}
+
+func (i *dockerInfo) startSideContainers() error {
+	ids, err := commonStartSideContainers(dockerName, i.testArgs, i.containerID)
+	i.sideContainerIDs = ids
+	return err
 }
 
 func (i *dockerInfo) runContainer(detach bool) (string, error) {
@@ -81,6 +95,9 @@ func (i *dockerInfo) runContainer(detach bool) (string, error) {
 }
 
 func (i *dockerInfo) stopContainer() error {
+	if err := commonStopSideContainers(dockerName, i.sideContainerIDs); err != nil {
+		return err
+	}
 	output, err := commonStopContainer(dockerName, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
@@ -95,6 +112,9 @@ func (i *dockerInfo) stopPod() error {
 }
 
 func (i *dockerInfo) rmContainer() error {
+	if err := commonRmSideContainers(dockerName, i.sideContainerIDs); err != nil {
+		return err
+	}
 	output, err := commonRmContainer(dockerName, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
