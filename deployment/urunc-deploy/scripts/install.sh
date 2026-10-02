@@ -564,7 +564,12 @@ function main() {
             die "invalid arguments"
         ;;
     esac
-    sleep infinity
+
+    if [ "$action" != "cleanup" ]; then
+        trap 'exit 0' TERM INT
+        sleep infinity &
+        wait $!
+    fi
 }
 
 main "$@"
