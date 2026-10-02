@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	probing "github.com/prometheus-community/pro-bing"
@@ -32,42 +33,69 @@ const (
 	pullRetryDelay = 2 * time.Second
 )
 
-func getTestImages(cases []containerTestArgs) []string {
-	unique := make(map[string]struct{})
-	for _, tc := range cases {
-		unique[tc.Image] = struct{}{}
+var (
+	pulledImagesLock sync.Mutex
+	// pulledImages maps tool -> image -> bool.
+	pulledImages = make(map[string]map[string]bool)
+)
+
+func ensureImage(tool string, image string) error {
+	pulledImagesLock.Lock()
+	if pulledImages[tool] == nil {
+		pulledImages[tool] = make(map[string]bool)
+	}
+	if pulledImages[tool][image] {
+		pulledImagesLock.Unlock()
+		return nil
+	}
+	pulledImagesLock.Unlock()
+
+	log.Printf("Pulling image for %s: %s", tool, image)
+	if err := pullImageWithRetry(tool, image); err != nil {
+		return fmt.Errorf("failed to pull %s: %w", image, err)
 	}
 
-	images := make([]string, 0, len(unique))
-	for img := range unique {
-		images = append(images, img)
-	}
-	return images
+	pulledImagesLock.Lock()
+	pulledImages[tool][image] = true
+	pulledImagesLock.Unlock()
+
+	return nil
 }
 
-func pullAllImages(testFunc string, images []string) error {
-	for _, image := range images {
-		log.Printf("Pulling image: %s", image)
-		if err := pullImageWithRetry(testFunc, image); err != nil {
-			return fmt.Errorf("failed to pull %s: %w", image, err)
+func ensureTestImages(tool testTool, tc containerTestArgs) error {
+	if tc.Image != "" {
+		if err := ensureImage(tool.Name(), tc.Image); err != nil {
+			return err
+		}
+	}
+	for _, side := range tc.SideContainers {
+		if side != "" {
+			if err := ensureImage(tool.Name(), side); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func removeAllImages(testFunc string, images []string) {
-	for _, image := range images {
-		log.Printf("Removing image: %s", image)
-		if err := removeImageForTest(testFunc, image); err != nil {
-			log.Printf("Warning: failed to remove %s: %v", image, err)
+func cleanupImages(tool string) {
+	pulledImagesLock.Lock()
+	toolImages := pulledImages[tool]
+	delete(pulledImages, tool)
+	pulledImagesLock.Unlock()
+
+	for img := range toolImages {
+		log.Printf("Removing image for %s: %s", tool, img)
+		if err := removeImageForTest(tool, img); err != nil {
+			log.Printf("Warning: failed to remove %s: %v", img, err)
 		}
 	}
 }
 
-func pullImageWithRetry(testFunc string, image string) error {
+func pullImageWithRetry(tool string, image string) error {
 	var err error
 	for i := 0; i < maxPullRetries; i++ {
-		err = pullImageForTest(testFunc, image)
+		err = pullImageForTest(tool, image)
 		if err == nil {
 			return nil
 		}
@@ -78,39 +106,31 @@ func pullImageWithRetry(testFunc string, image string) error {
 	return fmt.Errorf("failed to pull %s after %d attempts: %w", image, maxPullRetries, err)
 }
 
-func pullImageForTest(testFunc string, image string) error {
-	switch testFunc {
-	case testCrictl:
+func pullImageForTest(tool string, image string) error {
+	switch tool {
+	case crictlName:
 		cmd := crictlName + " pull " + image
 		output, err := commonCmdExec(cmd)
 		if err != nil {
 			return fmt.Errorf("%s -- %v", output, err)
 		}
 		return nil
-	case testNerdctl:
-		return commonPull(nerdctlName, image)
-	case testDocker:
-		return commonPull(dockerName, image)
 	default:
-		return commonPull(ctrName, image)
+		return commonPull(tool, image)
 	}
 }
 
-func removeImageForTest(testFunc string, image string) error {
-	switch testFunc {
-	case testCrictl:
+func removeImageForTest(tool string, image string) error {
+	switch tool {
+	case crictlName:
 		cmd := crictlName + " rmi " + image
 		output, err := commonCmdExec(cmd)
 		if err != nil {
 			return fmt.Errorf("%s -- %v", output, err)
 		}
 		return nil
-	case testNerdctl:
-		return commonRmImage(nerdctlName, image)
-	case testDocker:
-		return commonRmImage(dockerName, image)
 	default:
-		return commonRmImage(ctrName, image)
+		return commonRmImage(tool, image)
 	}
 }
 

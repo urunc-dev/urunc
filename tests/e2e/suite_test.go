@@ -97,6 +97,9 @@ func captureContainerLogs(tool testTool) {
 // runDetachedTest runs a container in detached mode: create, start, and
 // verify via TestFunc.
 func runDetachedTest(tool testTool, tc containerTestArgs) {
+	By("Ensuring images are available")
+	Expect(ensureTestImages(tool, tc)).To(Succeed())
+
 	By("Creating container")
 	cID, err := tool.createContainer()
 	Expect(err).NotTo(HaveOccurred(), "Failed to create container: %s", cID)
@@ -135,6 +138,9 @@ func runDetachedTest(tool testTool, tc containerTestArgs) {
 // runForegroundTest runs a container in the foreground and verifies the
 // output contains the expected string.
 func runForegroundTest(tool testTool, tc containerTestArgs) {
+	By("Ensuring images are available")
+	Expect(ensureTestImages(tool, tc)).To(Succeed())
+
 	tool.setContainerID(tc.Name)
 
 	DeferCleanup(func() {
