@@ -142,6 +142,12 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		}
 	}
 
+	// The monitor binds its vsock multiplexer socket after the drop below.
+	// Give it a directory of its own first, as Exec does.
+	if err = makeMonitorSockDir(ms.User); err != nil {
+		return err
+	}
+
 	// Drop to the container user, which also clears the capabilities the tap
 	// device needed. From here on the monitor runs unprivileged.
 	err = setupUser(ms.User)

@@ -48,6 +48,12 @@ const ContainerBootInitrdPath = ContainerBootDir + "/initrd"
 // container appended to it.
 const ContainerBootGuestInitrdPath = ContainerBootDir + "/initrd.urunc"
 
+// MonitorSockDir is where, inside the monitor rootfs, the monitor binds the
+// sockets it creates for itself. urunc runs the monitor as the container
+// image's user and the rootfs root belongs to root, so urunc creates this
+// directory and gives it to that user before dropping privilege.
+const MonitorSockDir = "/urunc"
+
 // AgentVsockUDSPath is the monitor-rootfs path of the vsock unix socket that
 // firecracker, cloud-hypervisor and hvi create for the in-guest exec agent.
 // Unlike qemu, which reaches a guest's vsock through the host's
@@ -55,5 +61,5 @@ const ContainerBootGuestInitrdPath = ContainerBootDir + "/initrd.urunc"
 // On firecracker and cloud-hypervisor urunc exec asks for the agent's guest
 // port with a "CONNECT <port>" line. hvi relays every connection to the agent
 // port with no handshake. The path is relative to the pivoted monitor rootfs,
-// so the host path is <monRootfs>/urunc-agent.vsock.
-const AgentVsockUDSPath = "/urunc-agent.vsock"
+// so the host path is <monRootfs>/urunc/urunc-agent.vsock.
+const AgentVsockUDSPath = MonitorSockDir + "/urunc-agent.vsock"

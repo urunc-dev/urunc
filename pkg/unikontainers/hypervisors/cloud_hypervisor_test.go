@@ -15,10 +15,12 @@
 package hypervisors
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -201,5 +203,29 @@ func TestCloudHypervisorNetLeavesTheTapMTUAlone(t *testing.T) {
 	if strings.Contains(joined, "mtu=") {
 		t.Errorf("mtu= makes Cloud Hypervisor call SIOCSIFMTU, which a non-root monitor "+
 			"cannot do:\n%s", joined)
+	}
+}
+
+// The monitor binds this socket itself, after urunc has dropped it to the
+// container image's user. The rootfs root belongs to root, so a socket there
+// cannot be created by an image whose user is anyone else.
+func TestCloudHypervisorAgentSocketIsNotAtTheRootfsRoot(t *testing.T) {
+	if filepath.Dir(constants.AgentVsockUDSPath) != constants.MonitorSockDir {
+		t.Fatalf("the agent socket %s is not in %s, the directory urunc hands to "+
+			"the monitor's user", constants.AgentVsockUDSPath, constants.MonitorSockDir)
+	}
+	ch := &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: "/usr/bin/cloud-hypervisor"}
+	argv, err := ch.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: "/rootfs/unikernel.bin",
+		Command:       "init=/bin/sh",
+		AgentVsockCID: 42,
+		AgentVsockUDS: constants.AgentVsockUDSPath,
+	}, &fakeUnikernel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(argv, " ")
+	if !strings.Contains(joined, "socket="+constants.AgentVsockUDSPath) {
+		t.Errorf("expected socket=%s in:\n%s", constants.AgentVsockUDSPath, joined)
 	}
 }

@@ -891,6 +891,14 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 	}
 
+	// The monitor binds its own vsock multiplexer socket, and it does so
+	// after the drop below. The rootfs root belongs to root, so give it a
+	// directory of its own first, or an image whose user is not root cannot
+	// create the socket and the monitor fails to boot.
+	if err = makeMonitorSockDir(u.Spec.Process.User); err != nil {
+		return err
+	}
+
 	// uid/gid
 	// Setup uid, gid and additional groups for the monitor process
 	err = setupUser(u.Spec.Process.User)
@@ -1015,6 +1023,23 @@ func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execC
 	// Execute the VMM using the command we built earlier.
 	uniklog.WithField("command", execCmd).Debug("Ready to execve VMM")
 	return syscall.Exec(vmm.Path(), execCmd, execArgs.Environment) //nolint: gosec
+}
+
+// makeMonitorSockDir creates the directory the monitor binds its own sockets
+// in and hands it to the user the monitor will run as.
+//
+// # Errors
+//
+// Errors if the directory cannot be created, or its ownership not set.
+func makeMonitorSockDir(user specs.User) error {
+	dir := constants.MonitorSockDir
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("could not create %s: %w", dir, err)
+	}
+	if err := os.Chown(dir, int(user.UID), int(user.GID)); err != nil {
+		return fmt.Errorf("could not give %s to %d:%d: %w", dir, user.UID, user.GID, err)
+	}
+	return nil
 }
 
 func setupUser(user specs.User) error {
