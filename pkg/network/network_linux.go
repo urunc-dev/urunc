@@ -276,7 +276,27 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 // different: it undoes only what a failed setup created. When the namespace
 // has no container interface, only the tap side is cleaned.
 func CleanupAllUruncTaps() error {
-	netlog.Debug("net cleanup called")
+	return cleanupUruncTaps(false)
+}
+
+// ReclaimStaleUruncTaps removes the urunc tap devices in the current network
+// namespace that no monitor holds open, with the tc state that redirects the
+// container interface to them. A tap keeps its carrier only while a monitor
+// has it attached, so one without carrier belongs to a monitor that has
+// exited. A container restarted in the same pod meets its predecessor's tap
+// this way when that container's monitor exited on its own.
+func ReclaimStaleUruncTaps() error {
+	return cleanupUruncTaps(true)
+}
+
+// tapInUse reports whether a monitor holds the tap device open: the kernel
+// raises the carrier of a tap while a queue is attached to it.
+func tapInUse(link netlink.Link) bool {
+	return link.Attrs().RawFlags&unix.IFF_LOWER_UP != 0
+}
+
+func cleanupUruncTaps(staleOnly bool) error {
+	netlog.Debugf("net cleanup called (stale only: %v)", staleOnly)
 
 	handle, err := newNetlinkHandle(unix.NETLINK_ROUTE)
 	if err != nil {
@@ -289,6 +309,28 @@ func CleanupAllUruncTaps() error {
 		return fmt.Errorf("failed to list links: %w", err)
 	}
 
+	tapRe := regexp.MustCompile(`^tap\d+_urunc$`)
+	var taps []netlink.Link
+	for _, link := range links {
+		if attrs := link.Attrs(); attrs != nil && tapRe.MatchString(attrs.Name) {
+			taps = append(taps, link)
+		}
+	}
+	// Removing a tap also removes the redirect on the container interface,
+	// which a tap still in use relies on, so leave the namespace alone while
+	// any of them is.
+	if staleOnly {
+		for _, link := range taps {
+			if tapInUse(link) {
+				netlog.Debugf("keeping the tap devices: a monitor holds %s open", link.Attrs().Name)
+				return nil
+			}
+		}
+	}
+	if len(taps) == 0 {
+		return nil
+	}
+
 	eth, err := selectContainerIface(handle, links)
 	if err != nil {
 		netlog.Debugf("no usable container interface, cleaning tap side only: %v", err)
@@ -296,16 +338,8 @@ func CleanupAllUruncTaps() error {
 	}
 
 	var retErr error
-	tapRe := regexp.MustCompile(`^tap\d+_urunc$`)
-	for _, link := range links {
-		attrs := link.Attrs()
-		if attrs == nil {
-			continue
-		}
-		name := attrs.Name
-		if !tapRe.MatchString(name) {
-			continue
-		}
+	for _, link := range taps {
+		name := link.Attrs().Name
 
 		netlog.Debugf("cleaning up tap device %s", name)
 		var devErr error
