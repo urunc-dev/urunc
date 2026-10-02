@@ -35,6 +35,13 @@ type DynamicNetwork struct {
 // for multiple unikernels in the same pod/network namespace.
 // See: https://github.com/urunc-dev/urunc/issues/13
 func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
+	// A previous container of this pod may have left its tap behind if its
+	// monitor exited on its own. Remove it, so that container's restart gets
+	// the namespace's network instead of being refused it.
+	if err := ReclaimStaleUruncTaps(); err != nil {
+		netlog.Warnf("failed to reclaim stale tap devices: %v", err)
+	}
+
 	tapIndex, err := getTapIndex()
 	if err != nil {
 		return nil, fmt.Errorf("getTapIndex failed: %w", err)
@@ -48,6 +55,13 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 		return nil, fmt.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %w", err)
 	}
 	netlog.Debugf("found interface %s (index=%d)", redirectLink.Attrs().Name, redirectLink.Attrs().Index)
+
+	// With no tap left in the namespace, an ingress qdisc on the container
+	// interface can only be a previous tap's redirect that was not torn down.
+	// It would make the one added below fail, so remove it first.
+	if err = deleteIngressQdisc(redirectLink); err != nil {
+		return nil, fmt.Errorf("failed to remove a stale ingress qdisc from %s: %w", redirectLink.Attrs().Name, err)
+	}
 
 	newTapName := strings.ReplaceAll(DefaultTap, "X", strconv.Itoa(tapIndex))
 	netlog.Debugf("creating tap device %s", newTapName)
