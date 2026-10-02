@@ -19,17 +19,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var nerdctlImages = newImageCache()
+
 var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 	var tool *nerdctlInfo
 
 	BeforeAll(func() {
-		cases := nerdctlTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testNerdctl, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull nerdctl images")
-
 		DeferCleanup(func() {
-			removeAllImages(testNerdctl, images)
+			removeAllImages(testNerdctl, nerdctlImages.images())
 		})
 	})
 
@@ -47,6 +44,7 @@ var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 		DescribeTable("unikernel containers",
 			func(tc containerTestArgs) {
 				skipMissingVolumes(tc)
+				Expect(nerdctlImages.ensure(testNerdctl, tc.Image)).To(Succeed(), "Failed to pull "+tc.Image)
 				tool = newNerdctlTool(tc)
 				runForegroundTest(tool, tc)
 			},
@@ -58,6 +56,7 @@ var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 		DescribeTable("unikernel containers",
 			func(tc containerTestArgs) {
 				skipMissingVolumes(tc)
+				Expect(nerdctlImages.ensure(testNerdctl, tc.Image)).To(Succeed(), "Failed to pull "+tc.Image)
 				tool = newNerdctlTool(tc)
 				runDetachedTest(tool, tc)
 			},
