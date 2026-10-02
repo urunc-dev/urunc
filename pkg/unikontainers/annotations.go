@@ -52,10 +52,10 @@ const (
 	annotMountRootfs     = "com.urunc.unikernel.mountRootfs"
 	annotNetDev          = "com.urunc.unikernel.solo5NetDev"
 	annotBlkDev          = "com.urunc.unikernel.solo5BlkDev"
-	annotDNSClient       = "com.urunc.unikernel.dnsClient"
 	annotVAccel          = "com.urunc.unikernel.vAccel"
 	annotRPCAddress      = "com.urunc.unikernel.RPCAddress"
 	annotHyperlightPorts = "com.urunc.unikernel.hyperlightPorts"
+	annotAdvertiseDNS    = "com.urunc.unikernel.advertiseDNS"
 )
 
 // Annotations that other runtimes set and urunc only reads.
@@ -107,8 +107,8 @@ type UnikernelConfig struct {
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
 	BlkDev           string `json:"com.urunc.unikernel.solo5BlkDev,omitempty"`
-	DNSClient        string `json:"com.urunc.unikernel.dnsClient,omitempty"`
 	HyperlightPorts  string `json:"com.urunc.unikernel.hyperlightPorts,omitempty"`
+	AdvertiseDNS     string `json:"com.urunc.unikernel.advertiseDNS,omitempty"`
 	// The vAccel annotations are deliberately not part of urunc.json, since their
 	// values are runtime specific and therefore we should only reach them
 	// through the annotations of the spec.
@@ -214,7 +214,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	netDev := spec.Annotations[annotNetDev]
 	blkDev := spec.Annotations[annotBlkDev]
 	hyperlightPorts := spec.Annotations[annotHyperlightPorts]
-	dnsClient := spec.Annotations[annotDNSClient]
+	advertiseDNS := spec.Annotations[annotAdvertiseDNS]
 	vAccel := spec.Annotations[annotVAccel]
 	rpcAddress := spec.Annotations[annotRPCAddress]
 	uniklog.WithFields(logrus.Fields{
@@ -230,7 +230,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"netDev":           netDev,
 		"blkDev":           blkDev,
 		"hyperlightPorts":  hyperlightPorts,
-		"dnsClient":        dnsClient,
+		"advertiseDNS":     advertiseDNS,
 		"vAccel":           vAccel,
 		"rpcAddress":       rpcAddress,
 	}).WithField("source", "spec").Debug("urunc annotations")
@@ -248,7 +248,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		NetDev:           netDev,
 		BlkDev:           blkDev,
 		HyperlightPorts:  hyperlightPorts,
-		DNSClient:        dnsClient,
+		AdvertiseDNS:     advertiseDNS,
 		VAccel:           vAccel,
 		RPCAddress:       rpcAddress,
 	}
@@ -293,7 +293,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"netDev":           tryDecode(conf.NetDev),
 		"blkDev":           tryDecode(conf.BlkDev),
 		"hyperlightPorts":  tryDecode(conf.HyperlightPorts),
-		"dnsClient":        tryDecode(conf.DNSClient),
+		"advertiseDNS":     tryDecode(conf.AdvertiseDNS),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -380,11 +380,11 @@ func (c *UnikernelConfig) decode() error {
 		return fmt.Errorf("failed to decode hyperlightPorts: %v", err)
 	}
 	c.HyperlightPorts = string(decoded)
-	decoded, err = base64.StdEncoding.DecodeString(c.DNSClient)
+	decoded, err = base64.StdEncoding.DecodeString(c.AdvertiseDNS)
 	if err != nil {
-		return fmt.Errorf("failed to decode dnsClient: %v", err)
+		return fmt.Errorf("failed to decode advertiseDNS: %v", err)
 	}
-	c.DNSClient = string(decoded)
+	c.AdvertiseDNS = string(decoded)
 
 	return nil
 }
@@ -428,8 +428,8 @@ func (c *UnikernelConfig) Map() map[string]string {
 	if c.HyperlightPorts != "" {
 		myMap[annotHyperlightPorts] = c.HyperlightPorts
 	}
-	if c.DNSClient != "" {
-		myMap[annotDNSClient] = c.DNSClient
+	if c.AdvertiseDNS != "" {
+		myMap[annotAdvertiseDNS] = c.AdvertiseDNS
 	}
 	if c.VAccel != "" {
 		myMap[annotVAccel] = c.VAccel
@@ -501,10 +501,10 @@ func (c *UnikernelConfig) validateValues() error {
 		}
 	}
 
-	if c.DNSClient != "" {
-		_, err = strconv.ParseBool(c.DNSClient)
+	if c.AdvertiseDNS != "" {
+		_, err = strconv.ParseBool(c.AdvertiseDNS)
 		if err != nil {
-			return fmt.Errorf("invalid value %q for %s: expected a boolean: %w", c.DNSClient, annotDNSClient, err)
+			return fmt.Errorf("invalid value %q for %s: expected a boolean: %w", c.AdvertiseDNS, annotAdvertiseDNS, err)
 		}
 	}
 

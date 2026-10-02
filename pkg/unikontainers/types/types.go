@@ -111,7 +111,6 @@ type UnikernelParams struct {
 	InitrdPath string   // The path to the initrd of the unikernel
 	NetDevName string   // The name of the guest network device declared at build time
 	BlkDevName string   // The name of the guest block device declared at build time
-	DNSClient  bool     // Whether the guest includes a DNS client device
 	Net        NetDevParams
 	Block      []BlockDevParams
 	Rootfs     RootfsParams  // Information about rootfs

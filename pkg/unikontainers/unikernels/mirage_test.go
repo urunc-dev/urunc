@@ -131,27 +131,15 @@ func TestMirageDNS(t *testing.T) {
 	testCases := []struct {
 		name      string
 		dnsServer string
-		dnsClient bool
 		expected  string
 	}{
 		{
-			name:      "DNS client enabled",
+			name:      "DNS server present",
 			dnsServer: "1.1.1.1",
-			dnsClient: true,
-			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 --dns-servers=udp:1.1.1.1 app",
+			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 --dns-servers=udp:1.1.1.1,tcp:1.1.1.1 app",
 		},
 		{
-			name:      "DNS client disabled",
-			dnsServer: "1.1.1.1",
-			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
-		},
-		{
-			name:      "DNS server missing with DNS client enabled",
-			dnsClient: true,
-			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
-		},
-		{
-			name:     "DNS server missing with DNS client disabled",
+			name:     "DNS server absent",
 			expected: "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
 		},
 	}
@@ -160,8 +148,7 @@ func TestMirageDNS(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := newMirage()
 			err := m.Init(types.UnikernelParams{
-				CmdLine:   []string{"app"},
-				DNSClient: tc.dnsClient,
+				CmdLine: []string{"app"},
 				Net: types.NetDevParams{
 					IP:        "10.0.0.2",
 					Mask:      "255.255.255.0",
