@@ -97,10 +97,24 @@ func TestWriteMonitorSpec(t *testing.T) {
 		assert.Equal(t, "qemu", got.MonitorType)
 		assert.Equal(t, u.UruncCfg.Monitors["qemu"], got.MonitorCfg)
 		assert.Equal(t, specs.User{UID: 1000, GID: 1000}, got.User)
+		assert.False(t, got.GuestParams.DNSClient)
 		// No knative annotation, so the network type is dynamic.
 		assert.Equal(t, "dynamic", got.NetworkType)
 		// The post-pivot process sees the monitor rootfs as "/".
 		assert.Equal(t, "/", got.GuestParams.Rootfs.MonRootfs)
+	})
+
+	t.Run("passes the DNS client annotation to guest params", func(t *testing.T) {
+		t.Parallel()
+		monRootfs := t.TempDir()
+		u, rootfsParams := newSpecUnikontainer(t, monRootfs)
+		u.State.Annotations[annotDNSClient] = "true"
+
+		err := u.writeMonitorSpec(rootfsParams, monitorResources{})
+		require.NoError(t, err)
+
+		got := readMonitorSpecFile(t, monRootfs)
+		assert.True(t, got.GuestParams.DNSClient)
 	})
 
 	t.Run("does not persist the monitor environment", func(t *testing.T) {
