@@ -97,24 +97,40 @@ func TestWriteMonitorSpec(t *testing.T) {
 		assert.Equal(t, "qemu", got.MonitorType)
 		assert.Equal(t, u.UruncCfg.Monitors["qemu"], got.MonitorCfg)
 		assert.Equal(t, specs.User{UID: 1000, GID: 1000}, got.User)
-		assert.False(t, got.GuestParams.DNSClient)
 		// No knative annotation, so the network type is dynamic.
 		assert.Equal(t, "dynamic", got.NetworkType)
 		// The post-pivot process sees the monitor rootfs as "/".
 		assert.Equal(t, "/", got.GuestParams.Rootfs.MonRootfs)
 	})
 
-	t.Run("passes the DNS client annotation to guest params", func(t *testing.T) {
+	t.Run("filters the DNS server based on the advertise DNS annotation", func(t *testing.T) {
 		t.Parallel()
-		monRootfs := t.TempDir()
-		u, rootfsParams := newSpecUnikontainer(t, monRootfs)
-		u.State.Annotations[annotDNSClient] = "true"
+		for _, tc := range []struct {
+			name         string
+			advertiseDNS string
+			expectedDNS  string
+		}{
+			{name: "enabled", advertiseDNS: "true", expectedDNS: "1.1.1.1"},
+			{name: "disabled", advertiseDNS: "false", expectedDNS: ""},
+			{name: "absent", expectedDNS: ""},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				monRootfs := t.TempDir()
+				u, rootfsParams := newSpecUnikontainer(t, monRootfs)
+				if tc.advertiseDNS != "" {
+					u.State.Annotations[annotAdvertiseDNS] = tc.advertiseDNS
+				}
+				resolvConf := filepath.Join(t.TempDir(), "resolv.conf")
+				require.NoError(t, os.WriteFile(resolvConf, []byte("nameserver 1.1.1.1\n"), 0o600))
+				u.Spec.Mounts = []specs.Mount{{Destination: "/etc/resolv.conf", Source: resolvConf}}
 
-		err := u.writeMonitorSpec(rootfsParams, monitorResources{})
-		require.NoError(t, err)
+				err := u.writeMonitorSpec(rootfsParams, monitorResources{})
+				require.NoError(t, err)
 
-		got := readMonitorSpecFile(t, monRootfs)
-		assert.True(t, got.GuestParams.DNSClient)
+				got := readMonitorSpecFile(t, monRootfs)
+				assert.Equal(t, tc.expectedDNS, got.DNSServer)
+			})
+		}
 	})
 
 	t.Run("does not persist the monitor environment", func(t *testing.T) {

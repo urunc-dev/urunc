@@ -611,9 +611,6 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		Rootfs:     rootfsParams,
 		Block:      monRes.BlockArgs,
 	}
-	if dnsClientValue := u.State.Annotations[annotDNSClient]; dnsClientValue != "" {
-		guest.DNSClient, _ = strconv.ParseBool(dnsClientValue)
-	}
 
 	vmmArgs.Sharedfs = monRes.Sharedfs
 
@@ -630,7 +627,9 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	// non-libcontainer paths, where the container mount sources are available.
 	_, mSpec.ExecArgs.ResolvConf = resolvConfMount(monRes.Mounts)
 	if !mSpec.ExecArgs.ResolvConf {
-		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+		if advertiseDNS, _ := strconv.ParseBool(u.State.Annotations[annotAdvertiseDNS]); advertiseDNS {
+			mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+		}
 	}
 
 	return mSpec
