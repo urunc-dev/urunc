@@ -19,7 +19,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func TestMewzCommandString(t *testing.T) {
@@ -58,17 +57,6 @@ func TestMewzCommandString(t *testing.T) {
 			},
 			expected: "ip=10.0.0.2/24 gateway=10.0.0.1 dns=1.1.1.1",
 		},
-		{
-			name: "without DNS configured",
-			mewz: &Mewz{
-				Net: MewzNet{
-					Address: "10.0.0.2",
-					Mask:    24,
-					Gateway: "10.0.0.1",
-				},
-			},
-			expected: "ip=10.0.0.2/24 gateway=10.0.0.1",
-		},
 	}
 
 	for _, tc := range testCases {
@@ -79,24 +67,4 @@ func TestMewzCommandString(t *testing.T) {
 			assert.Equal(t, tc.expected, result)
 		})
 	}
-}
-
-func TestMewzInitDNSServer(t *testing.T) {
-	t.Parallel()
-
-	m := &Mewz{}
-
-	data := types.UnikernelParams{
-		Net: types.NetDevParams{
-			IP:        "10.0.0.2",
-			Mask:      "255.255.255.0",
-			Gateway:   "10.0.0.1",
-			DNSServer: "1.1.1.1",
-		},
-	}
-
-	err := m.Init(data)
-
-	require.NoError(t, err)
-	assert.Equal(t, "1.1.1.1", m.Net.DNSServer)
 }

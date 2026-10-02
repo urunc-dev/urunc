@@ -27,6 +27,7 @@ type Mirage struct {
 	Command    string
 	Monitor    string
 	Net        MirageNet
+	DNSClient  bool
 	Block      []MirageBlock
 	netDevName string
 	blkDevName string
@@ -45,8 +46,8 @@ type MirageBlock struct {
 
 func (m *Mirage) CommandString() (string, error) {
 	command := fmt.Sprintf("%s %s", m.Net.Address, m.Net.Gateway)
-	if m.Net.DNSServer != "" {
-		command += fmt.Sprintf(" --dns-servers=%s", m.Net.DNSServer)
+	if m.DNSClient && m.Net.DNSServer != "" {
+		command += fmt.Sprintf(" --dns-servers=udp:%s", m.Net.DNSServer)
 	}
 
 	return command + " " + m.Command, nil
@@ -128,6 +129,7 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 			m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 		}
 		m.Net.DNSServer = data.Net.DNSServer
+		m.DNSClient = data.DNSClient
 	}
 	m.Block = make([]MirageBlock, 0, len(data.Block))
 	for _, blk := range data.Block {

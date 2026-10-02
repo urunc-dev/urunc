@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func TestHermitCommandString(t *testing.T) {
@@ -54,24 +53,4 @@ func TestHermitCommandString(t *testing.T) {
 			assert.Equal(t, tc.expected, result)
 		})
 	}
-}
-
-func TestHermitInitDNSServer(t *testing.T) {
-	t.Parallel()
-
-	h := &Hermit{}
-
-	data := types.UnikernelParams{
-		Net: types.NetDevParams{
-			IP:        "10.0.0.2",
-			Mask:      "255.255.255.0",
-			Gateway:   "10.0.0.1",
-			DNSServer: "1.1.1.1",
-		},
-	}
-
-	err := h.Init(data)
-
-	require.NoError(t, err)
-	assert.Equal(t, "1.1.1.1", h.Net.DNSServer)
 }

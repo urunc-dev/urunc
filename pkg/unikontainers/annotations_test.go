@@ -45,6 +45,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 				annotNetDev:          "management",
 				annotBlkDev:          "database",
 				annotHyperlightPorts: "8080",
+				annotDNSClient:       "true",
 			},
 		}
 
@@ -60,6 +61,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 			NetDev:          "management",
 			BlkDev:          "database",
 			HyperlightPorts: "8080",
+			DNSClient:       "true",
 		}
 
 		config := getConfigFromSpec(spec)
@@ -253,6 +255,7 @@ func TestMap(t *testing.T) {
 			NetDev:          "netdev_value",
 			BlkDev:          "blkdev_value",
 			HyperlightPorts: "443",
+			DNSClient:       "true",
 			VAccel:          "vsock",
 			RPCAddress:      "vsock://2:1234",
 		}
@@ -270,6 +273,7 @@ func TestMap(t *testing.T) {
 			annotHyperlightPorts: "443",
 			annotVAccel:          "vsock",
 			annotRPCAddress:      "vsock://2:1234",
+			annotDNSClient:       "true",
 		}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
@@ -361,6 +365,7 @@ func TestValidateValues(t *testing.T) {
 		{"solo5 device", annotNetDev, "management"},
 		{"empty solo5 device", annotNetDev, ""},
 		{"empty mountRootfs", annotMountRootfs, ""},
+		{"DNS client enabled", annotDNSClient, "true"},
 	}
 
 	for _, tc := range accepted {
@@ -377,6 +382,7 @@ func TestValidateValues(t *testing.T) {
 		val  string
 	}{
 		{"non boolean mountRootfs", annotMountRootfs, "yes"},
+		{"non boolean DNS client", annotDNSClient, "yes"},
 		{"current directory binary", annotBinary, "."},
 		{"current directory mountpoint", annotBlockMntPoint, "."},
 		{"root binary", annotBinary, "/"},

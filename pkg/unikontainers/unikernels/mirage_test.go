@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -127,40 +128,52 @@ func TestMirageBlkDevName(t *testing.T) {
 }
 
 func TestMirageDNS(t *testing.T) {
-	m := newMirage()
-
-	err := m.Init(types.UnikernelParams{
-		CmdLine: []string{"app"},
-		Net: types.NetDevParams{
-			IP:        "10.0.0.2",
-			Mask:      "255.255.255.0",
-			Gateway:   "10.0.0.1",
-			DNSServer: "1.1.1.1",
+	testCases := []struct {
+		name      string
+		dnsServer string
+		dnsClient bool
+		expected  string
+	}{
+		{
+			name:      "DNS client enabled",
+			dnsServer: "1.1.1.1",
+			dnsClient: true,
+			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 --dns-servers=udp:1.1.1.1 app",
 		},
-	})
-
-	assert.NoError(t, err)
-
-	cmd, err := m.CommandString()
-	assert.NoError(t, err)
-	assert.Contains(t, cmd, "--dns-servers=1.1.1.1")
-}
-
-func TestMirageDNSMissing(t *testing.T) {
-	m := newMirage()
-
-	err := m.Init(types.UnikernelParams{
-		CmdLine: []string{"app"},
-		Net: types.NetDevParams{
-			IP:      "10.0.0.2",
-			Mask:    "255.255.255.0",
-			Gateway: "10.0.0.1",
+		{
+			name:      "DNS client disabled",
+			dnsServer: "1.1.1.1",
+			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
 		},
-	})
+		{
+			name:      "DNS server missing with DNS client enabled",
+			dnsClient: true,
+			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
+		},
+		{
+			name:     "DNS server missing with DNS client disabled",
+			expected: "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
+		},
+	}
 
-	assert.NoError(t, err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newMirage()
+			err := m.Init(types.UnikernelParams{
+				CmdLine:   []string{"app"},
+				DNSClient: tc.dnsClient,
+				Net: types.NetDevParams{
+					IP:        "10.0.0.2",
+					Mask:      "255.255.255.0",
+					Gateway:   "10.0.0.1",
+					DNSServer: tc.dnsServer,
+				},
+			})
+			require.NoError(t, err)
 
-	cmd, err := m.CommandString()
-	assert.NoError(t, err)
-	assert.NotContains(t, cmd, "--dns-servers=")
+			cmd, err := m.CommandString()
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, cmd)
+		})
+	}
 }
