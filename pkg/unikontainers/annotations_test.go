@@ -42,6 +42,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 				annotMountRootfs:   "true",
 				annotNetDev:        "management",
 				annotBlkDev:        "database",
+				annotAdvertiseDNS:  "true",
 			},
 		}
 
@@ -55,6 +56,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 			MountRootfs:     "true",
 			NetDev:          "management",
 			BlkDev:          "database",
+			AdvertiseDNS:    "true",
 		}
 
 		config := getConfigFromSpec(spec)
@@ -240,6 +242,7 @@ func TestMap(t *testing.T) {
 			MountRootfs:     "false",
 			NetDev:          "netdev_value",
 			BlkDev:          "blkdev_value",
+			AdvertiseDNS:    "true",
 			VAccel:          "vsock",
 			RPCAddress:      "vsock://2:1234",
 		}
@@ -253,6 +256,7 @@ func TestMap(t *testing.T) {
 			annotMountRootfs:   "false",
 			annotNetDev:        "netdev_value",
 			annotBlkDev:        "blkdev_value",
+			annotAdvertiseDNS:  "true",
 			annotVAccel:        "vsock",
 			annotRPCAddress:    "vsock://2:1234",
 		}
@@ -346,6 +350,7 @@ func TestValidateValues(t *testing.T) {
 		{"solo5 device", annotNetDev, "management"},
 		{"empty solo5 device", annotNetDev, ""},
 		{"empty mountRootfs", annotMountRootfs, ""},
+		{"advertise DNS enabled", annotAdvertiseDNS, "true"},
 	}
 
 	for _, tc := range accepted {
@@ -362,6 +367,7 @@ func TestValidateValues(t *testing.T) {
 		val  string
 	}{
 		{"non boolean mountRootfs", annotMountRootfs, "yes"},
+		{"non boolean advertise DNS", annotAdvertiseDNS, "yes"},
 		{"current directory binary", annotBinary, "."},
 		{"current directory mountpoint", annotBlockMntPoint, "."},
 		{"root binary", annotBinary, "/"},

@@ -70,6 +70,9 @@ Except of the above, `urunc` accepts the following optional annotations:
 - `com.urunc.unikernel.mountRootfs`: A boolean value that if it is `true`,
   requests from `urunc` to mount the container's image rootfs in the unikernel
   (either as a block device or through shared-fs).
+- `com.urunc.unikernel.advertiseDNS`: A boolean value that if it is `true`,
+  passes the DNS server obtained from the container's `/etc/resolv.conf` to
+  the guest. If it is absent or `false`, no DNS server is passed to the guest.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container
@@ -186,6 +189,7 @@ LABEL "com.urunc.unikernel.binary"=/unikernel/kernel
 LABEL "com.urunc.unikernel.initrd"=/unikernel/initrd
 LABEL "com.urunc.unikernel.unikernelType"="unikraft"
 LABEL "com.urunc.unikernel.hypervisor"="qemu"
+LABEL "com.urunc.unikernel.advertiseDNS"="true"
 CMD ["nginx", "-c", "/nginx/conf/nginx.conf"]
 ```
 

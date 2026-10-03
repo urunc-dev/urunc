@@ -33,8 +33,9 @@ type Mirage struct {
 }
 
 type MirageNet struct {
-	Address string
-	Gateway string
+	Address   string
+	Gateway   string
+	DNSServer string
 }
 
 type MirageBlock struct {
@@ -43,9 +44,12 @@ type MirageBlock struct {
 }
 
 func (m *Mirage) CommandString() (string, error) {
-	return fmt.Sprintf("%s %s %s", m.Net.Address,
-		m.Net.Gateway,
-		m.Command), nil
+	command := fmt.Sprintf("%s %s", m.Net.Address, m.Net.Gateway)
+	if m.Net.DNSServer != "" {
+		command += fmt.Sprintf(" --dns-servers=udp:%s,tcp:%s", m.Net.DNSServer, m.Net.DNSServer)
+	}
+
+	return command + " " + m.Command, nil
 }
 
 func (m *Mirage) SupportsBlock() bool {
@@ -123,6 +127,7 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 			m.Net.Address = fmt.Sprintf("--ipv4=%s/%d", data.Net.IP, mask)
 			m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
 		}
+		m.Net.DNSServer = data.Net.DNSServer
 	}
 	m.Block = make([]MirageBlock, 0, len(data.Block))
 	for _, blk := range data.Block {

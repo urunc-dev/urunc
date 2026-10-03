@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -556,8 +557,10 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.PreStartCmd = monRes.PreStartCmd
 	// Resolve the guest DNS server once, here in the builder shared by both the
 	// libcontainer and non-libcontainer paths, where the container mount
-	// sources are available.
-	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	// sources are available. Only advertise it when explicitly enabled.
+	if advertiseDNS, _ := strconv.ParseBool(u.State.Annotations[annotAdvertiseDNS]); advertiseDNS {
+		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	}
 
 	return mSpec
 }

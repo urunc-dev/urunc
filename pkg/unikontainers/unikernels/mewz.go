@@ -30,14 +30,21 @@ type Mewz struct {
 }
 
 type MewzNet struct {
-	Address string
-	Mask    int
-	Gateway string
+	Address   string
+	Mask      int
+	Gateway   string
+	DNSServer string
 }
 
 func (m *Mewz) CommandString() (string, error) {
 	if m.Net.Address != "" {
-		return fmt.Sprintf("ip=%s/%d gateway=%s", m.Net.Address, m.Net.Mask, m.Net.Gateway), nil
+		args := fmt.Sprintf("ip=%s/%d gateway=%s", m.Net.Address, m.Net.Mask, m.Net.Gateway)
+
+		if m.Net.DNSServer != "" {
+			args += fmt.Sprintf(" dns=%s", m.Net.DNSServer)
+		}
+
+		return args, nil
 	}
 	return "", nil
 }
@@ -100,6 +107,7 @@ func (m *Mewz) Init(data types.UnikernelParams) error {
 	m.Net.Address = data.Net.IP
 	m.Net.Gateway = data.Net.Gateway
 	m.Net.Mask = mask
+	m.Net.DNSServer = data.Net.DNSServer
 
 	return nil
 }
