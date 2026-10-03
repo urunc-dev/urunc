@@ -29,6 +29,10 @@ const UnikraftCompatVersion string = "0.16.1"
 
 const defaultDNSServer string = "8.8.8.8"
 
+// hyperlightMonitor is the monitor that takes the guest command and its
+// environment as hluk options rather than through the kernel command line.
+const hyperlightMonitor string = "hyperlight-unikraft"
+
 var ErrUndefinedVersion = errors.New("version is undefined, using default version")
 var ErrVersionParsing = errors.New("failed to parse provided version, using default version")
 
@@ -108,9 +112,31 @@ func (u *Unikraft) MonitorSharedfsCli(fsType string, path string) []string {
 	}
 }
 
-// There are no generic CLI hypervisor options for Unikraft yet.
+// MonitorCli returns the hluk options that stand in for the kernel command
+// line on hyperlight-unikraft. hluk boots its own embedded kernel, so what
+// the other monitors read from CommandString, the guest command and its
+// environment, is handed to it as options instead. Each value is attached
+// with "=", so that clap reads it as one argument and a command starting
+// with a dash can never become an hluk option of its own.
 func (u *Unikraft) MonitorCli() types.MonitorCliArgs {
-	return types.MonitorCliArgs{}
+	if u.Monitor != hyperlightMonitor {
+		return types.MonitorCliArgs{}
+	}
+
+	var args []string
+	// An empty command leaves the guest to its conventional entrypoint
+	// (/entrypoint.py, /entrypoint, ...), which hluk resolves itself.
+	if u.Command != "" {
+		args = append(args, "--guest-exec="+u.Command)
+	}
+	// hluk applies each --env in the guest before the command runs, which
+	// is what env.vars on the kernel command line does on the other
+	// monitors.
+	for _, envVar := range u.Env {
+		args = append(args, "--env="+envVar)
+	}
+
+	return types.MonitorCliArgs{OtherArgs: args}
 }
 
 func (u *Unikraft) Init(data types.UnikernelParams) error {

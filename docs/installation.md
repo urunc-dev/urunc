@@ -438,14 +438,20 @@ sudo mv cloud-hypervisor /usr/local/bin/
 ### Hyperlight-unikraft
 
 [Hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
-does not provide any pre-built binaries. To build it from source with cargo:
+ships its host as the `hluk` binary, which embeds the Unikraft kernel it boots.
+Every release provides a prebuilt `hluk` for x86_64 Linux:
 
 ```bash
-VERSION="v0.12.1"
-git clone https://github.com/hyperlight-dev/hyperlight-unikraft.git -b $VERSION
-cd hyperlight-unikraft/host
-cargo build --release
+VERSION="v[[ versions["hyperlight-unikraft"] ]]"
+release_url="https://github.com/hyperlight-dev/hyperlight-unikraft/releases"
+curl -fsSL "${release_url}/download/${VERSION}/hluk-${VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz
+sudo install -m0755 hluk /usr/local/bin/hluk
+rm -f hluk
 ```
+
+Alternatively, `hluk` can be installed from
+[crates.io](https://crates.io/crates/hyperlight-unikraft) with
+`cargo install hyperlight-unikraft`.
 
 ### Virtiofsd
 
