@@ -174,21 +174,6 @@ func TestMonitorSpecFile(t *testing.T) {
 		assert.Equal(t, "test-container", got.ContainerID)
 	})
 
-	t.Run("can be removed once it has been read", func(t *testing.T) {
-		t.Parallel()
-		monRootfs := t.TempDir()
-		u, rootfsParams := newSpecUnikontainer(t, monRootfs)
-
-		err := u.writeMonitorSpec(rootfsParams, monitorResources{})
-		require.NoError(t, err)
-
-		err = RemoveMonitorSpec(monRootfs)
-		require.NoError(t, err)
-
-		_, err = LoadMonitorSpec(monRootfs)
-		assert.ErrorIs(t, err, os.ErrNotExist)
-	})
-
 	t.Run("reports a missing file", func(t *testing.T) {
 		t.Parallel()
 

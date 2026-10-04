@@ -17,11 +17,12 @@ package unikernels
 import (
 	"fmt"
 	"net"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -194,6 +195,17 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 	return blkArgs
 }
 
+// MonitorSharedfsCli exposes the 9p shared rootfs over QEMU's PCI transport.
+func (l *Linux) MonitorSharedfsCli(fsType string, path string) []string {
+	if l.Monitor != "qemu" || fsType != "9pfs" {
+		return nil
+	}
+	return []string{
+		"-fsdev", "local,id=rootfs9p,security_model=none,multidevs=remap,path=" + path,
+		"-device", "virtio-9p-pci,fsdev=rootfs9p,mount_tag=fs0",
+	}
+}
+
 func (l *Linux) MonitorCli() types.MonitorCliArgs {
 	switch l.Monitor {
 	case "qemu":
@@ -285,11 +297,14 @@ func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
 
 	var err error
 	if l.RootFsType == "initrd" {
-		initrdToUpdate := filepath.Join(rfs.MonRootfs, rfs.Path)
+		var initrdToUpdate string
+		initrdToUpdate, err = securejoin.SecureJoin(constants.ContainerRootfsMountPath, rfs.Path)
+		if err != nil {
+			return fmt.Errorf("failed to setup urunit config: %w", err)
+		}
 		err = initrd.AddFileToInitrd(initrdToUpdate, urunitConfig, urunitConfPath)
 	} else {
-		urunitConfigFile := filepath.Join(rfs.MonRootfs, urunitConfPath)
-		err = createFile(urunitConfigFile, urunitConfig)
+		err = createFile(urunitConfPath, urunitConfig)
 	}
 
 	if err != nil {

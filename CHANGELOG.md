@@ -1,3 +1,97 @@
+# v0.8.0
+
+## What's Changed
+
+### Security
+
+This release includes fixes for the following security issues (both pending
+identification numbers):
+* [GHSA-crxr-jm9v-349c](https://github.com/urunc-dev/urunc/security/advisories/GHSA-crxr-jm9v-349c)
+  Argument injection into the Sandbox monitor command line via unverified
+  image/Pod annotations
+* [GHSA-3385-hmpj-4678](https://github.com/urunc-dev/urunc/security/advisories/GHSA-3385-hmpj-4678)
+  Path traversal of arbitrary host files through annotations 
+
+### New features
+
+* Support for vhost in Qemu's virtio networking
+* Honor `XDG_RUNTIME_DIR` for the default runtime root when running rootless
+* Add support for [Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor) as a sandbox monitor
+* Bind-mount devices instead of creating device nodes when running inside a user namespace
+* Set the MTU of the tap device based on the respective value of the veth interface
+* Initial support for [Hermit](https://github.com/hermit-os) unikernels over QEMU on amd64 (simple execution only; no network and mounts support)
+* Initial support for [hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight) (simple execution only; networking and host directory mounts are not supported yet)
+* Add `ps --format json` command
+* Support signal handling in `urunc kill`
+* Shim: add a containerd access session
+* shim: read OCI manifest annotations through the containerd API
+* Use annotation values for the MirageOS network and block device names
+* Set the urunc configuration file through `URUNC_CONFIG_FILE` environment variable
+* Add support for creating the monitor's execution environment with libcontainer
+
+### Breaking changes
+
+* `urunc-deploy` installs all artifacts under `/opt/urunc` and sets the respective urunc configuration under `/etc/urunc/config.toml`.
+* Write the PID of the monitor process in the runtime-provided `--pid-file` after container creation
+* The `com.urunc.unikernel.cmdline` annotations got deprecated
+* Separate the container rootfs from the monitor rootfs
+* Set vAccel disabled by default and it should be enabled from urunc configuration
+
+### Internals
+
+* Fix Firecracker configuration for invocations without network devices
+* Discover the veth interface instead of assuming `eth0` in the monitor's network namespace
+* Verify that the monitor command can be built before reporting a container as running and replace per-monitor `Execve` with a `PreExec` hook
+* Improve error reporting and reliability in the test suite
+* Update Go version, urunc dependencies and linter
+* Prevent panics in hooks execution
+* Fix chmod destination path for mounts
+* Fix swallowed json.Marshal error i nFirecracker configuration
+* Fix Qemu cli options to prevent terminal output corruption
+* Scan for urunc tap devices in cleanup instead of using hardcoded values
+* Fix error reporting from nsenter failures
+* Set the correct netmask in MirageOS unikernels replacing hardcoded values
+* Fall back to the mock metrics writer when the metrics file cannot be opened
+* Validate container ID values
+* Fix block device handling in case of block-based mounts
+* Choose the rootfs based on annotations in the create step instead of urunc reexec
+* Ensure default values for monitor and virtiofsd configuration
+* Centralize the gathering of mounts and devices and move them to the create phase
+* Only `pivot_root` when a mount namespace actually exists
+* Replace the manual handling of mounts with the containerd's mount package
+* Fix initrd update based on bind mounts for Unikraft unikernels
+* Fix name of qemu binary in urunc-deploy generated urunc configuration, to cover aarch64 cases
+* Replace string concatenation in the monitor cli argument construction
+* Validate all user-defined annotations
+
+### CI/CD
+
+* Move image pulling for e2e tests to the setup phase and add retry logic
+* Enable urunc debug logging in e2e and kind workflows
+* Increase unit tests coverage
+* Migrate e2e testing to ginkgo framework
+* Set the tag of urunc-deploy based on the commit sha
+* Remove the KVM setup step
+* Capture container logs when a test fails
+* Fix CNI configuration in the e2e tests setup
+
+### Documentation
+
+* Fix the urunc configuration options in the installation page
+* Update copyright message in the website
+* Add LLM policy, PR template and update contribution guide
+* Fix and update the running existing Linux containers tutorial
+* fix binary name in urunc installation from latest release
+* Fix typos
+* Remove shell prompt prefixes from README code blocks.
+* Clarify the devmapper thinpool reload setup
+* Update the urunc-deploy instructions to specify how a specific urunc-deploy image version can be used
+* Enable and style the code block copy-to-clipboard feature
+
+**Full Changelog**: https://github.com/urunc-dev/urunc/compare/v0.7.0...v0.8.0
+
+# Previous Releases:
+
 # v0.7.0
 
 ## What's Changed

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM debian:bullseye@sha256:25c0cab214b810db1b3c8adef5a12a92596979abddf86bb364e8d9c9d111df9f AS solo5-builder
+FROM debian:bookworm@sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443 AS solo5-builder
 
 # Remove libc-bin files to avoid segmentation fault.
 # See more: https://stackoverflow.com/questions/78105004/docker-build-fails-because-unable-to-install-libc-bins

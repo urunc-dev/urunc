@@ -41,6 +41,7 @@ type monitorSpec struct {
 	ExecArgs      types.ExecArgs        `json:"execArgs"`
 	GuestParams   types.UnikernelParams `json:"guestParams"`
 	NetworkType   string                `json:"networkType"`
+	DNSServer     string                `json:"dnsServer,omitempty"`
 	User          specs.User            `json:"user"`
 	PreStartCmd   []string              `json:"preStartCmd,omitempty"`
 }
@@ -94,13 +95,4 @@ func LoadMonitorSpec(dir string) (monitorSpec, error) {
 	}
 
 	return ms, nil
-}
-
-// RemoveMonitorSpec deletes the monitor spec file from dir.
-func RemoveMonitorSpec(dir string) error {
-	path, err := securejoin.SecureJoin(dir, monitorSpecFilename)
-	if err != nil {
-		return fmt.Errorf("could not resolve path for monitor spec: %w", err)
-	}
-	return os.Remove(path)
 }

@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	m "github.com/urunc-dev/urunc/internal/metrics"
@@ -87,8 +88,27 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		return fmt.Errorf("failed to setup network: %w", err)
 	}
 	metrics.Capture(m.TS16)
+	// SetupNet does not resolve DNS; carry the server resolved at spec build.
+	netArgs.DNSServer = ms.DNSServer
 	ms.ExecArgs.Net = netArgs
 	ms.GuestParams.Net = netArgs
+
+	// Confine the boot file paths under containerRootfsMountPath. In the
+	// libcontainer setup the pivot to the new rootfs has already taken
+	// place and SecureJoin resolves the image's symlinks against the
+	// container's image rootfs
+	ms.ExecArgs.UnikernelPath, err = confineToContainerRootfs(ms.ExecArgs.UnikernelPath)
+	if err != nil {
+		return err
+	}
+	ms.ExecArgs.InitrdPath, err = confineToContainerRootfs(ms.ExecArgs.InitrdPath)
+	if err != nil {
+		return err
+	}
+	ms.GuestParams.Block, err = confineBlockSources(ms.GuestParams.Block)
+	if err != nil {
+		return err
+	}
 
 	ms.ExecArgs.Command, err = buildUnikernelCommand(unikernel, ms.GuestParams)
 	if err != nil {
@@ -102,6 +122,15 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		return err
 	}
 	metrics.Capture(m.TS17)
+
+	// Create the socket directory after setupUser, so the monitor's user owns
+	// it and a non-root monitor can bind there. The monitor creates the socket.
+	if vmm.SupportsControlSocket() && ms.ExecArgs.SocketPath != "" {
+		sockDir := filepath.Dir(ms.ExecArgs.SocketPath)
+		if err = os.MkdirAll(sockDir, 0o700); err != nil {
+			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		}
+	}
 
 	err = spawnProcess(ms.PreStartCmd)
 	if err != nil {

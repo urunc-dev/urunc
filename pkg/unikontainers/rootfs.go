@@ -57,8 +57,9 @@ func tmpfsMount(target string, size string) specs.Mount {
 }
 
 // bindMount builds a non-recursive, and private if argument is set, bind mount
-// of source at target
-func bindMount(source string, target string, private bool) specs.Mount {
+// of source at target. Any extraOptions (e.g. nodev, nosuid, noexec) are
+// appended to the mount options as-is.
+func bindMount(source string, target string, private bool, ro bool, extraOptions ...string) specs.Mount {
 	m := specs.Mount{
 		Type:        "bind",
 		Source:      source,
@@ -69,6 +70,12 @@ func bindMount(source string, target string, private bool) specs.Mount {
 	if private {
 		m.Options = append(m.Options, "private")
 	}
+
+	if ro {
+		m.Options = append(m.Options, "ro")
+	}
+
+	m.Options = append(m.Options, extraOptions...)
 
 	return m
 }
@@ -132,7 +139,7 @@ type rootfsSelector struct {
 }
 
 type noRootfs struct {
-	monRootfs            string
+	containerRootfsPath  string
 	annotBlockPath       string
 	annotBlockMountPoint string
 }
@@ -146,7 +153,14 @@ func (n noRootfs) postSetup() error {
 }
 
 func (n noRootfs) getMounts() ([]specs.Mount, error) {
-	return []specs.Mount{tmpfsMount("/tmp", tmpfsSizeForNoRootfs)}, nil
+	// The monitor needs write access to the container rootfs only when it
+	// attaches a block image that lives inside it to the guest.
+	readOnly := n.annotBlockPath == "" || n.annotBlockMountPoint == ""
+
+	return []specs.Mount{
+		bindMount(n.containerRootfsPath, containerRootfsMountPath, true, readOnly, "nodev", "nosuid", "noexec"),
+		tmpfsMount("/tmp", tmpfsSizeForNoRootfs),
+	}, nil
 }
 
 func (n noRootfs) getBlockDevs() ([]types.BlockDevParams, error) {
@@ -176,13 +190,12 @@ func (n noRootfs) preStartCmd() []string {
 	return nil
 }
 
-// newRootfsResult creates a RootfsParams with common defaults
-func newRootfsResult(rootfsType string, path string, mountedPath string, monRootfs string) types.RootfsParams {
+// newRootfsResult creates a RootfsParams with common defaults.
+func newRootfsResult(rootfsType string, path string, mountedPath string) types.RootfsParams {
 	return types.RootfsParams{
 		Type:        rootfsType,
 		Path:        path,
 		MountedPath: mountedPath,
-		MonRootfs:   monRootfs,
 	}
 }
 
@@ -193,7 +206,7 @@ func (rs *rootfsSelector) tryInitrd() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("initrd", initrdPath, "", rs.cntrRootfs), true
+	return newRootfsResult("initrd", initrdPath, rs.cntrRootfs), true
 }
 
 // tryExplicitBlock checks for explicit block device annotation with
@@ -207,7 +220,7 @@ func (rs *rootfsSelector) tryExplicitBlock() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("block", blockPath, "", rs.cntrRootfs), true
+	return newRootfsResult("block", blockPath, ""), true
 }
 
 // shouldMountContainerRootfs checks if container rootfs should be mounted
@@ -244,7 +257,7 @@ func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs, rs.cntrRootfs), true
+	return newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs), true
 }
 
 // tryVirtiofs checks if virtiofs can be used
@@ -261,7 +274,7 @@ func (rs *rootfsSelector) tryVirtiofs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("virtiofs", rs.cntrRootfs, rs.cntrRootfs, rs.cntrRootfs), true
+	return newRootfsResult("virtiofs", rs.cntrRootfs, rs.cntrRootfs), true
 }
 
 // try9pfs checks if 9pfs can be used
@@ -274,7 +287,7 @@ func (rs *rootfsSelector) try9pfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("9pfs", rs.cntrRootfs, rs.cntrRootfs, rs.cntrRootfs), true
+	return newRootfsResult("9pfs", rs.cntrRootfs, rs.cntrRootfs), true
 }
 
 // tryContainerSharedFS tries shared filesystem options (virtiofs, then 9pfs)
@@ -317,15 +330,12 @@ func (rs *rootfsSelector) tryContainerRootfs() (types.RootfsParams, bool) {
 	return types.RootfsParams{}, false
 }
 
-func switchMonRootfs(res types.RootfsParams, bundle string) (types.RootfsParams, error) {
-	monRootfs := filepath.Join(bundle, monitorRootfsDirName)
-	err := os.MkdirAll(monRootfs, 0o755)
-	if err != nil {
-		return types.RootfsParams{}, fmt.Errorf("failed to create monitor rootfs directory %s: %w", monRootfs, err)
-	}
-	res.MonRootfs = monRootfs
+// switchMonRootfs points RootfsParams at the dedicated monitor rootfs, separate
+// from the container's image rootfs.
+func switchMonRootfs(res types.RootfsParams, bundle string) types.RootfsParams {
+	res.MonRootfs = filepath.Join(filepath.Clean(bundle), monitorRootfsDirName)
 
-	return res, nil
+	return res
 }
 
 // pivotRootfs changes rootfs with pivot
@@ -494,21 +504,21 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 		Options:     []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620"},
 	}
 
-	mounts := []specs.Mount{procMount, devMount, devPtsMount, bindMount(monitorPath, monitorPath, true)}
+	mounts := []specs.Mount{procMount, devMount, devPtsMount, bindMount(monitorPath, monitorPath, true, true)}
 
 	monitorName := filepath.Base(monitorPath)
 	// TODO: Remove most of these when we switch to static binaries.
 	if monitorName != "firecracker" {
-		mounts = append(mounts, bindMount("/lib", "/lib", true))
+		mounts = append(mounts, bindMount("/lib", "/lib", true, true))
 
 		// If /lib64 does not exist, just ignore it
 		if _, err := os.Stat("/lib64"); err == nil {
-			mounts = append(mounts, bindMount("/lib64", "/lib64", true))
+			mounts = append(mounts, bindMount("/lib64", "/lib64", true, true))
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
 
-		mounts = append(mounts, bindMount("/usr/lib", "/usr/lib", true))
+		mounts = append(mounts, bindMount("/usr/lib", "/usr/lib", true, true))
 	}
 
 	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
@@ -526,12 +536,12 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 			}
 		}
 
-		mounts = append(mounts, bindMount(qDataPath, "/usr/share/qemu", true))
+		mounts = append(mounts, bindMount(qDataPath, "/usr/share/qemu", true, true))
 
 		// In urunc-deploy and in some distros seabios does not exist and
 		// we do not need it. So if we could not find it, just ignore it.
 		if _, err := os.Stat(sBiosPath); err == nil {
-			mounts = append(mounts, bindMount(sBiosPath, "/usr/share/seabios", true))
+			mounts = append(mounts, bindMount(sBiosPath, "/usr/share/seabios", true, true))
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}

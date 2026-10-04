@@ -34,7 +34,7 @@ func TestNewRootfsBuilderPassesGuestTypeToInitrd(t *testing.T) {
 		Spec:  &specs.Spec{},
 	}
 
-	builder := u.newRootfsBuilder(types.RootfsParams{Type: "initrd"}, nil, "", "", 0)
+	builder := u.newRootfsBuilder("", types.RootfsParams{Type: "initrd"}, nil, "", "", 0)
 	rfs, ok := builder.(initrdRootfs)
 	require.True(t, ok)
 	require.Equal(t, unikernels.UnikraftUnikernel, rfs.guestType)
@@ -63,8 +63,9 @@ func TestInitrdRootfsPostSetupSelectsUpdateByGuestType(t *testing.T) {
 			source := filepath.Join(dir, "mounted")
 			require.NoError(t, os.WriteFile(source, []byte("new"), 0o600))
 			rfs := initrdRootfs{
-				initrdHostFullPath: archivePath,
-				guestType:          tt.guestType,
+				mountedPath: dir,
+				initrdPath:  "initrd.cpio",
+				guestType:   tt.guestType,
 				mounts: []specs.Mount{
 					{Type: "bind", Source: source, Destination: "/mounted"},
 				},

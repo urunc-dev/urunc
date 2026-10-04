@@ -5,15 +5,6 @@ on:
       ref:
         type: string
         default: ''
-      runner:
-        type: string
-        default: '["base", "dind", "2204"]'
-      runner-archs:
-        type: string
-        default: '["amd64", "arm64"]'
-      runner-arch-map:
-        type: string
-        default: '[{"amd64":"x86_64", "arm64":"aarch64", "arm":"armv7l"}]'
       firecracker_version:
         type: string
         required: true
@@ -23,10 +14,6 @@ on:
       runc_version:
         required: true
         type: string
-    secrets:
-      GIT_CLONE_PAT:
-        required: false
-  workflow_dispatch:     
 permissions:
   contents: read
 
@@ -50,11 +37,9 @@ jobs:
 
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ inputs.ref }}
 
-    - name: Install base dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make 
     - name: Install kind
       run: |
         ARCH=$(uname -m)

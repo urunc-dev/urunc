@@ -5,12 +5,6 @@ on:
       ref:
         type: string
         default: ""
-      runner-archs:
-        type: string
-        default: '["amd64", "arm64"]'
-      runner-arch-map:
-        type: string
-        default: '[{"amd64":"x86_64","arm64":"aarch64"}]'
       runc_version:
         required: true
         type: string
@@ -246,8 +240,20 @@ jobs:
 
       - name: Wait for cleanup to complete
         run: |
-          docker exec urunc-deploy-test-control-plane \
-            kubectl wait --for=delete daemonset/urunc-deploy -n kube-system --timeout=120s || true
+          # The reset Pod removes the urunc.io/urunc-runtime label as its last
+          # step, so wait for no node to carry it (with any value).
+          if ! docker exec urunc-deploy-test-control-plane timeout 300 bash -c '
+            until nodes=$(kubectl get nodes -l urunc.io/urunc-runtime -o name) && [ -z "${nodes}" ]; do sleep 5; done
+          '; then
+            echo "Node label still present after 300 seconds"
+            echo "=== Current node labels ==="
+            docker exec urunc-deploy-test-control-plane kubectl get nodes -o yaml
+            echo "=== Cleanup DaemonSet pods ==="
+            docker exec urunc-deploy-test-control-plane kubectl get pods -n kube-system -l name=kubelet-urunc-cleanup -o wide || true
+            docker exec urunc-deploy-test-control-plane kubectl logs -n kube-system -l name=kubelet-urunc-cleanup --tail=50 --prefix || true
+            exit 1
+          fi
+          echo "Node label removed"
 
       - name: Remove cleanup resources
         run: |
@@ -262,9 +268,6 @@ jobs:
           docker exec urunc-deploy-test-control-plane test ! -f /usr/local/bin/urunc || exit 1
           docker exec urunc-deploy-test-control-plane test ! -f /usr/local/bin/containerd-shim-urunc-v2 || exit 1
 
-          docker exec urunc-deploy-test-control-plane bash -c '
-            kubectl get nodes -o json | jq ".items[].metadata.labels" | grep urunc.io/urunc-runtime=true && exit 1 || echo "Node label removed"
-          '
           docker exec urunc-deploy-test-control-plane bash -c '
             kubectl get runtimeclass urunc && exit 1 || echo "RuntimeClass removed"
           '

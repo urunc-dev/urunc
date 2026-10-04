@@ -152,14 +152,14 @@ func TestMoveFile(t *testing.T) {
 
 		// Create a temporary target directory
 		targetDir := t.TempDir()
+		_, filename := filepath.Split(srcFile.Name())
+		movedFilePath := filepath.Join(targetDir, filename)
 
 		// Call the function
-		err = moveFile(srcFile.Name(), targetDir)
+		err = moveFile(srcFile.Name(), movedFilePath)
 		assert.NoError(t, err, "Expected no error in moving file")
 
 		// Verify the file was moved
-		_, filename := filepath.Split(srcFile.Name())
-		movedFilePath := filepath.Join(targetDir, filename)
 		movedContent, err := os.ReadFile(movedFilePath)
 		assert.NoError(t, err, "Expected no error in reading moved file")
 		assert.Equal(t, content, string(movedContent), "Expected moved content to match original")
@@ -175,7 +175,7 @@ func TestMoveFile(t *testing.T) {
 		targetDir := t.TempDir()
 
 		// Call the function with a non-existent source file
-		err := moveFile("nonexistent.txt", targetDir)
+		err := moveFile("nonexistent.txt", filepath.Join(targetDir, "out.txt"))
 		assert.Error(t, err, "Expected an error for non-existent source file")
 	})
 
@@ -192,11 +192,11 @@ func TestMoveFile(t *testing.T) {
 		assert.NoError(t, err)
 		srcFile.Close()
 
-		// Use a target directory path that cannot be created
-		targetDir := filepath.Join(string(filepath.Separator), "invalid", "path")
+		// Use a target path whose parent directory cannot be created
+		targetPath := filepath.Join(string(filepath.Separator), "invalid", "path", "file.txt")
 
 		// Call the function
-		err = moveFile(srcFile.Name(), targetDir)
+		err = moveFile(srcFile.Name(), targetPath)
 		assert.Error(t, err, "Expected an error for invalid target directory path")
 
 		// Verify the source file still exists
@@ -226,7 +226,7 @@ func TestMoveFile(t *testing.T) {
 		targetFile.Close()
 
 		// Call the function
-		err = moveFile(srcFile.Name(), targetDir)
+		err = moveFile(srcFile.Name(), targetFilePath)
 		assert.Error(t, err, "Expected an error for read-only target file")
 
 		// Verify the source file still exists
@@ -338,5 +338,82 @@ func TestLoadSpec(t *testing.T) {
 		_, err = loadSpec(tempDir)
 		assert.Error(t, err, "Expected an error for invalid "+configFilename+" file")
 		assert.Contains(t, err.Error(), "failed to parse specification json", "Expected specific error message")
+	})
+}
+
+func TestGetDNSServer(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected string
+	}{
+		{
+			name:     "single nameserver",
+			content:  "nameserver 10.96.0.10\n",
+			expected: "10.96.0.10",
+		},
+		{
+			name:     "first nameserver is used",
+			content:  "search svc.cluster.local\nnameserver 10.96.0.10\nnameserver 8.8.4.4\noptions ndots:5\n",
+			expected: "10.96.0.10",
+		},
+		{
+			name:     "comments are ignored",
+			content:  "# nameserver 1.1.1.1\n\n   nameserver\t192.168.1.1  \n",
+			expected: "192.168.1.1",
+		},
+		{
+			name:     "loopback nameserver is skipped",
+			content:  "nameserver 127.0.0.11\nnameserver 1.1.1.1\n",
+			expected: "1.1.1.1",
+		},
+		{
+			name:     "IPv6 nameserver is skipped",
+			content:  "nameserver fd00::1\nnameserver 1.1.1.1\n",
+			expected: "1.1.1.1",
+		},
+		{
+			name:     "invalid entries are skipped",
+			content:  "nameserver\nnameserver not-an-ip\nnameserver 1.1.1.1\n", //nolint:dupword
+			expected: "1.1.1.1",
+		},
+		{
+			name:     "no usable nameserver",
+			content:  "search svc.cluster.local\nnameserver 127.0.0.53\n",
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resolvConf := filepath.Join(t.TempDir(), "resolv.conf")
+			err := os.WriteFile(resolvConf, []byte(tc.content), 0600)
+			assert.NoError(t, err)
+			mounts := []specs.Mount{
+				{Destination: "/etc/hostname", Source: "/dummy/hostname"},
+				{Destination: "/etc/resolv.conf", Source: resolvConf},
+			}
+
+			assert.Equal(t, tc.expected, getDNSServer(mounts))
+		})
+	}
+
+	t.Run("no resolv.conf mount", func(t *testing.T) {
+		t.Parallel()
+		mounts := []specs.Mount{
+			{Destination: "/etc/hostname", Source: "/dummy/hostname"},
+		}
+
+		assert.Equal(t, "", getDNSServer(mounts))
+	})
+
+	t.Run("missing resolv.conf file", func(t *testing.T) {
+		t.Parallel()
+		mounts := []specs.Mount{
+			{Destination: "/etc/resolv.conf", Source: filepath.Join(t.TempDir(), "resolv.conf")},
+		}
+
+		assert.Equal(t, "", getDNSServer(mounts))
 	})
 }

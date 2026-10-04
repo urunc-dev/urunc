@@ -42,6 +42,9 @@ func New(unikernelType string) (types.Unikernel, error) {
 	case HermitUnikernel:
 		unikernel := newHermit()
 		return unikernel, nil
+	case FreeBSDUnikernel:
+		unikernel := newFreeBSD()
+		return unikernel, nil
 	default:
 		return nil, ErrNotSupportedUnikernel
 	}

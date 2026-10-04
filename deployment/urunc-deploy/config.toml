@@ -6,22 +6,31 @@ syslog = false
 
 [timestamps]
 enabled = false
+destination = "/var/log/urunc/timestamps.log"
+
+[runtime]
+libcontainer = false
+vAccel = false
 
 [monitors.qemu]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/qemu-system-x86_64"
 data_path = "/opt/urunc/share"
+vhost = false
+socket_path = ""
 
 [monitors.firecracker]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/firecracker"
+socket_path = ""
 
 [monitors.cloud-hypervisor]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/cloud-hypervisor"
+socket_path = ""
 
 [monitors.spt]
 default_memory_mb = 256
@@ -32,6 +41,10 @@ path = "/opt/urunc/bin/solo5-spt"
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/solo5-hvt"
+
+[monitors.hyperlight-unikraft]
+default_memory_mb = 256
+default_vcpus = 1
 
 [extra_binaries.virtiofsd]
 path = "/opt/urunc/libexec/virtiofsd"

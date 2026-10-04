@@ -67,6 +67,11 @@ func (m *Mewz) MonitorBlockCli() []types.MonitorBlockArgs {
 	return nil
 }
 
+// MonitorSharedfsCli is nil since Mewz does not support shared-fs
+func (m *Mewz) MonitorSharedfsCli(_ string, _ string) []string {
+	return nil
+}
+
 // Mewz does not require any monitor specific cli option
 func (m *Mewz) MonitorCli() types.MonitorCliArgs {
 	switch m.Monitor {

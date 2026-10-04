@@ -15,3 +15,14 @@
 package constants
 
 const TimestampTargetFile = "/tmp/urunc.zlog"
+
+// ContainerRootfsMountPath is the path inside the monitor rootfs with the
+// container's image rootfs and the boot files.
+const ContainerRootfsMountPath = "/cntrRootfs"
+
+// MonitorRootfsDirName is the name of the directory for the monitor rootfs
+const MonitorRootfsDirName = "monRootfs"
+
+// VAccelMountPath is the directory inside the monitor rootfs with the vAccel
+// unix sockets: the agent's socket from the host and the monitor's own one.
+const VAccelMountPath = "/vaccel"

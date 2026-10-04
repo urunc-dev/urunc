@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -29,15 +30,15 @@ func TestNewRootfsResult(t *testing.T) {
 		Type:        "initrd",
 		Path:        "/path/to/initrd",
 		MountedPath: "/mnt/rootfs",
-		MonRootfs:   "/run/urunc/mon",
 	}
 
-	got := newRootfsResult("initrd", "/path/to/initrd", "/mnt/rootfs", "/run/urunc/mon")
+	got := newRootfsResult("initrd", "/path/to/initrd", "/mnt/rootfs")
 
 	assert.Equal(t, expected.Type, got.Type, "Type should match")
 	assert.Equal(t, expected.Path, got.Path, "Path should match")
 	assert.Equal(t, expected.MountedPath, got.MountedPath, "MountedPath should match")
-	assert.Equal(t, expected.MonRootfs, got.MonRootfs, "MonRootfs should match")
+	// MonRootfs is intentionally not set by newRootfsResult; switchMonRootfs owns it.
+	assert.Empty(t, got.MonRootfs, "MonRootfs should be left unset")
 }
 
 func TestRootfsSelector_TryInitrd(t *testing.T) {
@@ -182,5 +183,36 @@ func TestMonitorDeviceMode(t *testing.T) {
 		// unix.Stat reports the type in the high bits; only the permission
 		// bits may reach mknod.
 		assert.Equal(t, os.FileMode(0o666), monitorDeviceMode(unix.S_IFCHR|0o660))
+	})
+}
+
+func TestNoRootfsGetMounts(t *testing.T) {
+	t.Run("mounts the container rootfs read-only without a block image", func(t *testing.T) {
+		t.Parallel()
+		n := noRootfs{containerRootfsPath: "/run/rootfs"}
+
+		mounts, err := n.getMounts()
+		require.NoError(t, err)
+		require.Len(t, mounts, 2)
+		assert.Equal(t, "/run/rootfs", mounts[0].Source)
+		assert.Equal(t, containerRootfsMountPath, mounts[0].Destination)
+		assert.Contains(t, mounts[0].Options, "ro")
+	})
+
+	t.Run("keeps the container rootfs writable when a block image is attached", func(t *testing.T) {
+		t.Parallel()
+		// The monitor opens the image read-write, so the mount that holds it
+		// can not be read-only.
+		n := noRootfs{
+			containerRootfsPath:  "/run/rootfs",
+			annotBlockPath:       "/data/vol.ext2",
+			annotBlockMountPoint: "/data",
+		}
+
+		mounts, err := n.getMounts()
+		require.NoError(t, err)
+		require.Len(t, mounts, 2)
+		assert.Equal(t, containerRootfsMountPath, mounts[0].Destination)
+		assert.NotContains(t, mounts[0].Options, "ro")
 	})
 }

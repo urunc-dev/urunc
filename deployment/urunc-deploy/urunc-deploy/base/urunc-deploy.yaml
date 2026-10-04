@@ -30,6 +30,9 @@ spec:
       serviceAccountName: urunc-deploy-sa
       # terminationGracePeriodSeconds: 60
       hostPID: true
+      # Avoid Service link variables (e.g. URUNC_*_SERVICE_HOST) being taken
+      # as urunc configuration overrides.
+      enableServiceLinks: false
       containers:
         - name: kube-urunc
           image: ghcr.io/urunc-dev/urunc/urunc-deploy:latest
@@ -48,6 +51,25 @@ spec:
               value: "firecracker cloud-hypervisor qemu solo5-hvt solo5-spt"
             - name: DEBUG
               value: "false"
+            # Optional overrides for /etc/urunc/config.toml. Any URUNC_* variable
+            # set to a non-empty value replaces the corresponding value shipped in
+            # config.toml; unset or empty variables keep the default. The variable
+            # name is the upper-cased TOML path with '.' and '-' replaced by '_'.
+            # Examples:
+            #   - name: URUNC_LOG_LEVEL                       # [log] level
+            #     value: "debug"
+            #   - name: URUNC_LOG_SYSLOG                      # [log] syslog (bool)
+            #     value: "false"
+            #   - name: URUNC_TIMESTAMPS_ENABLED              # [timestamps] enabled (bool)
+            #     value: "false"
+            #   - name: URUNC_MONITORS_QEMU_DEFAULT_MEMORY_MB # [monitors.qemu] default_memory_mb (int)
+            #     value: "256"
+            #   - name: URUNC_MONITORS_QEMU_DEFAULT_VCPUS     # [monitors.qemu] default_vcpus (int)
+            #     value: "1"
+            #   - name: URUNC_MONITORS_CLOUD_HYPERVISOR_DEFAULT_MEMORY_MB
+            #     value: "512"
+            #   - name: URUNC_EXTRA_BINARIES_VIRTIOFSD_OPTIONS # [extra_binaries.virtiofsd] options
+            #     value: "--cache always --sandbox none"
           securityContext:
             privileged: true
           volumeMounts:

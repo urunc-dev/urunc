@@ -62,7 +62,7 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 	// In a user namespace, always bind-mount the existing host device node.
 	// Only MS_BIND is used here (no extra flags) to mirror runc's device handling.
 	if userns.RunningInUserNS() {
-		return applyMount(monRootfs, bindMount(dev.Path, dev.Path, false))
+		return applyMount(monRootfs, bindMount(dev.Path, dev.Path, false, false))
 	}
 
 	var devType uint32

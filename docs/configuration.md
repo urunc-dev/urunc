@@ -20,6 +20,7 @@ The configuration file uses the [TOML](https://toml.io/) format and is organized
 ```toml
 [runtime]
 libcontainer = false
+vAccel = false
 
 [log]
 level = "info"
@@ -61,21 +62,37 @@ The `[runtime]` section controls runtime-wide behavior.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `libcontainer` | boolean | `false` | Use libcontainer to set up the monitor's execution environment |
+| `vAccel` | boolean | `false` | Enable the support of vAccel through the `com.urunc.unikernel.vAccel` and `com.urunc.unikernel.RPCAddress` annotations |
 
-> **⚠️ Experimental:** the use of `libcontainer` to prepare the monitor execution
-> environment is under active development. It is off by default.
-
-The value is resolved when the container is created and recorded in the
-container's `state.json`, so `start`, `kill` and `delete` keep using the mode
-the container was created with even if the configuration file changes in
-between.
+**Notes**:
+- the use of libcontainer to prepare the monitor execution environment is
+  **experimental** and under active development. It is off by default.
+- For the time being libcontianer-based setup does not support vAccel.
+- The use of vAccel is **experimental** and requires a **specific deployment
+  model**.
+- The vAccel annotations MUST always be set from the operator of the cluster
+  and in no case from user submitted images or pods.
+- Annotations related to vAccel in the pod description or the image MUST be
+  filtered out if they come from an untrusted source.
+- When vAccel is enabled, `urunc` exposes the vsock devices to the sandbox
+  monitor and, for Firecracker, makes only the vAccel agent's unix socket named
+  by `com.urunc.unikernel.RPCAddress` visible to the monitor (read-only, at a
+  fixed location inside the monitor's rootfs). The agent must already be
+  listening on that socket when the container is created. See the [vAccel
+  tutorial](tutorials/Running-vaccel-with-urunc.md) for the full setup.
 
 **Example:**
 
 ```toml
 [runtime]
 libcontainer = false
+vAccel = false
 ```
+
+The value is resolved when the container is created and recorded in the
+container's `state.json`, so `start`, `kill` and `delete` keep using the mode
+the container was created with even if the configuration file changes in
+between.
 
 ### Log Configuration
 
@@ -134,8 +151,10 @@ values.
 
 - [QEMU/KVM](./hypervisor-support#qemu) - `qemu`
 - [Firecracker](./hypervisor-support#firecracker) - `firecracker`
+- [Cloud-Hypervisor](./hypervisor-support#cloud-hypervisor) - `cloud-hypervisor`
 - [Solo5-hvt](./hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
 - [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
+- [Hyperlight](./hypervisor-support#hyperlight) - `hyperlight-unikraft`
 
 #### Monitor Options
 
@@ -148,10 +167,33 @@ Each monitor subsection supports the following options:
 | `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
+| `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
 
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
 Qemu's data files.
+
+The `socket_path` option applies to the monitors that expose a control socket:
+Firecracker (its API socket), Qemu (a QMP socket) and Cloud Hypervisor (its REST
+API socket). It has no effect on the other monitors. The control socket is
+opt-in: it exists only when `socket_path` is set. If it is not set, the
+monitor runs with no control socket at all; an operator can leave it unset if
+they do not need the socket, or to keep a smaller attack surface.
+
+When it is set, the monitor creates the socket inside its own (pivoted) rootfs.
+`urunc` creates the directory of `socket_path` inside that rootfs after it drops
+privileges to the monitor's user, so the path is subject to two constraints:
+
+- Its parent directory must be one the monitor's user can create and write. A
+  directory that only `root` can write does not work for a non-root monitor.
+- It must not sit over an existing file or directory. `urunc` creates the
+  directory of `socket_path`; that fails cleanly if a file already exists at one
+  of the directories in the path. The monitor then binds the socket at
+  `socket_path`; that fails if a file already exists at `socket_path` itself.
+
+`urunc` removes the socket when the container is stopped (on a terminating
+signal) and when it is deleted, so a restart that reuses the same `socket_path`
+does not find a stale socket.
 
 **Example:**
 
@@ -167,6 +209,7 @@ vhost = false
 default_memory_mb = 512
 default_vcpus = 2
 path = "/opt/firecracker/firecracker"
+socket_path = "/run/urunc/fc.sock"
 ```
 
 ### Extra binaries Configuration
@@ -280,6 +323,16 @@ default_vcpus = 1
 # path is not set by default - urunc will search in PATH
 
 [monitors.spt]
+default_memory_mb = 256
+default_vcpus = 1
+# path is not set by default - urunc will search in PATH
+
+[monitors.cloud-hypervisor]
+default_memory_mb = 256
+default_vcpus = 1
+# path is not set by default - urunc will search in PATH
+
+[monitors.hyperlight-unikraft]
 default_memory_mb = 256
 default_vcpus = 1
 # path is not set by default - urunc will search in PATH

@@ -1,0 +1,84 @@
+name: Rolling release
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Commit SHA the binaries were built from'
+        required: true
+        type: string
+      tag:
+        description: 'Rolling release tag to (re)point at the commit'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.tag }} pre-release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+      with:
+        egress-policy: audit
+
+    # A re-run of an old run keeps its original github.sha, and a slow build can
+    # finish after a newer push has already published. Either would rewind the
+    # rolling release, so only the current tip of the branch may publish.
+    - name: Check that ${{ inputs.ref }} is still the tip of ${{ github.ref_name }}
+      id: tip
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        BRANCH: ${{ github.ref_name }}
+        SHA: ${{ inputs.ref }}
+      run: |
+        tip=$(gh api "repos/${REPO}/git/ref/heads/${BRANCH}" --jq .object.sha)
+        if [ "${tip}" = "${SHA}" ]; then
+          echo "current=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::${BRANCH} has moved on to ${tip}; not publishing ${SHA}. The run for ${tip} publishes it."
+          echo "current=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Download build artifacts
+      if: steps.tip.outputs.current == 'true'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        pattern: '*_static_*-${{ github.run_id }}'
+        path: dist
+        merge-multiple: true
+
+    - name: Publish pre-release
+      if: steps.tip.outputs.current == 'true'
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      with:
+        tag_name: ${{ inputs.tag }}
+        target_commitish: ${{ inputs.ref }}
+        name: ${{ inputs.tag }} (${{ github.ref_name }} @ ${{ inputs.ref }})
+        body: |
+          Rolling build of `${{ github.ref_name }}` at commit ${{ inputs.ref }}.
+
+        prerelease: true
+        make_latest: false
+        draft: false
+        generate_release_notes: false
+        overwrite_files: true
+        preserve_order: true
+        fail_on_unmatched_files: true
+        files: |
+          dist/*_static_*
+
+    - name: Move ${{ inputs.tag }} tag to ${{ inputs.ref }}
+      if: steps.tip.outputs.current == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        SHA: ${{ inputs.ref }}
+      run: |
+        gh api --method PATCH "repos/${REPO}/git/refs/tags/${TAG}" \
+          -f sha="${SHA}" -F force=true

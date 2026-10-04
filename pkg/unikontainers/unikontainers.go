@@ -29,6 +29,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/network"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -36,14 +37,16 @@ import (
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	m "github.com/urunc-dev/urunc/internal/metrics"
 )
 
 const (
-	monitorRootfsDirName     string = "monRootfs"
-	containerRootfsMountPath string = "/cntrRootfs"
+	monitorRootfsDirName     = constants.MonitorRootfsDirName
+	containerRootfsMountPath = constants.ContainerRootfsMountPath
+	vAccelMountPath          = constants.VAccelMountPath
 	// libcontainerDirName is the directory under urunc's root used from libcontainer
 	libcontainerDirName string = "libcontainer"
 )
@@ -51,7 +54,6 @@ const (
 var uniklog = logrus.WithField("subsystem", "unikontainers")
 
 var ErrQueueProxy = errors.New("this a queue proxy container")
-var ErrNotUnikernel = errors.New("this is not a unikernel container")
 var ErrNotExistingNS = errors.New("the namespace does not exist")
 
 // Unikontainer holds the data necessary to create, manage and delete unikernel containers
@@ -79,8 +81,8 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 		return nil, fmt.Errorf("invalid OCI spec: linux section is required")
 	}
 
-	containerName := spec.Annotations["io.kubernetes.cri.container-name"]
-	if containerName == "queue-proxy" {
+	containerName := spec.Annotations[annotCRICntrName]
+	if containerName == criQueueProxyCntr {
 		uniklog.Warn("This is a queue-proxy container. Adding IP env.")
 		configFile := filepath.Join(bundlePath, configFilename)
 		err = handleQueueProxy(*spec, configFile)
@@ -92,7 +94,16 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 
 	config, err := GetUnikernelConfig(bundlePath, spec)
 	if err != nil {
-		return nil, ErrNotUnikernel
+		return nil, err
+	}
+	err = config.validateValues()
+	if err != nil {
+		return nil, err
+	}
+	// vAccel should be explicitly enabled to accept vAccel annotations.
+	// Otherwise fail execution.
+	if config.VAccel != "" && !cfg.Runtime.VAccel {
+		return nil, fmt.Errorf("%s is set, but vAccel is disabled in the urunc configuration ([runtime] vAccel)", annotVAccel)
 	}
 
 	uniklog.Debugf("libcontainer runtime enabled: %t", cfg.Runtime.Libcontainer)
@@ -100,6 +111,7 @@ func New(bundlePath string, containerID string, rootDir string, cfg *UruncConfig
 	confMap := config.Map()
 
 	maps.Copy(confMap, cfg.Map())
+
 	containerDir := filepath.Join(rootDir, containerID)
 	state := &specs.State{
 		Version:     spec.Version,
@@ -189,6 +201,11 @@ func (u *Unikontainer) InitialSetup() error {
 		"mountedPath": rootfsParams.MountedPath,
 	}).Debug("guest rootfs params")
 
+	err = os.MkdirAll(rootfsParams.MonRootfs, 0o755)
+	if err != nil {
+		return fmt.Errorf("failed to create monitor rootfs directory %s: %w", rootfsParams.MonRootfs, err)
+	}
+
 	vmmType := u.State.Annotations[annotHypervisor]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
@@ -197,7 +214,7 @@ func (u *Unikontainer) InitialSetup() error {
 
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
 	memory := monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources)
-	rfsBuilder := u.newRootfsBuilder(rootfsParams, unikernel, unikernelPath, initrdPath, memory)
+	rfsBuilder := u.newRootfsBuilder(rootfsDir, rootfsParams, unikernel, unikernelPath, initrdPath, memory)
 
 	err = rfsBuilder.preSetup()
 	if err != nil {
@@ -343,19 +360,19 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 	// Priority 1: Initrd
 	result, ok := selector.tryInitrd()
 	if ok {
-		return result, nil
+		return switchMonRootfs(result, bundleDir), nil
 	}
 
 	// Priority 2: Explicit block annotation
 	result, ok = selector.tryExplicitBlock()
 	if ok {
-		return result, nil
+		return switchMonRootfs(result, bundleDir), nil
 	}
 
 	// Priority 3 & 4: Container rootfs (block or shared-fs)
 	result, ok = selector.tryContainerRootfs()
 	if ok {
-		return switchMonRootfs(result, bundleDir)
+		return switchMonRootfs(result, bundleDir), nil
 	}
 
 	if selector.shouldMountContainerRootfs() {
@@ -363,9 +380,9 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 	}
 
 	uniklog.Info("no rootfs configured for guest")
-	result.MonRootfs = rootfsDir
 
-	return result, nil
+	result = newRootfsResult("", "", selector.cntrRootfs)
+	return switchMonRootfs(result, bundleDir), nil
 }
 
 // getMonitorResources collects every mount and device required for the monitor's
@@ -409,33 +426,37 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 }
 
 // newRootfsBuilder constructs the rootfsBuilder matching the selected guest
-// rootfs. It is shared by InitialSetup (which gathers the monitor resources) and
-// Exec (which performs the per-rootfs actions).
-func (u *Unikontainer) newRootfsBuilder(rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) rootfsBuilder {
+// rootfs. It is shared by InitialSetup (which gathers the monitor resources)
+// and Exec (which performs the per-rootfs actions).  containerRootfs is the
+// container's image rootfs and used only in the explicit block-image case,
+// because MountedPath is empty and this is the only way to reach the container
+// rootfs that holds the image and the boot files.
+// TODO: Find a better way for the explicit block image case to reduce arguments.
+func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) rootfsBuilder {
 	switch rootfsParams.Type {
 	case "block":
 		return blockRootfs{
-			mounts:        u.Spec.Mounts,
-			monRootfs:     rootfsParams.MonRootfs,
-			mountedPath:   rootfsParams.MountedPath,
-			path:          rootfsParams.Path,
-			kernelPath:    unikernelPath,
-			initrdPath:    initrdPath,
-			uruncJSONPath: uruncJSONFilename,
-			guestType:     u.State.Annotations[annotType],
-			guest:         unikernel,
+			mounts:          u.Spec.Mounts,
+			monRootfs:       rootfsParams.MonRootfs,
+			mountedPath:     rootfsParams.MountedPath,
+			containerRootfs: containerRootfs,
+			path:            rootfsParams.Path,
+			kernelPath:      unikernelPath,
+			initrdPath:      initrdPath,
+			uruncJSONPath:   uruncJSONFilename,
+			guestType:       u.State.Annotations[annotType],
+			guest:           unikernel,
 		}
 	case "initrd":
 		return initrdRootfs{
-			mounts:             u.Spec.Mounts,
-			initrdHostFullPath: filepath.Join(rootfsParams.MonRootfs, rootfsParams.Path),
-			monRootfs:          rootfsParams.MonRootfs,
-			guestType:          u.State.Annotations[annotType],
+			mounts:      u.Spec.Mounts,
+			mountedPath: rootfsParams.MountedPath,
+			initrdPath:  rootfsParams.Path,
+			guestType:   u.State.Annotations[annotType],
 		}
 	case "virtiofs", "9pfs":
 		return sharedfsRootfs{
 			mounts:      u.Spec.Mounts,
-			monRootfs:   rootfsParams.MonRootfs,
 			mountedPath: rootfsParams.MountedPath,
 			sfsType:     rootfsParams.Type,
 			vfsdConfig:  u.UruncCfg.ExtraBins["virtiofsd"],
@@ -444,7 +465,7 @@ func (u *Unikontainer) newRootfsBuilder(rootfsParams types.RootfsParams, unikern
 		}
 	default:
 		return noRootfs{
-			monRootfs:            rootfsParams.MonRootfs,
+			containerRootfsPath:  rootfsParams.MountedPath,
 			annotBlockPath:       u.State.Annotations[annotBlock],
 			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
 		}
@@ -489,6 +510,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		defaultVCPUs = 1
 	}
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
 
 	vmmArgs := types.ExecArgs{
 		ContainerID:   u.State.ID,
@@ -497,6 +519,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		Seccomp:       true, // Enable Seccomp by default
 		MemSizeB:      monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources),
 		VCPUs:         uint(defaultVCPUs),
+		SocketPath:    socketPath,
 		Environment:   os.Environ(),
 	}
 
@@ -522,11 +545,6 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		Block:      monRes.BlockArgs,
 	}
 
-	if rootfsParams.Type == "virtiofs" || rootfsParams.Type == "9pfs" {
-		// Update the paths of the files we need to pass in the monitor process.
-		vmmArgs.UnikernelPath = adjustPathsForSharedfs(vmmArgs.UnikernelPath)
-		vmmArgs.InitrdPath = adjustPathsForSharedfs(vmmArgs.InitrdPath)
-	}
 	vmmArgs.Sharedfs = monRes.Sharedfs
 
 	mSpec.ContainerID = u.State.ID
@@ -536,6 +554,10 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
 	mSpec.PreStartCmd = monRes.PreStartCmd
+	// Resolve the guest DNS server once, here in the builder shared by both the
+	// libcontainer and non-libcontainer paths, where the container mount
+	// sources are available.
+	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
 
 	return mSpec
 }
@@ -622,6 +644,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 	metrics.Capture(m.TS16)
 	withTUNTAP := netArgs.IP != ""
+	// SetupNet does not resolve DNS; carry the server resolved at spec build.
+	netArgs.DNSServer = ms.DNSServer
 	unikernelParams.Net = netArgs
 	vmmArgs.Net = netArgs
 
@@ -632,14 +656,12 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	metrics.Capture(m.TS17)
 
 	// vAccel setup
-	vAccelType, vsockSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.Spec.Annotations)
-	if err != nil {
-		if !errors.Is(err, ErrVAccelDisabled) {
-			uniklog.Warnf("vAccel misconfiguration: %v", err)
-		}
+	vAccelType, vAccelSocketPath, rpcAddress, err := resolveVAccelConfig(u.State.Annotations[annotHypervisor], u.State.Annotations)
+	if err != nil && !errors.Is(err, ErrVAccelDisabled) {
+		return fmt.Errorf("vAccel misconfiguration: %w", err)
 	}
 
-	if vAccelType == "vsock" && err == nil {
+	if vAccelType == "vsock" {
 		// Remove any existing VACCEL_RPC_ADDRESS and set the new value
 		for i, envVar := range unikernelParams.EnvVars {
 			if strings.HasPrefix(envVar, "VACCEL_RPC_ADDRESS"+"=") {
@@ -650,9 +672,9 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		unikernelParams.EnvVars = append(unikernelParams.EnvVars, "VACCEL_RPC_ADDRESS="+rpcAddress)
 
 		// Prepare the guest environment for vAccel vsock communication
-		vaccelDevices, err := prepareVSockEnvironment(rootfsParams.MonRootfs, u.State.Annotations[annotHypervisor], vsockSocketPath)
+		vaccelDevices, err := prepareVSockEnvironment(rootfsParams.MonRootfs, u.State.Annotations[annotHypervisor], vAccelSocketPath)
 		if err != nil {
-			uniklog.Debugf("failed to prepare get required vsock devices: %v", err)
+			return fmt.Errorf("failed to prepare the vsock environment: %w", err)
 		}
 		err = setupDevices(rootfsParams.MonRootfs, vaccelDevices, false)
 		if err != nil {
@@ -660,15 +682,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		}
 
 		vmmArgs.VAccelType = vAccelType
-		vmmArgs.VSockDevPath = vsockSocketPath
+		vmmArgs.VSockDevPath = vAccelMountPath
 		vmmArgs.VSockDevID = idToGuestCID(u.State.ID)
-	}
-
-	// unikernel
-	// build the unikernel command
-	vmmArgs.Command, err = buildUnikernelCommand(unikernel, unikernelParams)
-	if err != nil {
-		return err
 	}
 
 	// pivot
@@ -684,11 +699,47 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 		return err
 	}
 
+	// Every rootfs type keeps its boot files under the mount of
+	// containerRootfsMountPath, so SecureJoin resolves the image's
+	// symlinks against the container's image rootfs. This must run after
+	// the pivot and before unikernel.Init/BuildExecCmd, the only consumers
+	// of these paths.
+	vmmArgs.UnikernelPath, err = confineToContainerRootfs(vmmArgs.UnikernelPath)
+	if err != nil {
+		return err
+	}
+	vmmArgs.InitrdPath, err = confineToContainerRootfs(vmmArgs.InitrdPath)
+	if err != nil {
+		return err
+	}
+	unikernelParams.Block, err = confineBlockSources(unikernelParams.Block)
+	if err != nil {
+		return err
+	}
+
+	// unikernel
+	// Initialize the unikernel after the pivot so that any file setup it performs
+	// (e.g. writing the urunit config into the initrd) operates within the monitor
+	// rootfs.
+	vmmArgs.Command, err = buildUnikernelCommand(unikernel, unikernelParams)
+	if err != nil {
+		return err
+	}
+
 	// uid/gid
 	// Setup uid, gid and additional groups for the monitor process
 	err = setupUser(u.Spec.Process.User)
 	if err != nil {
 		return err
+	}
+
+	// Create the socket directory after setupUser, so the monitor's user owns
+	// it and a non-root monitor can bind there. The monitor creates the socket.
+	if vmm.SupportsControlSocket() && vmmArgs.SocketPath != "" {
+		sockDir := filepath.Dir(vmmArgs.SocketPath)
+		if err = os.MkdirAll(sockDir, 0o700); err != nil {
+			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		}
 	}
 
 	// execute hooks
@@ -725,6 +776,32 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	return execMonitor(metrics, vmm, vmmArgs, execCmd)
 }
 
+// confineToContainerRootfs ensures an image-controlled path stays under the
+// container rootfs mount at containerRootfsMountPath using secureJoin.  It
+// must run after the pivot into the monitor rootfs, when the mount exists. An
+// empty path is returned unchanged.
+func confineToContainerRootfs(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+
+	confined, err := securejoin.SecureJoin(containerRootfsMountPath, path)
+	if err != nil {
+		return "", err
+	}
+
+	// SecureJoin dereferences symlinks whose targets come from the untrusted
+	// container image and can reintroduce characters that validateValues
+	// rejected at create time (e.g. "," or "="). Since the confined path is
+	// later interpolated unescaped into comma-separated monitor options (e.g.
+	// the qemu -drive string), re-validate the resolved path.
+	if !allowedPathRe.MatchString(confined) {
+		return "", fmt.Errorf("confined path %q must match %s", confined, allowedPathRe.String())
+	}
+
+	return confined, nil
+}
+
 // buildUnikernelCommand initializes the unikernel with the collected parameters
 // and returns its command line.
 func buildUnikernelCommand(unikernel types.Unikernel, params types.UnikernelParams) (string, error) {
@@ -737,6 +814,26 @@ func buildUnikernelCommand(unikernel types.Unikernel, params types.UnikernelPara
 	}
 
 	return unikernel.CommandString()
+}
+
+// confineBlockSources confines the source paths of block images whose source
+// lives inside the container's image rootfs under containerRootfsMountPath
+// (BlockDevParams.IsExplicit). Real host block devices (the container rootfs
+// converted to a block device, or block volumes from mounts) keep their
+// absolute device paths. It must run after the pivot into the monitor rootfs,
+// when the mount exists for SecureJoin to resolve the image's symlinks.
+func confineBlockSources(blocks []types.BlockDevParams) ([]types.BlockDevParams, error) {
+	var err error
+	for i := range blocks {
+		if blocks[i].IsExplicit {
+			blocks[i].Source, err = confineToContainerRootfs(blocks[i].Source)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return blocks, nil
 }
 
 // execMonitor runs the monitor's pre-exec setup and finally execve's the monitor.
@@ -784,6 +881,41 @@ func setupUser(user specs.User) error {
 	return nil
 }
 
+// monitorRootfs returns the host path of the monitor's rootfs: the separate
+// one under the bundle if it exists, else the container's own rootfs.
+func (u *Unikontainer) monitorRootfs() string {
+	bundleDir := filepath.Clean(u.State.Bundle)
+	rootfsDir := filepath.Clean(u.Spec.Root.Path)
+	if !filepath.IsAbs(rootfsDir) {
+		rootfsDir = filepath.Join(bundleDir, rootfsDir)
+	}
+	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
+	if _, err := os.Stat(monRootfs); err == nil {
+		return monRootfs
+	}
+	return rootfsDir
+}
+
+// removeControlSocket deletes the monitor's control socket. It skips a missing
+// path and never deletes a non-socket file.
+func (u *Unikontainer) removeControlSocket(socketPath string) error {
+	sockRealPath, err := securejoin.SecureJoin(u.monitorRootfs(), socketPath)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(sockRealPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return nil
+	}
+	return os.Remove(sockRealPath)
+}
+
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
 	vmmType := u.State.Annotations[annotHypervisor]
@@ -792,7 +924,20 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 		return err
 	}
 
-	return vmm.Signal(u.State.Pid, signal)
+	if err = vmm.Signal(u.State.Pid, signal); err != nil {
+		return err
+	}
+
+	// A stop calls kill with SIGTERM and never runs Delete, so the socket is
+	// removed here too. Best-effort: a failure must not fail the signal.
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+	if (signal == unix.SIGKILL || signal == unix.SIGTERM) && socketPath != "" && vmm.SupportsControlSocket() {
+		if rmErr := u.removeControlSocket(socketPath); rmErr != nil {
+			uniklog.Warnf("failed to remove control socket: %v", rmErr)
+		}
+	}
+
+	return nil
 }
 
 // Kill stops the VMM process, first by asking the VMM struct to stop
@@ -832,11 +977,8 @@ func (u *Unikontainer) Kill() error {
 	return nil
 }
 
-// Delete removes the containers base directory and its contents
+// Delete removes the monitor rootfs and the container's base directory.
 func (u *Unikontainer) Delete() error {
-	var dirs []string
-	var prefPath string
-
 	if u.isRunning() {
 		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
 	}
@@ -864,61 +1006,12 @@ func (u *Unikontainer) Delete() error {
 		uniklog.Errorf("failed to restore block volume mounts: %v", err)
 	}
 
-	// get a monitor instance of the running monitor
-	vmmType := u.State.Annotations[annotHypervisor]
-	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
+	// The monitor rootfs lives under the bundle. Its mounts went away with the
+	// monitor's mount namespace, so only the directory tree itself is left.
+	monRootfs := filepath.Join(filepath.Clean(u.State.Bundle), monitorRootfsDirName)
+	err = os.RemoveAll(monRootfs)
 	if err != nil {
-		return err
-	}
-
-	// Make sure paths are clean
-	bundleDir := filepath.Clean(u.State.Bundle)
-	rootfsDir := filepath.Clean(u.Spec.Root.Path)
-	if !filepath.IsAbs(rootfsDir) {
-		rootfsDir = filepath.Join(bundleDir, rootfsDir)
-	}
-	monRootfs := filepath.Join(bundleDir, monitorRootfsDirName)
-
-	// TODO: We might not need to remove any of the directories and let
-	// the kernel cleanup the mounts and shim to remove directories.
-	// However, just to be on the safe side, we remove all the newly
-	// created directories from urunc. In order to check if we used the
-	// rootfs under the bundle directory or we create anew one, we can check
-	// if the monitorRootfsDirName directory exists under the bundle.
-	_, err = os.Stat(monRootfs)
-	if !os.IsNotExist(err) {
-		// Since there was no block defined for the unikernel
-		// and we created a new rootfs for the monitor, we need to
-		// clean it up.
-		dirs = append(dirs, monitorRootfsDirName)
-		prefPath = bundleDir
-	} else {
-		// Otherwise remove the enw directories we created and the monitor spec
-		// file inside the container's rootfs.
-		// We do not need to unmount anything here, since we rely on Linux
-		// to do the cleanup for us. This will happen automatically,
-		// when the mount namespace gets destroyed
-		err = RemoveMonitorSpec(rootfsDir)
-		// Ignore the case where the file does not exist.
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("failed to remove the monitor spec: %w", err)
-		}
-
-		dirs = []string{
-			"/lib",
-			"/lib64",
-			"/usr",
-			"/proc",
-			"/dev",
-			"/tmp",
-		}
-		dirs = append(dirs, vmm.Path())
-		prefPath = rootfsDir
-	}
-
-	err = rmMultipleDirs(prefPath, dirs)
-	if err != nil {
-		return err
+		return fmt.Errorf("failed to remove the monitor rootfs %s: %w", monRootfs, err)
 	}
 
 	return os.RemoveAll(u.BaseDir)
@@ -962,6 +1055,9 @@ func (u *Unikontainer) saveContainerState() error {
 	// Propagate all annotations from spec to state to solve nerdctl hooks errors.
 	// For more info: https://github.com/containerd/nerdctl/issues/133
 	for key, value := range u.Spec.Annotations {
+		if strings.HasPrefix(key, annotUruncPrefix) {
+			continue
+		}
 		if _, ok := u.State.Annotations[key]; !ok {
 			u.State.Annotations[key] = value
 		}
@@ -1439,7 +1535,7 @@ func (u *Unikontainer) isRunning() bool {
 
 // getNetworkType checks if current container is a knative user-container
 func (u Unikontainer) getNetworkType() string {
-	if u.Spec.Annotations["io.kubernetes.cri.container-name"] == "user-container" {
+	if u.Spec.Annotations[annotCRICntrName] == criUserCntr {
 		return "static"
 	}
 	return "dynamic"

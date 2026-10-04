@@ -16,9 +16,13 @@ package unikontainers
 
 import (
 	"errors"
+	"net"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIdToGuestCID(t *testing.T) {
@@ -109,7 +113,7 @@ func TestIsValidVSockAddress(t *testing.T) {
 			monitor:              "firecracker",
 			expectedValid:        true,
 			expectedErr:          false,
-			expectedPath:         "/tmp",
+			expectedPath:         "/tmp/vaccel.sock_1234",
 			expectedModifiedAddr: "vsock://2:1234",
 		},
 		{
@@ -118,7 +122,7 @@ func TestIsValidVSockAddress(t *testing.T) {
 			monitor:              "firecracker",
 			expectedValid:        true,
 			expectedErr:          false,
-			expectedPath:         "/var/run/urunc",
+			expectedPath:         "/var/run/urunc/vaccel.sock_5678",
 			expectedModifiedAddr: "vsock://2:5678",
 		},
 		{
@@ -209,5 +213,48 @@ func TestResolveVAccelConfig(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "vsock", vAccelType)
 		assert.Equal(t, "vsock://2:1234", addr)
+	})
+}
+
+// listenVAccelSocket starts a listener on a unix socket named like the vAccel
+// agent's one, in a fresh directory whose path matches vAccelSockDirRe (which
+// t.TempDir can not guarantee), and returns the path of the socket.
+func listenVAccelSocket(t *testing.T) string {
+	t.Helper()
+
+	dir, err := os.MkdirTemp("", "vaccel")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	path := filepath.Join(dir, "vaccel.sock_2049")
+	listener, err := net.Listen("unix", path)
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+
+	return path
+}
+
+func TestCheckVAccelSocket(t *testing.T) {
+	t.Run("accepts a listening unix socket", func(t *testing.T) {
+		t.Parallel()
+		assert.NoError(t, checkVAccelSocket(listenVAccelSocket(t)))
+	})
+
+	t.Run("rejects a regular file", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "vaccel.sock_2049")
+		require.NoError(t, os.WriteFile(path, []byte("not a socket"), 0o600))
+
+		assert.Error(t, checkVAccelSocket(path))
+	})
+
+	t.Run("rejects a directory", func(t *testing.T) {
+		t.Parallel()
+		assert.Error(t, checkVAccelSocket(t.TempDir()))
+	})
+
+	t.Run("rejects a missing path", func(t *testing.T) {
+		t.Parallel()
+		assert.Error(t, checkVAccelSocket(filepath.Join(t.TempDir(), "vaccel.sock_2049")))
 	})
 }

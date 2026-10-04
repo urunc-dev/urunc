@@ -52,36 +52,6 @@ jobs:
       run: |
         go version
 
-    - name: Get revision SHA and branch (safe)
-      id: get-rev
-      env:
-        EVENT_NAME: ${{ github.event_name }}
-        IS_MERGED: ${{ github.event.pull_request.merged }}
-        GITHUB_SHA: ${{ github.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
-        REF_NAME: ${{ github.ref_name }}
-      run: |
-        if [ "$EVENT_NAME" == "pull_request" ]; then
-          if [ "$IS_MERGED" == "true" ]; then
-            sha="$GITHUB_SHA"
-            branch="$PR_BASE_REF"
-            echo "PR merged. SHA: ${sha}, Branch: ${branch}"
-          else
-            sha="$PR_HEAD_SHA"
-            branch="$PR_HEAD_REF"
-            echo "PR not yet merged. SHA: ${sha}, Branch: ${branch}"
-          fi
-        else
-          sha="$GITHUB_SHA"
-          branch="$REF_NAME"
-          echo "$EVENT_NAME event. SHA: ${sha}, Branch: ${branch}"
-        fi
-
-        echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-        echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-
     - name: Build urunc binaries
       id: build-urunc-binaries
       run: |

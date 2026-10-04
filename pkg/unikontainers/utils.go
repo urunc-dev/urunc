@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -116,11 +117,9 @@ func copyFile(sourceFile string, targetPath string) error {
 	return nil
 }
 
-// move sourceFile to targetDir
-// creates targetDir and all necessary parent directories
-func moveFile(sourceFile string, targetDir string) error {
-	_, filename := filepath.Split(sourceFile)
-	targetPath := filepath.Join(targetDir, filename)
+// moveFile moves sourceFile to targetPath creating any missing parent
+// directories, and removes the source afterwards.
+func moveFile(sourceFile string, targetPath string) error {
 	err := copyFile(sourceFile, targetPath)
 	if err != nil {
 		return err
@@ -343,17 +342,6 @@ func findQemuDataDir(basename string) (string, error) {
 	return qdPath, nil
 }
 
-func rmMultipleDirs(prefixPath string, dirs []string) error {
-	for _, d := range dirs {
-		path := filepath.Join(prefixPath, d)
-		if err := os.RemoveAll(path); err != nil {
-			return fmt.Errorf("cannot remove %s: %w", d, err)
-		}
-	}
-
-	return nil
-}
-
 func executeHook(hook specs.Hook, state []byte) error {
 	var stdout, stderr bytes.Buffer
 	var cancel context.CancelFunc
@@ -387,4 +375,37 @@ func executeHook(hook specs.Hook, state []byte) error {
 	}
 
 	return nil
+}
+
+func getDNSServer(mounts []specs.Mount) string {
+	resolvConf := ""
+	for _, mount := range mounts {
+		if filepath.Clean(mount.Destination) == "/etc/resolv.conf" {
+			resolvConf = mount.Source
+			break
+		}
+	}
+	if resolvConf == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(resolvConf)
+	if err != nil {
+		uniklog.Warnf("Failed to read %s: %v", resolvConf, err)
+		return ""
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "nameserver" {
+			continue
+		}
+		addr := net.ParseIP(fields[1])
+		if addr != nil && addr.To4() != nil && !addr.IsLoopback() {
+			return addr.String()
+		}
+	}
+
+	uniklog.Warnf("no usable IPv4 nameserver found in %s; the guest will use the default DNS server", resolvConf)
+	return ""
 }

@@ -22,20 +22,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
-var ErrEmptyAnnotations = errors.New("spec annotations are empty")
-
-// Important: Unfortunately GOlang does not allow to use constant values for
-// struct tagsAs a result, please always keep the constant definitions and the
+// Important: Unfortunately Golang does not allow to use constant values for
+// struct tags. As a result, please always keep the constant definitions and the
 // UnikernelConfig struct below in sync.
 
 // Urunc specific annotations
-// ALways keep it in sync with the struct UnikernelConfig struct
+// Always keep it in sync with the struct UnikernelConfig struct
 const (
+	annotUruncPrefix   = "com.urunc.unikernel."
 	annotType          = "com.urunc.unikernel.unikernelType"
 	annotVersion       = "com.urunc.unikernel.unikernelVersion"
 	annotBinary        = "com.urunc.unikernel.binary"
@@ -46,7 +51,45 @@ const (
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
 	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
 	annotBlkDev        = "com.urunc.unikernel.solo5BlkDev"
+	annotVAccel        = "com.urunc.unikernel.vAccel"
+	annotRPCAddress    = "com.urunc.unikernel.RPCAddress"
 )
+
+// Annotations that other runtimes set and urunc only reads.
+const (
+	annotCRICntrName  = "io.kubernetes.cri.container-name"
+	criQueueProxyCntr = "queue-proxy"
+	criUserCntr       = "user-container"
+)
+
+// allowedPathRe constrains the characters of the filepaths that we receive
+// through the annotations, since these paths end up in the command line of the
+// monitor. Instead of listing every rune that is unsafe, we accept only the ones
+// that a filepath inside an image is expected to have.
+var allowedPathRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+
+type guestMonitorPair struct {
+	monitor hypervisors.VmmType
+	guest   string
+}
+
+var supportedGuestMonitorPairs = map[guestMonitorPair]bool{
+	{hypervisors.HvtVmm, unikernels.RumprunUnikernel}:           true,
+	{hypervisors.HvtVmm, unikernels.MirageUnikernel}:            true,
+	{hypervisors.SptVmm, unikernels.RumprunUnikernel}:           true,
+	{hypervisors.SptVmm, unikernels.MirageUnikernel}:            true,
+	{hypervisors.QemuVmm, unikernels.MewzUnikernel}:             true,
+	{hypervisors.QemuVmm, unikernels.MirageUnikernel}:           true,
+	{hypervisors.QemuVmm, unikernels.UnikraftUnikernel}:         true,
+	{hypervisors.QemuVmm, unikernels.LinuxUnikernel}:            true,
+	{hypervisors.QemuVmm, unikernels.HermitUnikernel}:           true,
+	{hypervisors.QemuVmm, unikernels.FreeBSDUnikernel}:          true,
+	{hypervisors.FirecrackerVmm, unikernels.LinuxUnikernel}:     true,
+	{hypervisors.FirecrackerVmm, unikernels.UnikraftUnikernel}:  true,
+	{hypervisors.FirecrackerVmm, unikernels.FreeBSDUnikernel}:   true,
+	{hypervisors.CloudHypervisorVmm, unikernels.LinuxUnikernel}: true,
+	{hypervisors.HyperlightVmm, unikernels.UnikraftUnikernel}:   true,
+}
 
 // A UnikernelConfig struct holds the info provided by bima image on how to execute our unikernel
 type UnikernelConfig struct {
@@ -60,7 +103,18 @@ type UnikernelConfig struct {
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
 	BlkDev           string `json:"com.urunc.unikernel.solo5BlkDev,omitempty"`
+	// The vAccel annotations are deliberately not part of urunc.json, since their
+	// values are runtime specific and therefore we should only reach them
+	// through the annotations of the spec.
+	VAccel     string `json:"-"`
+	RPCAddress string `json:"-"`
 }
+
+// solo5DevNameRe constrains the valid values of a network or block device
+// identifier for Solo5 guests when received from the annotations.
+var solo5DevNameRe = regexp.MustCompile(`^[A-Za-z0-9]{1,67}$`)
+
+var ErrNotUnikernel = errors.New("this is not a unikernel container")
 
 // validate checks if the mandatory configuration fields are present.
 func (c *UnikernelConfig) validate() error {
@@ -80,7 +134,8 @@ func (c *UnikernelConfig) validate() error {
 // If that fails, it gets the Unikernel config from the urunc.json file inside the rootfs.
 func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, error) {
 	conf := getConfigFromSpec(spec)
-	if err := conf.validate(); err == nil {
+	err := conf.validate()
+	if err == nil {
 		// TODO: in case of urunc executed without shim, the annotations would remain encoded
 		return conf, nil
 	}
@@ -88,25 +143,36 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 	// Failed to fetch urunc annotations from spec, fallback to urunc.json
 	uniklog.Info("failed to fetch urunc annotations from spec, fallback to urunc.json")
 	rootFSDir := spec.Root.Path
-	var jsonFilePath string
-	if filepath.IsAbs(rootFSDir) {
-		jsonFilePath = filepath.Join(rootFSDir, uruncJSONFilename)
-	} else {
-		jsonFilePath = filepath.Join(bundleDir, rootFSDir, uruncJSONFilename)
+	if !filepath.IsAbs(rootFSDir) {
+		rootFSDir = filepath.Join(bundleDir, rootFSDir)
+	}
+	jsonFilePath, err := securejoin.SecureJoin(rootFSDir, uruncJSONFilename)
+	if err != nil {
+		return nil, err
 	}
 
 	jsonConf, err := getConfigFromJSON(jsonFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("config not found in spec annotations or in %s: %w", uruncJSONFilename, err)
+		return nil, ErrNotUnikernel
 	}
 
-	if err := jsonConf.validate(); err != nil {
-		return nil, fmt.Errorf("invalid unikernel config from %s: %w", uruncJSONFilename, err)
+	err = jsonConf.validate()
+	if err != nil {
+		return nil, ErrNotUnikernel
 	}
 
-	if err := jsonConf.decode(); err != nil {
-		return nil, err
+	err = jsonConf.decode()
+	if err != nil {
+		return nil, ErrNotUnikernel
 	}
+
+	// The vAccel annotations are runtime specific and deliberately never
+	// stored in urunc.json. In any case, if they have been set at runtime
+	// then they must be read from the spec annotations, so that images
+	// configured through urunc.json can still use vAccel
+	jsonConf.VAccel = spec.Annotations[annotVAccel]
+	jsonConf.RPCAddress = spec.Annotations[annotRPCAddress]
+
 	return jsonConf, nil
 }
 
@@ -122,6 +188,8 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	netDev := spec.Annotations[annotNetDev]
 	blkDev := spec.Annotations[annotBlkDev]
+	vAccel := spec.Annotations[annotVAccel]
+	rpcAddress := spec.Annotations[annotRPCAddress]
 	uniklog.WithFields(logrus.Fields{
 		"unikernelType":    unikernelType,
 		"unikernelVersion": unikernelVersion,
@@ -133,6 +201,8 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"mountRootfs":      MountRootfs,
 		"netDev":           netDev,
 		"blkDev":           blkDev,
+		"vAccel":           vAccel,
+		"rpcAddress":       rpcAddress,
 	}).WithField("source", "spec").Debug("urunc annotations")
 
 	return &UnikernelConfig{
@@ -146,6 +216,8 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		MountRootfs:      MountRootfs,
 		NetDev:           netDev,
 		BlkDev:           blkDev,
+		VAccel:           vAccel,
+		RPCAddress:       rpcAddress,
 	}
 }
 
@@ -297,6 +369,151 @@ func (c *UnikernelConfig) Map() map[string]string {
 	if c.BlkDev != "" {
 		myMap[annotBlkDev] = c.BlkDev
 	}
+	if c.VAccel != "" {
+		myMap[annotVAccel] = c.VAccel
+	}
+	if c.RPCAddress != "" {
+		myMap[annotRPCAddress] = c.RPCAddress
+	}
 
 	return myMap
+}
+
+// maxAnnotationValueLen bounds the length of the unbounded annotation values.
+// Choosing 4096 since it limits paths and version values.
+const maxAnnotationValueLen = 4096
+
+// validateValues checks that the value of every urunc annotation has the
+// expected format. It complements validate(), which only checks that the
+// mandatory annotations are present.
+func (c *UnikernelConfig) validateValues() error {
+	monitor := hypervisors.VmmType(c.Hypervisor)
+	if !supportedGuestMonitorPairs[guestMonitorPair{monitor, c.UnikernelType}] {
+		return fmt.Errorf("unsupported guest monitor pair %s %s", c.Hypervisor, c.UnikernelType)
+	}
+
+	if len(c.UnikernelVersion) > maxAnnotationValueLen {
+		return fmt.Errorf("%s value is longer than %d bytes", annotVersion, maxAnnotationValueLen)
+	}
+
+	err := validateAnnotationPathClean(annotBinary, c.UnikernelBinary, true)
+	if err != nil {
+		return err
+	}
+
+	err = validateAnnotationPathClean(annotInitrd, c.Initrd, true)
+	if err != nil {
+		return err
+	}
+
+	err = validateAnnotationPathClean(annotBlock, c.Block, true)
+	if err != nil {
+		return err
+	}
+
+	err = validateAnnotationPathClean(annotBlockMntPoint, c.BlkMntPoint, false)
+	if err != nil {
+		return err
+	}
+
+	if c.MountRootfs != "" {
+		_, err = strconv.ParseBool(c.MountRootfs)
+		if err != nil {
+			return fmt.Errorf("invalid value %q for %s: expected a boolean: %w", c.MountRootfs, annotMountRootfs, err)
+		}
+	}
+
+	err = validateSolo5DevName(annotNetDev, c.NetDev)
+	if err != nil {
+		return err
+	}
+
+	err = validateSolo5DevName(annotBlkDev, c.BlkDev)
+	if err != nil {
+		return err
+	}
+
+	if c.VAccel == "" {
+		if c.RPCAddress != "" {
+			return fmt.Errorf("%s is set, but %s is not", annotRPCAddress, annotVAccel)
+		}
+
+		return nil
+	}
+
+	if c.VAccel != "vsock" {
+		return fmt.Errorf("invalid value %q for %s: expected \"vsock\"", c.VAccel, annotVAccel)
+	}
+
+	if c.RPCAddress == "" {
+		return fmt.Errorf("vAccel is set but %s is missing", annotRPCAddress)
+	}
+
+	if len(c.RPCAddress) > maxAnnotationValueLen {
+		return fmt.Errorf("%s value is longer than %d bytes", annotRPCAddress, maxAnnotationValueLen)
+	}
+
+	regex, exists := vAccelAddressRe[c.Hypervisor]
+	if !exists {
+		return fmt.Errorf("%s does not support vAccel", c.Hypervisor)
+	}
+
+	if !regex.MatchString(c.RPCAddress) {
+		return fmt.Errorf("invalid value %q for %s: it does not match the expected format for %s", c.RPCAddress, annotRPCAddress, c.Hypervisor)
+	}
+
+	return nil
+}
+
+// validateSolo5DevName verifies that val is a valid Solo5 network or block
+// device identifier. An empty value is accepted, since the device is optional.
+func validateSolo5DevName(key string, val string) error {
+	if val == "" {
+		return nil
+	}
+
+	if !solo5DevNameRe.MatchString(val) {
+		return fmt.Errorf("%s must match %s, got %q", key, solo5DevNameRe.String(), val)
+	}
+
+	return nil
+}
+
+// validateAnnotationPathClean verifies that val looks like a filepath with
+// simple plain characters and is also clean.
+func validateAnnotationPathClean(key string, val string, rejectRoot bool) error {
+	if val == "" {
+		return nil
+	}
+
+	if len(val) > maxAnnotationValueLen {
+		return fmt.Errorf("%s value is longer than %d bytes", key, maxAnnotationValueLen)
+	}
+
+	if !allowedPathRe.MatchString(val) {
+		return fmt.Errorf("%s must match %s, got %q", key, allowedPathRe.String(), val)
+	}
+
+	if strings.HasPrefix(val, "..") {
+		return fmt.Errorf("%s must not start with '..', got %q", key, val)
+	}
+
+	if strings.HasPrefix(val, "-") {
+		return fmt.Errorf("%s must not start with '-', got %q", key, val)
+	}
+
+	cleaned := filepath.Clean(val)
+	if cleaned != val {
+		return fmt.Errorf("%s must be a clean path, got %q", key, val)
+	}
+
+	if cleaned == "." {
+		return fmt.Errorf("%s must not be '.', got %q", key, val)
+	}
+
+	if cleaned == "/" && rejectRoot {
+		return fmt.Errorf("%s must not be '/', got %q", key, val)
+	}
+
+	return nil
 }

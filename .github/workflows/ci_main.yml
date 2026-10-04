@@ -1,13 +1,8 @@
-name: Build & Upload
+name: Build and push binaries for rolling release
 
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -19,18 +14,26 @@ permissions:
 jobs:
   build:
     name: Build
+    # A newer push supersedes an in-flight build of the same ref.
+    concurrency:
+      group: ${{ github.workflow }}-build-${{ github.ref }}
+      cancel-in-progress: true
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ github.sha }}
       go_version: "1.26.4"
 
-  upload:
-    name: Upload
+  release:
+    name: Rolling release
     needs: build
-    uses: ./.github/workflows/upload_s3.yml
+    # Publishing is not atomic (tag move + asset delete/re-upload), so never
+    # cancel a publish in progress; queue the next one behind it instead.
+    concurrency:
+      group: ${{ github.workflow }}-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    uses: ./.github/workflows/rolling_release.yml
     with:
       ref: ${{ github.sha }}
-    secrets:
-      AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
+      tag: nightly

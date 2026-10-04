@@ -24,6 +24,7 @@ type Unikernel interface {
 	SupportsFS(string) bool
 	MonitorNetCli(string, string) []string
 	MonitorBlockCli() []MonitorBlockArgs
+	MonitorSharedfsCli(string, string) []string
 	MonitorCli() MonitorCliArgs
 }
 
@@ -41,16 +42,18 @@ type VMM interface {
 	Path() string
 	UsesKVM() bool
 	SupportsSharedfs(string) bool
+	SupportsControlSocket() bool
 	Ok() error
 }
 
 type NetDevParams struct {
-	IP      string // The veth device IP
-	Mask    string // The veth device mask
-	Gateway string // The veth device gateway
-	MAC     string // The MAC address of the guest network device
-	TapDev  string // The tap device name
-	MTU     int    // The MTU value of the tap device
+	IP        string // The veth device IP
+	Mask      string // The veth device mask
+	Gateway   string // The veth device gateway
+	MAC       string // The MAC address of the guest network device
+	TapDev    string // The tap device name
+	MTU       int    // The MTU value of the tap device
+	DNSServer string // The nameserver of the container, empty if there is none
 }
 
 type BlockDevParams struct {
@@ -61,6 +64,9 @@ type BlockDevParams struct {
 	HostMountPoint string
 	LoopAutoclear  bool
 	MountOptions   string
+	// IsExplicit marks a Source that is a path inside the container's image
+	// rootfs (an explicit block image)
+	IsExplicit bool
 }
 
 type SharedfsParams struct {
@@ -109,8 +115,9 @@ type ExecArgs struct {
 	UnikernelPath string   // The path of the unikernel inside rootfs
 	InitrdPath    string   // The path to the initrd of the unikernel
 	VAccelType    string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
-	VSockDevPath  string   // The host directory where the fc unix socket is created
+	VSockDevPath  string   // The directory inside the monitor rootfs with the vAccel unix sockets
 	VSockDevID    int      // The guest-cid
+	SocketPath    string   // The path of the monitor's control socket (empty means no control socket)
 	Net           NetDevParams
 	Sharedfs      SharedfsParams
 }
@@ -138,7 +145,8 @@ type ExtraBinConfig struct {
 type MonitorConfig struct {
 	DefaultMemoryMB uint   `toml:"default_memory_mb"`
 	DefaultVCPUs    uint   `toml:"default_vcpus"`
-	BinaryPath      string `toml:"path,omitempty"`      // Optional path to the hypervisor binary
-	DataPath        string `toml:"data_path,omitempty"` // Optional path to the hypervisor data files (e.g. qemu bios stuff)
-	Vhost           bool   `toml:"vhost,omitempty"`     // Optional: enable vhost for network performance optimization
+	BinaryPath      string `toml:"path,omitempty"`        // Optional path to the hypervisor binary
+	DataPath        string `toml:"data_path,omitempty"`   // Optional path to the hypervisor data files (e.g. qemu bios stuff)
+	Vhost           bool   `toml:"vhost,omitempty"`       // Optional: enable vhost for network performance optimization
+	SocketPath      string `toml:"socket_path,omitempty"` // Optional path for the monitor's control socket (unset means no control socket)
 }

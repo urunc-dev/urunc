@@ -3,6 +3,16 @@ In this tutorial, we describe how to run vAccel-enabled Linux containers
 with `urunc` using **QEMU** or **Firecracker** as the underlying
 hypervisor.
 
+## **Enabling vAccel in `urunc`**
+vAccel is disabled by default. To let containers use it through their
+annotations, enable it in the `urunc` [configuration file](../configuration.md)
+(`/etc/urunc/config.toml`):
+```toml
+[runtime]
+vAccel = true
+```
+Without it, `urunc` refuses to create a container that carries the vAccel annotations.
+
 ## **QEMU**
 When running under QEMU, communication between the guest and the host agent is established 
 using vsock. The RPC agent listens on a vsock address on the host, and the guest connects to 
@@ -97,7 +107,7 @@ classification imagename: This is a dummy imgname!
 ## **Firecracker**
 For Firecracker, the guest still uses vsock, but the host-side agent listens on a unix 
 socket instead. urunc automatically translates the unix socket address into a vsock 
-address and bind-mounts the socket path into the guest.
+address and makes the agent's socket visible to the Firecracker process.
 
 ### Host side
 Start the RPC agent using a unix socket:
@@ -108,7 +118,8 @@ sudo mkdir /vaccel  # if does not exist
 sudo chown <user> /vaccel
 vaccel-rpc-agent -a unix:///vaccel/vaccel.sock_2049
 ```
-The socket directory must be accessible so it can be bind-mounted into the guest.
+The agent must be listening in the socket before the container is created so
+the socket can get bind mounted inside the monitor's execution environment.
 
 ### Guest side
 Run the container using `nerdctl` and the `devmapper` snapshotter:

@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"fmt"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/initrd"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -27,10 +28,10 @@ import (
 const tmpfsSizeForInitrdRootfs = "65536k"
 
 type initrdRootfs struct {
-	mounts             []specs.Mount
-	monRootfs          string
-	initrdHostFullPath string
-	guestType          string
+	mounts      []specs.Mount
+	mountedPath string
+	initrdPath  string
+	guestType   string
 }
 
 func (i initrdRootfs) preSetup() error {
@@ -38,11 +39,15 @@ func (i initrdRootfs) preSetup() error {
 }
 
 func (i initrdRootfs) postSetup() error {
-	var err error
+	initrdHostFullPath, err := securejoin.SecureJoin(i.mountedPath, i.initrdPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve guest's initrd path: %w", err)
+	}
+
 	if i.guestType == unikernels.UnikraftUnikernel {
-		err = initrd.MergeFileMountsIntoInitrd(i.initrdHostFullPath, i.mounts)
+		err = initrd.MergeFileMountsIntoInitrd(initrdHostFullPath, i.mounts)
 	} else {
-		err = initrd.CopyFileMountsToInitrd(i.initrdHostFullPath, i.mounts)
+		err = initrd.CopyFileMountsToInitrd(initrdHostFullPath, i.mounts)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update guest's initrd: %w", err)
@@ -52,7 +57,10 @@ func (i initrdRootfs) postSetup() error {
 }
 
 func (i initrdRootfs) getMounts() ([]specs.Mount, error) {
-	return []specs.Mount{tmpfsMount("/tmp", tmpfsSizeForInitrdRootfs)}, nil
+	return []specs.Mount{
+		bindMount(i.mountedPath, containerRootfsMountPath, true, false, "nodev", "nosuid", "noexec"),
+		tmpfsMount("/tmp", tmpfsSizeForInitrdRootfs),
+	}, nil
 }
 
 func (i initrdRootfs) getBlockDevs() ([]types.BlockDevParams, error) {

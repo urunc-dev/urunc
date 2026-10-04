@@ -54,11 +54,15 @@ type UruncRuntime struct {
 	// Libcontainer selects whether the monitor's execution environment
 	// is set up through runc's libcontainer instead of urunc's own implementation.
 	Libcontainer bool `toml:"libcontainer"`
+	// VAccel is required to accept vAccel related annotations.
+	VAccel bool `toml:"vAccel"`
 }
 
-// libcontainerKey is the state.json annotation with the runtime setting
-// for libcontainer.
-const libcontainerKey = "urunc_config.runtime.libcontainer"
+// state.json annotation keys with the runtime settings.
+const (
+	libcontainerKey = "urunc_config.runtime.libcontainer"
+	vaccelKey       = "urunc_config.runtime.vAccel"
+)
 
 type UruncConfig struct {
 	Log        UruncLog                        `toml:"log"`
@@ -69,19 +73,25 @@ type UruncConfig struct {
 }
 
 // runtimeFromMap rebuilds the runtime options from the state.json annotations.
-// A missing or malformed value falls back to the default (libcontainer off).
+// A missing or malformed value falls back to the default (off).
 func runtimeFromMap(cfgMap map[string]string) UruncRuntime {
 	rt := defaultRuntimeConfig()
-	val, ok := cfgMap[libcontainerKey]
-	if !ok {
-		return rt
+	if val, ok := cfgMap[libcontainerKey]; ok {
+		choice, err := strconv.ParseBool(val)
+		if err != nil {
+			uniklog.Warnf("Invalid libcontainer value %q. Using default (false).", val)
+		} else {
+			rt.Libcontainer = choice
+		}
 	}
-	choice, err := strconv.ParseBool(val)
-	if err != nil {
-		uniklog.Warnf("Invalid libcontainer value %q. Using default (false).", val)
-		return rt
+	if val, ok := cfgMap[vaccelKey]; ok {
+		choice, err := strconv.ParseBool(val)
+		if err != nil {
+			uniklog.Warnf("Invalid vAccel value %q. Using default (false).", val)
+		} else {
+			rt.VAccel = choice
+		}
 	}
-	rt.Libcontainer = choice
 	return rt
 }
 
@@ -125,6 +135,7 @@ func defaultTimestampsConfig() UruncTimestamps {
 func defaultRuntimeConfig() UruncRuntime {
 	return UruncRuntime{
 		Libcontainer: false,
+		VAccel:       false,
 	}
 }
 
@@ -135,11 +146,12 @@ const (
 
 func defaultMonitorsConfig() map[string]types.MonitorConfig {
 	return map[string]types.MonitorConfig{
-		"qemu":             {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"hvt":              {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"spt":              {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"firecracker":      {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
-		"cloud-hypervisor": {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"qemu":                {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"hvt":                 {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"spt":                 {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"firecracker":         {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"cloud-hypervisor":    {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"hyperlight-unikraft": {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 	}
 }
 
@@ -201,6 +213,7 @@ func (p *UruncConfig) Map() map[string]string {
 	cfgMap := make(map[string]string)
 
 	cfgMap[libcontainerKey] = strconv.FormatBool(p.Runtime.Libcontainer)
+	cfgMap[vaccelKey] = strconv.FormatBool(p.Runtime.VAccel)
 	for hv, hvCfg := range p.Monitors {
 		prefix := "urunc_config.monitors." + hv + "."
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
@@ -208,6 +221,7 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
 		cfgMap[prefix+"data_path"] = hvCfg.DataPath
 		cfgMap[prefix+"vhost"] = strconv.FormatBool(hvCfg.Vhost)
+		cfgMap[prefix+"socket_path"] = hvCfg.SocketPath
 	}
 	for eb, ebCfg := range p.ExtraBins {
 		prefix := "urunc_config.extra_binaries." + eb + "."
@@ -255,6 +269,8 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			hvCfg.BinaryPath = val
 		case "data_path":
 			hvCfg.DataPath = val
+		case "socket_path":
+			hvCfg.SocketPath = val
 		case "vhost":
 			boolVal, err := strconv.ParseBool(val)
 			if err != nil {

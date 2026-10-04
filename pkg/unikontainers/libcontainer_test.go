@@ -40,7 +40,8 @@ func newTestUnikontainer(t *testing.T, spec *specs.Spec, monRes monitorResources
 	baseDir := t.TempDir()
 	monRootfs := t.TempDir()
 
-	rootfsParams := newRootfsResult("initrd", "initrd.cpio", "", monRootfs)
+	rootfsParams := newRootfsResult("initrd", "initrd.cpio", "")
+	rootfsParams.MonRootfs = monRootfs
 	monRes.Rootfs = rootfsParams
 
 	err := saveMonitorResources(baseDir, monRes)
@@ -138,7 +139,7 @@ func TestBuildContainerConfig(t *testing.T) {
 		monRes := monitorResources{
 			Mounts: []specs.Mount{
 				tmpfsMount("/tmp", "65536k"),
-				bindMount("/usr/bin/qemu-system-x86_64", "/usr/bin/qemu-system-x86_64", true),
+				bindMount("/usr/bin/qemu-system-x86_64", "/usr/bin/qemu-system-x86_64", true, true),
 			},
 			Devices: []specs.LinuxDevice{
 				{Path: "/dev/kvm", Type: "c", Major: 10, Minor: 232},

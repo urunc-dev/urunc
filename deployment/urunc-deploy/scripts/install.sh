@@ -32,6 +32,9 @@ urunc_libexec_dir="${urunc_install_dir}/libexec"
 urunc_config_dir="/etc/urunc"
 urunc_config_file="${urunc_config_dir}/config.toml"
 
+# Configurable keys discovered from config.toml
+urunc_config_keys=""
+
 HYPERVISORS="${HYPERVISORS:-"firecracker cloud-hypervisor qemu solo5-hvt solo5-spt"}"
 IFS=' ' read -a hypervisors <<< "$HYPERVISORS"
 
@@ -97,10 +100,156 @@ function install_artifacts() {
     done
 }
 
+# Largest value accepted for integer configuration fields. TOML integers are
+# signed 64-bit, and urunc discards the whole config.toml (falling back to its
+# defaults) if any value fails to decode. The values are also read back from
+# the container state with strconv.Atoi, which has the same limit.
+URUNC_INT_MAX="9223372036854775807"
+
+# Validate a single override value against its type. On failure it prints an
+# ERROR describing the problem and returns non-zero; str values are unconstrained.
+function validate_config_value() {
+    local name="$1"
+    local type="$2"
+    local value="$3"
+    case "${type}" in
+        int)
+	    # Positive, no zeros. Compared to URUNC_INT_MAX as strings, length
+	    # first, to avoid shell overflow.
+            if ! [[ "${value}" =~ ^[1-9][0-9]*$ ]] \
+                || [ "${#value}" -gt "${#URUNC_INT_MAX}" ] \
+                || { [ "${#value}" -eq "${#URUNC_INT_MAX}" ] && [[ "${value}" > "${URUNC_INT_MAX}" ]]; }; then
+                echo "ERROR: invalid integer value for ${name} (expected 1-${URUNC_INT_MAX}): '${value}'" >&2
+                return 1
+            fi
+            ;;
+        bool)
+            if [ "${value}" != "true" ] && [ "${value}" != "false" ]; then
+                echo "ERROR: invalid boolean value for ${name} (expected 'true' or 'false'): '${value}'" >&2
+                return 1
+            fi
+            ;;
+    esac
+    return 0
+}
+
+# Discover the configurable keys directly from the config file given as $1: every
+# scalar leaf is an overridable variable. Emits one "ENV_VAR|jq path|type" line
+# per leaf, so the env-var-to-config-key mapping is derived from config.toml
+# rather than maintained by hand. The environment variable name is the upper-cased
+# key path with '.' and '-' replaced by '_' and prefixed with URUNC_; the type is
+# inferred from the value (number -> int, boolean -> bool, string -> str).
+function urunc_config_specs() {
+    local source_config="$1"
+    # The $-variables below are jq variables, not shell variables, so the filter
+    # is intentionally single-quoted.
+    tomlq -r '
+        paths(type == "string" or type == "number" or type == "boolean") as $p
+        | ($p | map(ascii_upcase | gsub("-"; "_")) | join("_")) as $env
+        | ($p | map("[\"" + . + "\"]") | join("")) as $path
+        | ({"number": "int", "boolean": "bool", "string": "str"}[getpath($p) | type]) as $type
+        | "URUNC_\($env)|.\($path)|\($type)"
+    ' "${source_config}"
+}
+
+# Validate the URUNC_* configuration override variables If any override is
+# invalid the installation is aborted, so it fails cleanly without leaving
+# residual urunc binaries or configuration behind. All problems are reported
+# together. The set of valid monitors is read from the config file shipped in
+# the image so it stays in sync with the defaults.
+function validate_urunc_config_env() {
+    local source_config="$1"
+    local errors=0
+
+    # Build a map from recognized variable name -> type from the discovered
+    # config specs. Its keys double as the set of recognized variable names.
+    local -A types=()
+    local name path type
+    urunc_config_keys="$(urunc_config_specs "${source_config}")" \
+        || die "failed to discover urunc configuration keys from ${source_config}"
+    while IFS='|' read -r name path type; do
+        types["${name}"]="${type}"
+    done <<< "${urunc_config_keys}"
+
+    # Flag any URUNC_* variable that is set, even if empty, but not recognized
+    # (e.g. a typo in a monitor name), which would otherwise be silently ignored.
+    while IFS= read -r name; do
+        [ -z "${name}" ] && continue
+        if [ -z "${types[$name]:-}" ]; then
+            echo "ERROR: unknown urunc configuration variable: ${name}" >&2
+            errors=$((errors + 1))
+        fi
+    done < <(compgen -e | grep '^URUNC_' || true)
+
+    # Validate each recognized variable that is set against its declared type.
+    local val
+    for name in "${!types[@]}"; do
+        val="${!name:-}"
+        [ -z "${val}" ] && continue
+        validate_config_value "${name}" "${types[$name]}" "${val}" || errors=$((errors + 1))
+    done
+
+    if [ "${errors}" -ne 0 ]; then
+        die "${errors} invalid urunc configuration override(s); aborting before any changes are made to the host"
+    fi
+}
+
+# Override values in the urunc configuration file from URUNC_* environment
+# variables. Each variable maps to a key in config.toml: its name is the
+# upper-cased TOML path with '.' and '-' replaced by '_', prefixed with URUNC_
+# (e.g. monitors.cloud-hypervisor.default_memory_mb ->
+# URUNC_MONITORS_CLOUD_HYPERVISOR_DEFAULT_MEMORY_MB). Unset or empty variables
+# leave the value shipped in config.toml untouched. Values are expected to have
+# already been validated.
+function override_urunc_config_from_env() {
+    local file="$1"
+
+    # Build a single jq program that sets every overridden key.
+    local filter="" name path type val expr
+    [ -n "${urunc_config_keys}" ] \
+        || die "urunc configuration keys not discovered; run validate_urunc_config_env first"
+    while IFS='|' read -r name path type; do
+        val="${!name:-}"
+        [ -z "${val}" ] && continue
+        case "${type}" in
+            int|bool) expr="(\$ENV[\"${name}\"] | fromjson)" ;;
+            *)        expr="\$ENV[\"${name}\"]" ;;
+        esac
+        if [ -n "${filter}" ]; then
+            filter="${filter} | ${path} = ${expr}"
+        else
+            filter="${path} = ${expr}"
+        fi
+    done <<< "${urunc_config_keys}"
+
+    # With no overrides, leave the shipped config.toml untouched (pristine).
+    if [ -z "${filter}" ]; then
+        echo "No urunc configuration overrides set; keeping the shipped defaults"
+        return 0
+    fi
+
+    echo "Applying urunc configuration overrides from environment variables"
+
+    # tomlq rewrites the whole file and drops comments, so capture the leading
+    # comment block first and restore it afterward.
+    local header
+    header="$(awk '/^#/{print; next} {exit}' "${file}")"
+
+    tomlq -i -t "${filter}" "${file}"
+
+    if [ -n "${header}" ]; then
+        local tmp="${file}.tmp"
+        { printf '%s\n\n' "${header}"; cat "${file}"; } > "${tmp}" && mv "${tmp}" "${file}"
+    fi
+
+    return 0
+}
+
 function install_urunc_config() {
     echo "Installing urunc configuration file"
     mkdir -p /host${urunc_config_dir}
     sed "s|qemu-system-x86_64|qemu-system-$(uname -m)|" /deployment/config.toml > /host${urunc_config_file}
+    override_urunc_config_from_env "/host${urunc_config_file}"
     echo "urunc configuration file installed at ${urunc_config_file}"
 }
 
@@ -163,7 +312,7 @@ function is_containerd_capable_of_using_drop_in_files() {
         return
     fi
 
-    local version_major=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}' | grep -oE '[0-9]+\.[0-9]+' | cut -d'.' -f1)
+    local version_major=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}' | sed -n 's|.*containerd://\([0-9][0-9]*\).*|\1|p')
     if [ $version_major -lt 2 ]; then
         # Only containerd 2.0 does the merge of the plugins section from different snippets,
         # instead of overwriting the whole section, which makes things considerably more
@@ -184,7 +333,8 @@ function wait_till_node_is_ready() {
 
     while ! [[ "${ready}" == "True" ]]; do
         sleep 2s
-        ready=$(kubectl get node $NODE_NAME -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+        # Tolerate transient API server errors while the runtime restarts
+        ready=$(kubectl get node $NODE_NAME -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}') || true
     done
 }
 
@@ -312,6 +462,15 @@ function reset_runtime() {
     fi
 
     wait_till_node_is_ready
+
+    # Remove the label only as the very last step. The cleanup DaemonSet
+    # selects nodes by this label, so removing it makes the DaemonSet
+    # controller delete this very Pod. Retry on transient API errors rather
+    # than exiting, which would restart the runtime again.
+    until kubectl label node "$NODE_NAME" urunc.io/urunc-runtime-; do
+        sleep 2s
+    done
+    echo "urunc-deploy uninstalled successfully"
 }
 
 function main() {
@@ -355,6 +514,10 @@ function main() {
 
     case "$action" in
         install)
+            # Validate configuration overrides before touching the host, so an
+            # invalid value fails the installation without leaving residual
+            # artifacts behind.
+            validate_urunc_config_env "/deployment/config.toml"
             if [[ "$runtime" =~ ^(k3s|k3s-agent|rke2-agent|rke2-server)$ ]]; then
                 if [ ! -f "$containerd_conf_tmpl_file" ] && [ -f "$containerd_conf_file" ]; then
                     cp "$containerd_conf_file" "$containerd_conf_tmpl_file"
@@ -391,9 +554,7 @@ function main() {
             remove_artifacts
             ;;
         reset)
-            kubectl label node "$NODE_NAME" urunc.io/urunc-runtime-
             reset_runtime $runtime
-            echo "urunc-deploy uninstalled successfully"
             ;;
         *)
             print_usage
