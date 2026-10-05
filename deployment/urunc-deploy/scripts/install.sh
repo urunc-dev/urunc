@@ -55,6 +55,9 @@ urunc_created_dirs_file="${urunc_install_dir}/created-dirs"
 # DEBUG, each with the level it replaced (empty if none), so that uninstall
 # restores the administrator's level instead of removing it
 urunc_debug_level_files="${urunc_install_dir}/containerd-debug-level-files"
+# The node's container runtime version (e.g. containerd://2.0.5-k3s1), as
+# install found it, so that cleanup works without access to the API server
+container_runtime_version_file="${urunc_install_dir}/container-runtime-version"
 
 # Configurable keys discovered from config.toml
 urunc_config_keys=""
@@ -789,8 +792,26 @@ function main() {
     if [[ $euid -ne 0 ]]; then
         die  "This script must be run as root"
     fi
-    container_runtime_version=$(kubectl get node $NODE_NAME -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}') \
-        || die "invalid node name"
+    # cleanup runs in the preStop hook, possibly after the RBAC rules are
+    # gone, so it falls back to the version install recorded. Its API calls
+    # are bounded, since an unreachable API server would otherwise use up the
+    # Pod's termination grace period before anything is cleaned up.
+    local request_timeout=()
+    if [ "$action" == "cleanup" ]; then
+        request_timeout=(--request-timeout=5s)
+    fi
+    if ! container_runtime_version=$(kubectl get node "$NODE_NAME" "${request_timeout[@]}" \
+            -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}'); then
+        container_runtime_version=""
+        if [ "$action" == "cleanup" ] && [ -f /host${container_runtime_version_file} ]; then
+            echo "WARNING: cannot get node $NODE_NAME from the API server;" \
+                "using the container runtime recorded at install"
+            container_runtime_version=$(cat /host${container_runtime_version_file})
+        fi
+    fi
+    if [ -z "$container_runtime_version" ]; then
+        die "cannot get the container runtime of node $NODE_NAME"
+    fi
     containerd_major_version=$(echo "$container_runtime_version" | sed -n 's|.*containerd://v\{0,1\}\([0-9][0-9]*\).*|\1|p')
     if [[ "$container_runtime_version" == containerd://* ]] && [ -z "$containerd_major_version" ]; then
         die "cannot parse the containerd version '${container_runtime_version}'"
@@ -906,6 +927,8 @@ function main() {
                     echo "version = ${schema_version}" | create_containerd_conf_file "$containerd_conf_file"
                 fi
             fi
+            mkdir -p /host${urunc_install_dir}
+            echo "$container_runtime_version" > /host${container_runtime_version_file}
             install_artifacts
             install_urunc_config
             configure_cri_runtime "$runtime"
@@ -921,9 +944,15 @@ function main() {
             fi
 
             cleanup_cri_runtime "$runtime" "${conf_files[@]}"
-            local urunc_deploy_installations=$(kubectl -n kube-system get ds | grep urunc-deploy | wc -l)
-            if [ $urunc_deploy_installations -eq 0 ]; then
-                kubectl label node "$NODE_NAME" --overwrite urunc.io/urunc-runtime=cleanup
+            # Labeling the node for the cleanup DaemonSet needs the API server,
+            # so a failure must not keep the artifacts on the node
+            local daemonsets
+            if ! daemonsets=$(kubectl -n kube-system get ds --request-timeout=5s) \
+                || { ! grep -q urunc-deploy <<< "$daemonsets" \
+                    && ! kubectl label node "$NODE_NAME" --overwrite --request-timeout=5s \
+                        urunc.io/urunc-runtime=cleanup; }; then
+                echo "WARNING: cannot label node $NODE_NAME for the cleanup DaemonSet;" \
+                    "restart ${runtime} on the node to unload urunc"
             fi
             remove_artifacts
             ;;
