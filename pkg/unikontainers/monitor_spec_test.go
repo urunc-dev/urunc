@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 // newSpecUnikontainer builds the minimum Unikontainer that writeMonitorSpec
@@ -106,17 +107,21 @@ func TestWriteMonitorSpec(t *testing.T) {
 	t.Run("filters the DNS server based on the advertise DNS annotation", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct {
-			name         string
-			advertiseDNS string
-			expectedDNS  string
+			name          string
+			unikernelType string
+			advertiseDNS  string
+			expectedDNS   string
 		}{
-			{name: "enabled", advertiseDNS: "true", expectedDNS: "1.1.1.1"},
-			{name: "disabled", advertiseDNS: "false", expectedDNS: ""},
-			{name: "absent", expectedDNS: ""},
+			{name: "Mirage enabled", unikernelType: unikernels.MirageUnikernel, advertiseDNS: "true", expectedDNS: "1.1.1.1"},
+			{name: "Mirage disabled", unikernelType: unikernels.MirageUnikernel, advertiseDNS: "false", expectedDNS: ""},
+			{name: "Mirage absent", unikernelType: unikernels.MirageUnikernel, expectedDNS: ""},
+			{name: "Mirage invalid", unikernelType: unikernels.MirageUnikernel, advertiseDNS: "invalid", expectedDNS: ""},
+			{name: "Unikraft absent", unikernelType: unikernels.UnikraftUnikernel, expectedDNS: "1.1.1.1"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				monRootfs := t.TempDir()
 				u, rootfsParams := newSpecUnikontainer(t, monRootfs)
+				u.State.Annotations[annotType] = tc.unikernelType
 				if tc.advertiseDNS != "" {
 					u.State.Annotations[annotAdvertiseDNS] = tc.advertiseDNS
 				}
