@@ -41,7 +41,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.9
+          version: v2.15
 
           # show only new issues if it's a pull request. The default value is `false`.
           only-new-issues: true

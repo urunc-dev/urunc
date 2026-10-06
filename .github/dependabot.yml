@@ -5,9 +5,6 @@ updates:
       - "/"
     schedule:
       interval: "weekly"
-    ignore:
-      - dependency-name: "github.com/opencontainers/runc"
-      - dependency-name: "github.com/containerd/containerd"
     groups:
       backend:
         patterns:
