@@ -23,8 +23,8 @@ import (
 )
 
 // BuildUrunitConfig is the body of (*Linux).buildUrunitConfig lifted out for
-// runners outside this package. The expected strings are what the method
-// rendered before the export, so both have to keep producing them.
+// runners outside this package, so both have to produce the same
+// NUL-terminated records.
 func TestBuildUrunitConfig(t *testing.T) {
 	t.Parallel()
 
@@ -43,12 +43,12 @@ func TestBuildUrunitConfig(t *testing.T) {
 		{
 			name:    "firecracker prefixes the block ids",
 			monitor: "firecracker",
-			want:    "UES\nPATH=/usr/bin\nFOO=bar\nUEE\nUCS\nUID:1000\nGID:100\nWD:/work\nUCE\nUBS\nID:FCvol0\nMP:/data\nUBE\n",
+			want:    "URUNIT1\x00UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:100\x00WD:/work\x00UCE\x00UBS\x00ID:FCvol0\x00MP:/data\x00UBE\x00",
 		},
 		{
 			name:    "other monitors keep the block ids",
 			monitor: "qemu",
-			want:    "UES\nPATH=/usr/bin\nFOO=bar\nUEE\nUCS\nUID:1000\nGID:100\nWD:/work\nUCE\nUBS\nID:vol0\nMP:/data\nUBE\n",
+			want:    "URUNIT1\x00UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:100\x00WD:/work\x00UCE\x00UBS\x00ID:vol0\x00MP:/data\x00UBE\x00",
 		},
 	}
 	for _, tc := range tests {
@@ -64,7 +64,7 @@ func TestBuildUrunitConfig(t *testing.T) {
 	t.Run("empty environment and no block mounts", func(t *testing.T) {
 		t.Parallel()
 
-		want := "UES\nUEE\nUCS\nUID:0\nGID:0\nWD:\nUCE\nUBS\nUBE\n"
+		want := "URUNIT1\x00UES\x00UEE\x00UCS\x00UID:0\x00GID:0\x00WD:\x00UCE\x00UBS\x00UBE\x00"
 		assert.Equal(t, want, BuildUrunitConfig(nil, types.ProcessConfig{}, nil, "firecracker"))
 		assert.Equal(t, want, (&Linux{Monitor: "firecracker"}).buildUrunitConfig())
 	})

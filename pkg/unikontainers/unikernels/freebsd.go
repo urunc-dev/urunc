@@ -27,7 +27,6 @@ const (
 	FreeBSDUnikernel string = "freebsd"
 	netStartMarker   string = "UNS" // Net configuration start marker
 	netEndMarker     string = "UNE" // Net configuration end marker
-	paddingMarker    string = "PAD" // Padding bytes
 	freebsdRootBlock string = "/dev/vtbd0"
 	// blockSectorSize is the granularity at which a raw file is exposed by
 	// the monitor as a virtio-blk device. Firecracker silently hides a trailing
@@ -267,76 +266,25 @@ func (f *FreeBSD) setupUrunitConfig() error {
 // (UNS/UNE, since FreeBSD has no ip= boot parameter). The result is padded to
 // a multiple of the sector size, as it is exposed as a raw block device.
 func (f *FreeBSD) buildUrunitConfig() string {
-	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
-	var sb strings.Builder
-	sb.WriteString(envStartMarker)
-	sb.WriteString("\n")
-	if len(f.Env) > 0 {
-		sb.WriteString(strings.Join(f.Env, "\n"))
-		sb.WriteString("\n")
+	c := newUrunitConfig()
+	c.envs(f.Env)
+	c.record(lpcStartMarker)
+	c.record("UID:", strconv.FormatUint(uint64(f.ProcConfig.UID), 10))
+	c.record("GID:", strconv.FormatUint(uint64(f.ProcConfig.GID), 10))
+	c.record("WD:", f.ProcConfig.WorkDir)
+	c.record("ARC:", strconv.Itoa(len(f.Command)))
+	for _, arg := range f.Command {
+		c.record("ARV:", arg)
 	}
-	sb.WriteString(envEndMarker)
-	sb.WriteString("\n")
-	sb.WriteString(lpcStartMarker)
-	sb.WriteString("\n")
-	sb.WriteString("UID:")
-	sb.WriteString(strconv.FormatUint(uint64(f.ProcConfig.UID), 10))
-	sb.WriteString("\n")
-	sb.WriteString("GID:")
-	sb.WriteString(strconv.FormatUint(uint64(f.ProcConfig.GID), 10))
-	sb.WriteString("\n")
-	sb.WriteString("WD:")
-	sb.WriteString(f.ProcConfig.WorkDir)
-	sb.WriteString("\n")
-	sb.WriteString("ARC:")
-	sb.WriteString(strconv.FormatUint(uint64(len(f.Command)), 10))
-	sb.WriteString("\n")
-	for _, c := range f.Command {
-		sb.WriteString("ARV:")
-		sb.WriteString(c)
-		sb.WriteString("\n")
-	}
-	sb.WriteString(lpcEndMarker)
-	sb.WriteString("\n")
-	sb.WriteString(blkStartMarker)
-	sb.WriteString("\n")
-	for _, b := range f.Block {
-		if b.ID == "rootfs" {
-			continue
-		}
-		sb.WriteString("ID:")
-		if f.Monitor == "firecracker" {
-			sb.WriteString("FC")
-		}
-		sb.WriteString(b.ID)
-		sb.WriteString("\n")
-		sb.WriteString("MP:")
-		sb.WriteString(b.MountPoint)
-		sb.WriteString("\n")
-	}
-	sb.WriteString(blkEndMarker)
-	sb.WriteString("\n")
-	sb.WriteString(netStartMarker)
-	sb.WriteString("\n")
-	sb.WriteString("IP:")
-	sb.WriteString(f.Net.Address)
-	sb.WriteString("\n")
-	sb.WriteString("GW:")
-	sb.WriteString(f.Net.Gateway)
-	sb.WriteString("\n")
-	sb.WriteString("MSK:")
-	sb.WriteString(f.Net.Mask)
-	sb.WriteString("\n")
-	sb.WriteString(netEndMarker)
-	sb.WriteString("\n")
-	// Pad to a whole number of sectors. The PAD line marks the end of the
-	// configuration for readers; the remaining bytes are newlines.
-	sb.WriteString(paddingMarker)
-	sb.WriteString("\n")
-	for sb.Len()%blockSectorSize != 0 {
-		sb.WriteString("\n")
-	}
-	return sb.String()
+	c.record(lpcEndMarker)
+	c.blocks(f.Block, f.Monitor)
+	c.record(netStartMarker)
+	c.record("IP:", f.Net.Address)
+	c.record("GW:", f.Net.Gateway)
+	c.record("MSK:", f.Net.Mask)
+	c.record(netEndMarker)
+	c.padTo(blockSectorSize)
+	return c.String()
 }
 
 func newFreeBSD() *FreeBSD {
