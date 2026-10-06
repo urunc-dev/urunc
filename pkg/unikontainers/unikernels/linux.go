@@ -43,6 +43,8 @@ const (
 	lpcEndMarker      string = "UCE" // Linux process config end marker
 	blkStartMarker    string = "UBS" // Block-based mounts start marker
 	blkEndMarker      string = "UBE" // Block-based mounts end marker
+	// urunitConfMagic starts a urunit configuration of NUL-terminated records
+	urunitConfMagic string = "URUNIT1"
 )
 
 type Linux struct {
@@ -445,58 +447,85 @@ func (l *Linux) buildUrunitConfig() string {
 	return BuildUrunitConfig(l.Env, l.ProcConfig, l.Blk, l.Monitor)
 }
 
-// BuildUrunitConfig renders a urunit configuration blob from the container's
-// environment, process identity and auxiliary block mounts, in urunit's wire
-// format (UES/UEE environment, UCS/UCE process config, UBS/UBE block mounts).
-// monitor is the monitor family: firecracker names its block devices with an
-// FC prefix.
+// BuildUrunitConfig renders a urunit configuration from the container's
+// environment, process identity and auxiliary block mounts, in urunit's
+// NUL-terminated record format (URUNIT1, then the UES/UEE environment, UCS/UCE
+// process config and UBS/UBE block mounts). monitor is the monitor family:
+// firecracker names its block devices with an FC prefix.
 //
 // It is exported so that runners outside this package, which stage the guest
 // rootfs and write this file themselves, produce the exact config urunit
 // expects instead of duplicating the format.
 func BuildUrunitConfig(env []string, proc types.ProcessConfig, blk []types.BlockDevParams, monitor string) string {
-	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
-	var sb strings.Builder
-	sb.WriteString(envStartMarker)
-	sb.WriteString("\n")
-	if len(env) > 0 {
-		sb.WriteString(strings.Join(env, "\n"))
-		sb.WriteString("\n")
+	c := newUrunitConfig()
+	c.envs(env)
+	c.record(lpcStartMarker)
+	c.record("UID:", strconv.FormatUint(uint64(proc.UID), 10))
+	c.record("GID:", strconv.FormatUint(uint64(proc.GID), 10))
+	c.record("WD:", proc.WorkDir)
+	c.record(lpcEndMarker)
+	c.blocks(blk, monitor)
+	return c.String()
+}
+
+// urunitConfig builds a urunit configuration. It begins with the
+// urunitConfMagic record and every record ends with a NUL character, which
+// can not appear in an environment variable or an argument. Hence, values are
+// written verbatim, even if they contain new lines.
+type urunitConfig struct {
+	sb strings.Builder
+}
+
+func newUrunitConfig() *urunitConfig {
+	c := &urunitConfig{}
+	c.record(urunitConfMagic)
+	return c
+}
+
+// record writes the concatenation of parts as a single record.
+func (c *urunitConfig) record(parts ...string) {
+	for _, p := range parts {
+		c.sb.WriteString(p)
 	}
-	sb.WriteString(envEndMarker)
-	sb.WriteString("\n")
-	sb.WriteString(lpcStartMarker)
-	sb.WriteString("\n")
-	sb.WriteString("UID:")
-	sb.WriteString(strconv.FormatUint(uint64(proc.UID), 10))
-	sb.WriteString("\n")
-	sb.WriteString("GID:")
-	sb.WriteString(strconv.FormatUint(uint64(proc.GID), 10))
-	sb.WriteString("\n")
-	sb.WriteString("WD:")
-	sb.WriteString(proc.WorkDir)
-	sb.WriteString("\n")
-	sb.WriteString(lpcEndMarker)
-	sb.WriteString("\n")
-	sb.WriteString(blkStartMarker)
-	sb.WriteString("\n")
+	c.sb.WriteByte(0)
+}
+
+// envs writes the environment variable list.
+func (c *urunitConfig) envs(env []string) {
+	c.record(envStartMarker)
+	for _, e := range env {
+		c.record(e)
+	}
+	c.record(envEndMarker)
+}
+
+// blocks writes the block-based mounts, except the rootfs.
+func (c *urunitConfig) blocks(blk []types.BlockDevParams, monitor string) {
+	c.record(blkStartMarker)
 	for _, b := range blk {
 		if b.ID == "rootfs" {
 			continue
 		}
-		sb.WriteString("ID:")
+		id := b.ID
 		if monitor == "firecracker" {
-			sb.WriteString("FC")
+			id = "FC" + id
 		}
-		sb.WriteString(b.ID)
-		sb.WriteString("\n")
-		sb.WriteString("MP:")
-		sb.WriteString(b.MountPoint)
-		sb.WriteString("\n")
+		c.record("ID:", id)
+		c.record("MP:", b.MountPoint)
 	}
-	sb.WriteString(blkEndMarker)
-	sb.WriteString("\n")
-	return sb.String()
+	c.record(blkEndMarker)
+}
+
+// padTo pads the configuration with NUL characters, which urunit skips, to a
+// multiple of size bytes.
+func (c *urunitConfig) padTo(size int) {
+	for c.sb.Len()%size != 0 {
+		c.sb.WriteByte(0)
+	}
+}
+
+func (c *urunitConfig) String() string {
+	return c.sb.String()
 }
 
 func newLinux() *Linux {

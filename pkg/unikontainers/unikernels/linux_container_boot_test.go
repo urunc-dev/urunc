@@ -105,7 +105,7 @@ func TestLinuxContainerBootUrunitConfig(t *testing.T) {
 		ProcConfig:    types.ProcessConfig{UID: 1000, GID: 1000, WorkDir: "/work"},
 		ContainerBoot: true,
 	}
-	assert.Equal(t, "UES\nPATH=/usr/bin\nFOO=bar\nUEE\nUCS\nUID:1000\nGID:1000\nWD:/work\nUCE\nUBS\nUBE\n", l.buildUrunitConfig())
+	assert.Equal(t, "URUNIT1\x00UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:1000\x00WD:/work\x00UCE\x00UBS\x00UBE\x00", l.buildUrunitConfig())
 }
 
 func TestLinuxUrunitConfAsInitrd(t *testing.T) {
