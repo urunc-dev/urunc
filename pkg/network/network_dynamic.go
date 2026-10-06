@@ -29,16 +29,11 @@ type DynamicNetwork struct {
 // If no TAP devices are available in the current netns, it creates a new tap device and
 // sets TC rules between the veth interface and the tap device inside the namespace.
 //
-// FIXME: CUrrently only one tap device per netns can provide functional networking. We need to find a proper way to handle networking
-// for multiple unikernels in the same pod/network namespace.
-// See: https://github.com/urunc-dev/urunc/issues/13
+// sets TC rules between the veth interface and the tap device inside the namespace.
 func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
 	tapIndex, err := getTapIndex()
 	if err != nil {
 		return nil, fmt.Errorf("getTapIndex failed: %w", err)
-	}
-	if tapIndex > 0 {
-		return nil, fmt.Errorf("unsupported operation: can't spawn multiple unikernels in the same network namespace")
 	}
 
 	redirectLink, err := discoverContainerIface()
