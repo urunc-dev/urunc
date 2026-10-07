@@ -15,6 +15,7 @@
 package unikontainers
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -181,6 +182,76 @@ func TestExecuteHooksSequential(t *testing.T) {
 type noTapVMM struct{ types.VMM }
 
 func (noTapVMM) UsesTUNTAP() bool { return false }
+
+// hvtVMM is a Solo5 hvt monitor, which needs neither KVM nor a tap in the tests.
+type hvtVMM struct{ types.VMM }
+
+func (hvtVMM) Path() string     { return "/usr/local/bin/" + hypervisors.HvtBinary }
+func (hvtVMM) UsesKVM() bool    { return false }
+func (hvtVMM) UsesTUNTAP() bool { return false }
+
+// fakeRootfs is a rootfs builder that adds only the given mounts and block
+// volumes, or fails with blockErr to get the block volumes.
+type fakeRootfs struct {
+	rootfsBuilder
+	mounts    []specs.Mount
+	blockArgs []types.BlockDevParams
+	blockErr  error
+}
+
+func (f fakeRootfs) getMounts() ([]specs.Mount, error)             { return f.mounts, nil }
+func (f fakeRootfs) getBlockDevs() ([]types.BlockDevParams, error) { return f.blockArgs, f.blockErr }
+func (fakeRootfs) getSharedDirs() (types.SharedfsParams, error)    { return types.SharedfsParams{}, nil }
+func (fakeRootfs) preStartCmd() []string                           { return nil }
+
+// getMonitorResources changes nothing on the host, so it does not get the
+// block devices, which unmounts the block volumes of the container.
+func TestGetMonitorResourcesSkipsBlockDevices(t *testing.T) {
+	t.Parallel()
+
+	rfs := fakeRootfs{blockErr: errors.New("block volumes unmounted")}
+	res, err := getMonitorResources(rfs, hvtVMM{}, "", nil)
+	require.NoError(t, err)
+	assert.Empty(t, res.BlockArgs)
+}
+
+// If blockDevNodes fails after getBlockDevs unmounted the block volumes, they
+// are mounted back, since Delete can restore them only after InitialSetup has
+// finished.
+func TestGetBlockResources(t *testing.T) {
+	t.Parallel()
+
+	// The source of the volume does not exist. So blockDevNodes finds no
+	// device node, and the volume can not be mounted back. The error still
+	// shows that the remount was tried, even without privileges.
+	vol := types.BlockDevParams{
+		Source:         filepath.Join(t.TempDir(), "loop"),
+		HostMountPoint: t.TempDir(),
+		FsType:         "ext4",
+	}
+	rfs := fakeRootfs{blockArgs: []types.BlockDevParams{vol}}
+	_, _, err := getBlockResources(rfs, types.RootfsParams{Type: "block"})
+	assert.ErrorContains(t, err, "failed to get the device node of "+vol.Source+": ")
+	assert.ErrorContains(t, err, ", and failed to mount the block volumes back: failed to remount "+vol.Source)
+
+	// A volume without a host mountpoint is not mounted back, so the error
+	// names only the device node.
+	vol.HostMountPoint = ""
+	rfs = fakeRootfs{blockArgs: []types.BlockDevParams{vol}}
+	_, _, err = getBlockResources(rfs, types.RootfsParams{Type: "block"})
+	assert.ErrorContains(t, err, "failed to get the device node of "+vol.Source+": ")
+	assert.NotContains(t, err.Error(), "mount the block volumes back")
+
+	// Without an error, the volumes stay unmounted for the guest.
+	blockArgs, blockDevs, err := getBlockResources(rfs, types.RootfsParams{})
+	require.NoError(t, err)
+	assert.Equal(t, []types.BlockDevParams{vol}, blockArgs)
+	assert.Empty(t, blockDevs)
+
+	rfs = fakeRootfs{blockErr: errors.New("unmount failed")}
+	_, _, err = getBlockResources(rfs, types.RootfsParams{})
+	assert.EqualError(t, err, "failed to get the block devices of the guest: unmount failed")
+}
 
 // Only a monitor that serves the guest's sockets itself gets the container's
 // own resolv.conf mount in its rootfs, read-only, and only when there is one.

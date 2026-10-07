@@ -219,16 +219,27 @@ func (u *Unikontainer) InitialSetup() error {
 		return err
 	}
 
+	// Collect the resources of the monitor before preSetup changes the host,
+	// so that a bad configuration fails early.
+	monRes, err := getMonitorResources(rfsBuilder, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
+	if err != nil {
+		return err
+	}
+	monRes.Rootfs = rootfsParams
+
 	err = rfsBuilder.preSetup()
 	if err != nil {
 		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
-	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
+	// preSetup copies the file mounts of the container, which might be in a
+	// block volume. So the block volumes are unmounted after it.
+	blockArgs, blockDevs, err := getBlockResources(rfsBuilder, rootfsParams)
 	if err != nil {
 		return err
 	}
-	monRes.Rootfs = rootfsParams
+	monRes.BlockArgs = blockArgs
+	monRes.Devices = append(monRes.Devices, blockDevs...)
 
 	err = rfsBuilder.postSetup()
 	if err != nil {
@@ -432,8 +443,8 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 }
 
 // getMonitorResources collects every mount and device required for the monitor's
-// execution environment, plus the block parameters passed to the guest.
-func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
+// execution environment, apart from the block devices.
+func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -457,16 +468,6 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 	if err != nil {
 		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}
-	res.BlockArgs, err = rfs.getBlockDevs()
-	if err != nil {
-		return res, fmt.Errorf("failed to get block devices to attach in sandbox: %w", err)
-	}
-	blockDevs, err := blockDevNodes(res.BlockArgs, rootfsParams)
-	if err != nil {
-		return res, fmt.Errorf("failed to get block devices which should be replicated inside monitor's execution environment: %w", err)
-	}
-	res.Devices = append(res.Devices, blockDevs...)
-
 	res.Sharedfs, err = rfs.getSharedDirs()
 	if err != nil {
 		return res, fmt.Errorf("failed to get directories to share with sandbox: %w", err)
@@ -475,6 +476,27 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 	res.PreStartCmd = rfs.preStartCmd()
 
 	return res, nil
+}
+
+// getBlockResources returns the block devices to attach to the guest and their
+// device nodes in the monitor rootfs. getBlockDevs unmounts the block volumes
+// of the container on the host. If blockDevNodes fails, the volumes are
+// mounted back here, since Delete can restore them only after InitialSetup has
+// finished.
+func getBlockResources(rfs rootfsBuilder, rootfsParams types.RootfsParams) ([]types.BlockDevParams, []specs.LinuxDevice, error) {
+	blockArgs, err := rfs.getBlockDevs()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get the block devices of the guest: %w", err)
+	}
+	blockDevs, err := blockDevNodes(blockArgs, rootfsParams)
+	if err != nil {
+		restoreErr := restoreBlockVolumes(blockArgs)
+		if restoreErr != nil {
+			return nil, nil, fmt.Errorf("%w, and failed to mount the block volumes back: %w", err, restoreErr)
+		}
+		return nil, nil, err
+	}
+	return blockArgs, blockDevs, nil
 }
 
 // newRootfsBuilder constructs the rootfsBuilder matching the selected guest

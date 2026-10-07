@@ -366,7 +366,7 @@ func blockDevNodes(blockArgs []types.BlockDevParams, rootfs types.RootfsParams) 
 		}
 		bDev, err := deviceFromHost(b.Source)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get the device node of %s: %w", b.Source, err)
 		}
 		blockDevs = append(blockDevs, bDev)
 	}
