@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	m "github.com/urunc-dev/urunc/internal/metrics"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
@@ -124,6 +125,23 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		return err
 	}
 
+	// Spawn virtiofsd while still root, as Exec does: it writes the shared
+	// rootfs on the guest's behalf and translates the container user onto the
+	// host owner of its volumes, which needs privileges the monitor drops below.
+	// Its vhost-user socket is then root-owned, so relax its mode for the
+	// monitor.
+	for _, cmd := range append([][]string{ms.PreStartCmd}, ms.PreStartCmds...) {
+		err = spawnProcess(cmd)
+		if err != nil {
+			return err
+		}
+		if sock := vhostSocketPath(cmd); sock != "" {
+			if err = waitAndChmodSocket(sock, 0o666, 5*time.Second); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Drop to the container user, which also clears the capabilities the tap
 	// device needed. From here on the monitor runs unprivileged.
 	err = setupUser(ms.User)
@@ -138,13 +156,6 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		sockDir := filepath.Dir(ms.ExecArgs.SocketPath)
 		if err = os.MkdirAll(sockDir, 0o700); err != nil {
 			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
-		}
-	}
-
-	for _, cmd := range append([][]string{ms.PreStartCmd}, ms.PreStartCmds...) {
-		err = spawnProcess(cmd)
-		if err != nil {
-			return err
 		}
 	}
 
