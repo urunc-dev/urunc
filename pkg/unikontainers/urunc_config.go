@@ -15,7 +15,11 @@
 package unikontainers
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -107,7 +111,9 @@ func ParseLogMetricsConfig(path string) (LogMetricsUruncConfig, error) {
 	if err == nil {
 		return initialConf, nil
 	}
-	uniklog.Warnf("Failed to load urunc log/metrics config from %s: %v. Using default configuration.", path, err)
+	// Only the logs and the timestamps use the defaults. urunc create still
+	// fails on a file that can not be read or decoded.
+	uniklog.Warnf("Failed to load urunc config from %s: %v. Using the default log and timestamp configuration.", path, err)
 	return defaultLogMetricsConfig(), err
 }
 
@@ -172,23 +178,37 @@ func defaultUruncConfig() *UruncConfig {
 }
 
 // LoadUruncConfig loads the urunc configuration from the specified path.
-// If the file does not exist or is malformed, it returns the default configuration.
+// If the file does not exist, it returns the default configuration. If the
+// file can not be read or decoded, or holds an invalid path, it returns an
+// error.
 func LoadUruncConfig(path string) (*UruncConfig, error) {
 	cfg := defaultUruncConfig()
 	_, err := toml.DecodeFile(path, cfg)
+	if errors.Is(err, fs.ErrNotExist) {
+		uniklog.Warnf("urunc config %s does not exist. Using default configuration.", path)
+		return cfg, nil
+	}
 	if err != nil {
-		uniklog.Warnf("Failed to load urunc config from %s: %v. Using default configuration.", path, err)
-		return defaultUruncConfig(), err
+		// The defaults would silently replace every field of the file.
+		return nil, fmt.Errorf("failed to load urunc config from %s: %w", path, err)
 	}
 	// Decoding a partially-specified [monitors.<name>] section (e.g. one that
-	// only sets binary_path) zeroes the fields absent from the file, dropping
+	// only sets path) zeroes the fields absent from the file, dropping
 	// the seeded defaults. Re-apply them for any zero value.
+	// The errors of every monitor and extra binary are collected, so that a
+	// single error reports all of them.
+	var errs []error
 	for name, mon := range cfg.Monitors {
 		if mon.DefaultMemoryMB == 0 {
 			mon.DefaultMemoryMB = defaultMonitorMemoryMB
 		}
 		if mon.DefaultVCPUs == 0 {
 			mon.DefaultVCPUs = defaultMonitorVCPUs
+		}
+		// Every monitor is checked, even one that no container uses.
+		err = checkMonitorPaths(mon)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid monitor %s: %w", name, err))
 		}
 		cfg.Monitors[name] = mon
 	}
@@ -198,13 +218,46 @@ func LoadUruncConfig(path string) (*UruncConfig, error) {
 		if bin.Path == "" {
 			bin.Path = def.Path
 		}
+		err = checkConfigPath("path", bin.Path)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid extra binary virtiofsd: %w", err))
+		}
 		if bin.Options == "" {
 			bin.Options = def.Options
 		}
 		cfg.ExtraBins["virtiofsd"] = bin
 	}
+	err = errors.Join(errs...)
+	if err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
+}
+
+// checkMonitorPaths returns an error if a path field of a monitor is set but
+// is not absolute and clean.
+func checkMonitorPaths(mon types.MonitorConfig) error {
+	if mon.BinaryPath != "" {
+		err := checkConfigPath("path", mon.BinaryPath)
+		if err != nil {
+			return err
+		}
+	}
+	if mon.SocketPath != "" {
+		return checkConfigPath("socket_path", mon.SocketPath)
+	}
+	return nil
+}
+
+// checkConfigPath returns an error if path, the value of a path field of the
+// configuration, is not absolute and clean. urunc uses these paths at the same
+// place in the monitor rootfs, where a relative path has no meaning.
+func checkConfigPath(field, path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return fmt.Errorf("%s %q is not an absolute and clean path", field, path)
+	}
+	return nil
 }
 
 func (p *UruncConfig) Map() map[string]string {

@@ -297,11 +297,11 @@ replaced by `_`, and prefixed with `URUNC_`:
 | `runtime.vAccel` | `URUNC_RUNTIME_VACCEL` | bool |
 | `monitors.<monitor>.default_memory_mb` | `URUNC_MONITORS_<MONITOR>_DEFAULT_MEMORY_MB` | int |
 | `monitors.<monitor>.default_vcpus` | `URUNC_MONITORS_<MONITOR>_DEFAULT_VCPUS` | int |
-| `monitors.<monitor>.path` | `URUNC_MONITORS_<MONITOR>_PATH` | string |
+| `monitors.<monitor>.path` | `URUNC_MONITORS_<MONITOR>_PATH` | path |
 | `monitors.qemu.data_path` | `URUNC_MONITORS_QEMU_DATA_PATH` | string |
 | `monitors.qemu.vhost` | `URUNC_MONITORS_QEMU_VHOST` | bool |
-| `monitors.<monitor>.socket_path` | `URUNC_MONITORS_<MONITOR>_SOCKET_PATH` | string |
-| `extra_binaries.virtiofsd.path` | `URUNC_EXTRA_BINARIES_VIRTIOFSD_PATH` | string |
+| `monitors.<monitor>.socket_path` | `URUNC_MONITORS_<MONITOR>_SOCKET_PATH` | path |
+| `extra_binaries.virtiofsd.path` | `URUNC_EXTRA_BINARIES_VIRTIOFSD_PATH` | path |
 | `extra_binaries.virtiofsd.options` | `URUNC_EXTRA_BINARIES_VIRTIOFSD_OPTIONS` | string |
 
 `<monitor>` is one of the monitors declared in `config.toml` (`qemu`,
@@ -309,6 +309,8 @@ replaced by `_`, and prefixed with `URUNC_`:
 `URUNC_MONITORS_HVT_DEFAULT_VCPUS`. Only the keys actually present for a monitor
 in `config.toml` are overridable; `socket_path` is declared for `qemu`,
 `firecracker` and `cloud-hypervisor`, the monitors that support a control socket.
+A `path` variable sets an absolute and clean path, without `//`, `.`, `..` or a
+trailing `/`.
 
 Example — raise the default QEMU memory and enable debug logging:
 
@@ -328,6 +330,9 @@ rejected:
 - a non-integer value, zero, or a value exceeding the maximum signed 64-bit integer,
   for an integer key (e.g. `*_DEFAULT_MEMORY_MB`, `*_DEFAULT_VCPUS`);
 - a value other than `true` or `false` for a boolean key (e.g. `URUNC_LOG_SYSLOG`, `URUNC_TIMESTAMPS_ENABLED`);
+- a path that is not absolute and clean, for a `path` key (e.g.
+  `URUNC_MONITORS_QEMU_PATH=/opt/urunc/bin/qemu-system-x86_64/`), which every
+  `urunc create` on the node would otherwise reject;
 - an unrecognized `URUNC_*` variable that does not map to a key in `config.toml` (e.g. a typo).
 
 All detected problems are reported together. The `urunc-deploy` Pod logs contain

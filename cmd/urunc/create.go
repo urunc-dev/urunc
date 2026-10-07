@@ -77,7 +77,10 @@ var createCommand = &cli.Command{
 			return reexecUnikontainer(cmd)
 		}
 
-		uruncCfg, _ := unikontainers.LoadUruncConfig(unikontainers.ResolveUruncConfigPath()) // ignore the error and use default config
+		uruncCfg, err := unikontainers.LoadUruncConfig(unikontainers.ResolveUruncConfigPath())
+		if err != nil {
+			return err
+		}
 		if uruncCfg.Runtime.Libcontainer {
 			return libcontainerCreate(cmd, uruncCfg)
 		}
