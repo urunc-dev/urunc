@@ -132,10 +132,27 @@ function install_artifacts() {
 }
 
 # Largest value accepted for integer configuration fields. TOML integers are
-# signed 64-bit, and urunc discards the whole config.toml (falling back to its
-# defaults) if any value fails to decode. The values are also read back from
-# the container state with strconv.Atoi, which has the same limit.
+# signed 64-bit, and urunc create fails if any value of config.toml fails to
+# decode. The values are also read back from the container state with
+# strconv.Atoi, which has the same limit.
 URUNC_INT_MAX="9223372036854775807"
+
+# Succeed if $1 is an absolute and clean path, as urunc create requires for its
+# path fields: no '//', no '.' or '..' element and no trailing '/', except for
+# '/' itself. Control characters (e.g. a newline) are not allowed either.
+function is_clean_absolute_path() {
+    local path="$1"
+    if [[ "${path}" != /* ]] || [[ "${path}" =~ [[:cntrl:]] ]] || [[ "${path}" == *//* ]]; then
+        return 1
+    fi
+    if [[ "${path}/" == */./* ]] || [[ "${path}/" == */../* ]]; then
+        return 1
+    fi
+    if [[ "${path}" == */ ]] && [ "${path}" != "/" ]; then
+        return 1
+    fi
+    return 0
+}
 
 # Validate a single override value against its type. On failure it prints an
 # ERROR describing the problem and returns non-zero; str values are unconstrained.
@@ -160,6 +177,13 @@ function validate_config_value() {
                 return 1
             fi
             ;;
+        path)
+            if ! is_clean_absolute_path "${value}"; then
+                # %q keeps a control character in the value on the same line.
+                echo "ERROR: invalid path for ${name} (expected an absolute and clean path, without '//', '.', '..', a trailing '/' or control characters): $(printf '%q' "${value}")" >&2
+                return 1
+            fi
+            ;;
     esac
     return 0
 }
@@ -169,7 +193,9 @@ function validate_config_value() {
 # per leaf, so the env-var-to-config-key mapping is derived from config.toml
 # rather than maintained by hand. The environment variable name is the upper-cased
 # key path with '.' and '-' replaced by '_' and prefixed with URUNC_; the type is
-# inferred from the value (number -> int, boolean -> bool, string -> str).
+# inferred from the value (number -> int, boolean -> bool, string -> str). A
+# string key named path or socket_path is a path, which urunc create requires
+# to be absolute and clean.
 function urunc_config_specs() {
     local source_config="$1"
     # The $-variables below are jq variables, not shell variables, so the filter
@@ -178,7 +204,9 @@ function urunc_config_specs() {
         paths(type == "string" or type == "number" or type == "boolean") as $p
         | ($p | map(ascii_upcase | gsub("-"; "_")) | join("_")) as $env
         | ($p | map("[\"" + . + "\"]") | join("")) as $path
-        | ({"number": "int", "boolean": "bool", "string": "str"}[getpath($p) | type]) as $type
+        | (getpath($p) | type) as $vtype
+        | (if $vtype == "string" and ($p[-1] == "path" or $p[-1] == "socket_path") then "path"
+           else {"number": "int", "boolean": "bool", "string": "str"}[$vtype] end) as $type
         | "URUNC_\($env)|.\($path)|\($type)"
     ' "${source_config}"
 }

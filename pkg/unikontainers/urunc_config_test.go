@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -616,11 +617,83 @@ path = "/usr/bin/mon"
 		assert.Equal(t, defaultMonitorVCPUs, mon.DefaultVCPUs)
 	})
 
+	t.Run("paths must be absolute and clean", func(t *testing.T) {
+		t.Parallel()
+		// Every path field must hold absolute and clean paths.
+		path := writeTestConfig(t, `
+[monitors.qemu]
+path = "/usr/local/bin/qemu-system-x86_64"
+socket_path = "/run/urunc/qmp.sock"
+
+[extra_binaries.virtiofsd]
+path = "/usr/libexec/virtiofsd"
+`)
+		config, err := LoadUruncConfig(path)
+		require.NoError(t, err)
+		assert.Equal(t, "/usr/local/bin/qemu-system-x86_64", config.Monitors["qemu"].BinaryPath)
+		assert.Equal(t, "/run/urunc/qmp.sock", config.Monitors["qemu"].SocketPath)
+		assert.Equal(t, "/usr/libexec/virtiofsd", config.ExtraBins["virtiofsd"].Path)
+		// An unset path is valid.
+		assert.Empty(t, config.Monitors["hvt"].BinaryPath)
+
+		invalid := map[string]string{
+			"relative monitor path":   "[monitors.qemu]\npath = \"usr/bin/qemu-system-x86_64\"\n",
+			"unclean monitor path":    "[monitors.qemu]\npath = \"/usr/local/bin/../bin/qemu-system-x86_64\"\n",
+			"relative socket_path":    "[monitors.firecracker]\nsocket_path = \"api.sock\"\n",
+			"unclean socket_path":     "[monitors.firecracker]\nsocket_path = \"/run/urunc//api.sock\"\n",
+			"virtiofsd path with a /": "[extra_binaries.virtiofsd]\npath = \"/usr/libexec/virtiofsd/\"\n",
+			"relative virtiofsd path": "[extra_binaries.virtiofsd]\npath = \"virtiofsd\"\n",
+			// A monitor that no container uses is checked too.
+			"unused monitor": "[monitors.spt]\npath = \"solo5-spt\"\n",
+		}
+		for name, content := range invalid {
+			_, err := LoadUruncConfig(writeTestConfig(t, content))
+			assert.ErrorContains(t, err, "is not an absolute and clean path", name)
+		}
+	})
+
+	t.Run("every invalid path is reported", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.spt]
+path = "solo5-spt"
+
+[monitors.qemu]
+path = "qemu-system-x86_64"
+
+[monitors.firecracker]
+path = "/usr/bin/firecracker"
+
+[extra_binaries.virtiofsd]
+path = "virtiofsd"
+`)
+		config, err := LoadUruncConfig(path)
+		assert.Nil(t, config)
+		assert.ErrorContains(t, err, `invalid monitor spt: path "solo5-spt" is not an absolute and clean path`)
+		assert.ErrorContains(t, err, `invalid monitor qemu: path "qemu-system-x86_64" is not an absolute and clean path`)
+		assert.ErrorContains(t, err, `invalid extra binary virtiofsd: path "virtiofsd" is not an absolute and clean path`)
+		assert.NotContains(t, err.Error(), "firecracker")
+	})
+
 	t.Run("missing file returns defaults", func(t *testing.T) {
 		t.Parallel()
 		config, err := LoadUruncConfig(filepath.Join(t.TempDir(), "does-not-exist.toml"))
-		assert.Error(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
+	})
+
+	t.Run("a file that can not be decoded fails", func(t *testing.T) {
+		t.Parallel()
+		// The defaults would silently replace every field of the file.
+		invalid := map[string]string{
+			"a table defined twice":     "[monitors.qemu]\npath = \"/usr/bin/qemu\"\n[monitors.qemu]\ndefault_vcpus = 2\n",
+			"a field of the wrong type": "[monitors.qemu]\ndefault_vcpus = \"two\"\n",
+		}
+		for name, content := range invalid {
+			config, err := LoadUruncConfig(writeTestConfig(t, content))
+			assert.Error(t, err, name)
+			assert.Nil(t, config, name)
+		}
 	})
 
 	t.Run("vaccel stays disabled when the file does not mention it", func(t *testing.T) {
@@ -657,6 +730,64 @@ path = "/opt/urunc/bin/virtiofsd"
 		virtiofsd := config.ExtraBins["virtiofsd"]
 		assert.Equal(t, "/opt/urunc/bin/virtiofsd", virtiofsd.Path)
 		assert.Equal(t, defaultExtraBinConfig()["virtiofsd"].Options, virtiofsd.Options)
+	})
+}
+
+func TestCheckConfigPath(t *testing.T) {
+	t.Parallel()
+	valid := []string{
+		"/",
+		"/usr/bin/qemu-system-x86_64",
+		"/run/urunc/qmp.sock",
+	}
+	for _, path := range valid {
+		assert.NoError(t, checkConfigPath("path", path), path)
+	}
+
+	invalid := map[string]string{
+		"empty":            "",
+		"relative":         "usr/bin/qemu-system-x86_64",
+		"dot relative":     "./qemu-system-x86_64",
+		"with ..":          "/usr/local/bin/../bin/qemu-system-x86_64",
+		"with .":           "/usr/./bin/qemu-system-x86_64",
+		"with //":          "/usr//bin/qemu-system-x86_64",
+		"trailing /":       "/usr/bin/qemu-system-x86_64/",
+		"only a file name": "qemu-system-x86_64",
+	}
+	for name, path := range invalid {
+		err := checkConfigPath("socket_path", path)
+		assert.ErrorContains(t, err, "socket_path", name)
+		assert.ErrorContains(t, err, "is not an absolute and clean path", name)
+	}
+}
+
+func TestCheckMonitorPaths(t *testing.T) {
+	t.Parallel()
+	t.Run("unset paths are valid", func(t *testing.T) {
+		t.Parallel()
+		assert.NoError(t, checkMonitorPaths(types.MonitorConfig{}))
+	})
+
+	t.Run("absolute and clean paths are valid", func(t *testing.T) {
+		t.Parallel()
+		mon := types.MonitorConfig{
+			BinaryPath: "/usr/bin/qemu-system-x86_64",
+			SocketPath: "/run/urunc/qmp.sock",
+		}
+		assert.NoError(t, checkMonitorPaths(mon))
+	})
+
+	t.Run("the error names the invalid field", func(t *testing.T) {
+		t.Parallel()
+		err := checkMonitorPaths(types.MonitorConfig{BinaryPath: "qemu-system-x86_64"})
+		assert.EqualError(t, err, `path "qemu-system-x86_64" is not an absolute and clean path`)
+
+		mon := types.MonitorConfig{
+			BinaryPath: "/usr/bin/qemu-system-x86_64",
+			SocketPath: "qmp.sock",
+		}
+		err = checkMonitorPaths(mon)
+		assert.EqualError(t, err, `socket_path "qmp.sock" is not an absolute and clean path`)
 	})
 }
 
