@@ -45,6 +45,18 @@ func TestMewzCommandString(t *testing.T) {
 			},
 			expected: "ip=10.0.0.2/24 gateway=10.0.0.1",
 		},
+		{
+			name: "with DNS configured",
+			mewz: &Mewz{
+				Net: MewzNet{
+					Address:   "10.0.0.2",
+					Mask:      24,
+					Gateway:   "10.0.0.1",
+					DNSServer: "1.1.1.1",
+				},
+			},
+			expected: "ip=10.0.0.2/24 gateway=10.0.0.1 dns=1.1.1.1",
+		},
 	}
 
 	for _, tc := range testCases {

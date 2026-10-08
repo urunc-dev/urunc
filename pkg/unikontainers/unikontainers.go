@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -557,7 +558,21 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	// Resolve the guest DNS server once, here in the builder shared by both the
 	// libcontainer and non-libcontainer paths, where the container mount
 	// sources are available.
-	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	advertiseDNSValue := u.State.Annotations[annotAdvertiseDNS]
+	advertiseDNS := false
+	if advertiseDNSValue != "" {
+		var err error
+		advertiseDNS, err = strconv.ParseBool(advertiseDNSValue)
+		if err != nil {
+			uniklog.WithField("advertiseDNS", advertiseDNSValue).Warn("invalid advertiseDNS annotation")
+			advertiseDNS = false
+		}
+	}
+	// TODO: Once other guest images require this annotation, make the gate
+	// global. Keeping it Mirage-only preserves DNS for existing Unikraft images.
+	if unikernelType != unikernels.MirageUnikernel || advertiseDNS {
+		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	}
 
 	return mSpec
 }
