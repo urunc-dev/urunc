@@ -78,9 +78,11 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]strin
 		cmdArgs = append(cmdArgs, "--mac", args.Net.MAC)
 	}
 
+	// Legacy single block device: attach the ext4 image as the root disk. It
+	// takes the place of any root share. Only when BlockDevs is empty; disks
+	// listed there go out over --disk below and leave the root share alone.
 	switch {
-	case args.BlockDevPath != "":
-		// Block device: attach ext4 image as virtio-blk disk
+	case len(args.BlockDevs) == 0 && args.BlockDevPath != "":
 		cmdArgs = append(cmdArgs, "--rootfs", args.BlockDevPath)
 	case args.Sharedfs.Path != "":
 		// Root filesystem over virtiofs. Mount tag fs0 matches the shared Linux
@@ -106,6 +108,15 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]strin
 			cmdArgs = append(cmdArgs, "--share", args.RootfsPath, "rootfs")
 		}
 	}
+
+	// Additional disks, one flag per disk in order. vz-runner gives each the
+	// serial disk<N> by its position across --disk and --disk-ro (a --rootfs
+	// disk is not counted), and the guest finds its disks by serial.
+	disks, err := blockDevArgs("vz", args.BlockDevs)
+	if err != nil {
+		return nil, err
+	}
+	cmdArgs = append(cmdArgs, disks...)
 
 	// Additional tagged shares (one --share per directory). A read-only share
 	// goes over --share-ro, a separate flag rather than a third positional, so
