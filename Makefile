@@ -56,6 +56,10 @@ TEST_OPTS      += -timeout 20m
 #   make test_crictl SKIP="Firecracker-unikraft-httpreply-static-net"
 #   make test_crictl SKIP="Crictl.*(CaseA|CaseB)"
 GINKGO_SKIP    := $(if $(SKIP),--ginkgo.skip="$(SKIP)")
+#? FUZZTIME How long each fuzz target runs (default: 15s)
+FUZZTIME       ?= 15s
+# Packages with Go fuzz targets, discovered so that none is left out
+FUZZ_PKGS      := $(sort $(dir $(shell grep -rl --include='*_test.go' '^func Fuzz' cmd internal pkg)))
 BUILD_TAGS     ?= netgo osusergo
 
 # Linking variables
@@ -279,6 +283,18 @@ test_unikernels:
 	@echo "Unit testing in unikernels"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers/unikernels -v
 	@echo " "
+
+## fuzz Run every Go fuzz target for FUZZTIME
+# go test accepts a single fuzz target per run, hence the loop
+.PHONY: fuzz
+fuzz:
+	@for pkg in $(FUZZ_PKGS); do \
+		fns=$$($(GO) test -list '^Fuzz' ./$$pkg) || exit 1; \
+		for fn in $$(echo "$$fns" | grep '^Fuzz'); do \
+			echo "Fuzzing $$fn in $$pkg"; \
+			$(GO) test -run='^$$' -fuzz="^$$fn$$" -fuzztime=$(FUZZTIME) ./$$pkg || exit 1; \
+		done; \
+	done
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
 .PHONY: test_nerdctl
