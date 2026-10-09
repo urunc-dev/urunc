@@ -36,6 +36,9 @@ func getTestImages(cases []containerTestArgs) []string {
 	unique := make(map[string]struct{})
 	for _, tc := range cases {
 		unique[tc.Image] = struct{}{}
+		for _, sc := range tc.SideContainers {
+			unique[sc.Image] = struct{}{}
+		}
 	}
 
 	images := make([]string, 0, len(unique))
