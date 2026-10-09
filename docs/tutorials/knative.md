@@ -1,76 +1,80 @@
 # Knative + urunc: Deploying Serverless Unikernels
 
 This guide walks you through deploying [Knative Serving](https://knative.dev/)
-using [`urunc`](https://github.com/urunc-dev/urunc). You’ll build Knative from
-a custom branch and use [`ko`](https://github.com/ko-build/ko) for seamless
-image building and deployment.
+with urunc support on Kubernetes. We provide pre-built binaries for quick setup,
+or you can build Knative from source using [`ko`](https://github.com/ko-build/ko)
+for custom configurations.
 
 ## Prerequisites
 
 -   A running Kubernetes cluster
--   A Docker-compatible registry (e.g. Harbor, Docker Hub)
--   Ubuntu 20.04 or newer
--   Basic `git`, `curl`, `kubectl`, and `docker` installed
-    
-## Environment Setup
+-   `urunc` installed (follow the [installation guide](https://urunc.io/tutorials/How-to-urunc-on-k8s/))
 
-Install [Docker](/quickstart/#install-docker), Go >= 1.21, and `ko`:
+## Install Knative Serving
 
-### Install Go 1.21  
+### Option 1: Use Pre-built Knative (Recommended)
 
-```bash
-sudo mkdir /usr/local/go1.21
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -zxvf go1.21.5.linux-amd64.tar.gz -C /usr/local/go1.21/
-rm go1.21.5.linux-amd64.tar.gz
-```
+Apply the pre-built Knative manifests with urunc support:
 
-### Verify Go installation (Should be 1.21.5)
-
-```console
-$ export GOROOT=/usr/local/go1.21/go 
-$ export PATH=$GOROOT/bin:$PATH  
-$ export GOPATH=$HOME/go 
-$ go version
-go version go1.21.5 linux/amd64
-```
-
-### Install ko VERSION=0.15.1
-```bash
-export OS=Linux
-export ARCH=x86_64
-curl -sSfL "https://github.com/ko-build/ko/releases/download/v${VERSION}/ko_${VERSION}_${OS}_${ARCH}.tar.gz" -o ko.tar.gz
-sudo tar -zxvf ko.tar.gz -C /usr/local/bin` 
-```
-
-## Clone and Build Knative with the queue-proxy patch
-
-### Set your container registry  
-
-> Note: You should be able to use dockerhub for this. e.g. `<yourdockerhubid>/knative`
-
-```bash
-export KO_DOCKER_REPO='harbor.nbfc.io/nubificus/knative-install-urunc'
-```
-
-### Clone urunc-enabled Knative Serving 
-```bash
-git clone https://github.com/nubificus/serving -b feat_urunc 
-cd serving/
-ko resolve -Rf ./config/core/ > knative-custom.yaml
-```
-
-### Apply knative's manifests to the local k8s
-```bash
-kubectl apply -f knative-custom.yaml
-```
-
-Alternatively, you could use our latest build:
 ```bash
 kubectl apply -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml
 ```
 
 > Note: There are cases where due to the large manifests, kubectl fails. Try a second time, or use `kubectl create -f https://s3.nbfc.io/knative/knative-v[[ versions.knative ]]-urunc-5220308.yaml`
+
+### Option 2: Build Knative from Source
+
+If you prefer to build Knative yourself, follow these steps.
+
+#### Prerequisites for building from source
+
+-   A Docker-compatible registry (e.g. Harbor, Docker Hub)
+-   Ubuntu 20.04 or newer
+-   Basic `git`, `curl`, `kubectl`, and `docker` installed
+
+#### Environment Setup
+
+Install [Docker](/quickstart/#install-docker), Go [[ versions.go ]], and `ko`:
+
+##### Install Go (≥ 1.23)
+
+Please follow the official [Go installation instructions](https://go.dev/doc/install) to install Go 1.23 or newer.
+
+##### Verify Go installation
+
+```console
+$ export PATH=/usr/local/go/bin:$PATH  
+$ export GOPATH=$HOME/go 
+$ go version
+```
+
+##### Install ko
+```bash
+curl -sSfL https://github.com/ko-build/ko/releases/latest/download/ko_Linux_x86_64.tar.gz | sudo tar xzf - -C /usr/local/bin
+ko version
+```
+
+#### Set your container registry  
+
+> Note: You should be able to use Docker Hub for this. e.g. `<yourdockerhubid>/knative`
+
+```bash
+export KO_DOCKER_REPO='<your-registry>/knative'
+```
+
+#### Clone urunc-enabled Knative Serving and build
+
+```bash
+git clone https://github.com/nubificus/serving -b feat_urunc
+cd serving/
+ko resolve -Rf ./config/core/ > knative-custom.yaml
+```
+
+#### Apply knative's manifests to the local k8s
+
+```bash
+kubectl apply -f knative-custom.yaml
+```
 
 ## Setup Networking (Kourier)
 
@@ -121,7 +125,19 @@ kubectl apply -f https://raw.githubusercontent.com/nubificus/c-httpreply/refs/he
 kubectl get ksvc -A -o wide 
 ```
 
-### Test the service (replace IP with actual ingress IP) 
+### Get the ingress IP
+
+Before testing the service, get the IP address of the Kourier internal service:
+
+```bash
+kubectl get svc -n kourier-system kourier-internal -o jsonpath='{.spec.clusterIP}'
+```
+
+Note the IP address returned (e.g., `10.244.9.220`). You'll use this in the following curl commands.
+
+### Test the service
+
+Replace `<INGRESS_IP>` with the IP address from the previous step:
 
 ```bash
 curl -v -H "Host: hellocontainerc.default.127.0.0.1.nip.io" http://<INGRESS_IP>
@@ -141,9 +157,7 @@ NAME             URL                                                  LATESTCREA
 hellounikernelfc http://hellounikernelfc.default.127.0.0.1.nip.io     hellounikernelfc-00001     hellounikernelfc-00001     True
 ```
 
-and once it's on a `Ready` state, you could issue a request:
-> Note: 10.244.9.220 is the IP of the `kourier-internal` svc. You can check your own from:
-> `kubectl get svc -n kourier-system |grep kourier-internal`
+Once it's in a `Ready` state, invoke the function using the ingress IP you obtained earlier:
 
 ```console
 $ curl -v -H "Host: hellounikernelfc.default.127.0.0.1.nip.io" http://10.244.9.220:80
@@ -165,9 +179,3 @@ $ curl -v -H "Host: hellounikernelfc.default.127.0.0.1.nip.io" http://10.244.9.2
 Hello, World!
 * Connection #0 to host 10.244.9.220 left intact
 ```
-
-## Wrapping Up
-
-You're now running unikernel-based workloads via Knative and `urunc`! With this
-setup, you can push the boundaries of lightweight, secure, and high-performance
-serverless deployments — all within a Kubernetes-native environment.
