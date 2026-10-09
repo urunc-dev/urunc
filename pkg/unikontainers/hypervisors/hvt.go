@@ -122,7 +122,7 @@ func applySeccompFilter() error {
 }
 
 func (h *HVT) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
+	return signalProcess(pid, signal)
 }
 
 // Stop kills the hvt process

@@ -15,9 +15,11 @@
 package hypervisors
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sys/unix"
 )
 
 func TestBytesToMiB(t *testing.T) {
@@ -70,4 +72,66 @@ func TestBytesToMB(t *testing.T) {
 			assert.Equal(t, tc.expected, bytesToMB(tc.input))
 		})
 	}
+}
+
+// stubSysKill replaces sysKill with a recorder for the duration of the test.
+// Tests using it must not call t.Parallel.
+func stubSysKill(t *testing.T) *[][2]int {
+	t.Helper()
+	calls := &[][2]int{}
+	orig := sysKill
+	sysKill = func(pid int, sig unix.Signal) error {
+		*calls = append(*calls, [2]int{pid, int(sig)})
+		return nil
+	}
+	t.Cleanup(func() { sysKill = orig })
+	return calls
+}
+
+func TestSignalProcessRefusesInvalidPid(t *testing.T) {
+	for _, pid := range []int{-1, 0} {
+		calls := stubSysKill(t)
+		err := signalProcess(pid, unix.SIGKILL)
+		assert.Error(t, err, "pid %d", pid)
+		assert.Empty(t, *calls, "pid %d", pid)
+	}
+}
+
+func TestKillProcessRefusesInvalidPid(t *testing.T) {
+	for _, pid := range []int{-1, 0} {
+		calls := stubSysKill(t)
+		err := killProcess(pid)
+		assert.Error(t, err, "pid %d", pid)
+		assert.Empty(t, *calls, "pid %d", pid)
+	}
+}
+
+func TestVMMSignalStopRefuseInvalidPid(t *testing.T) {
+	vmms := map[string]interface {
+		Signal(int, unix.Signal) error
+		Stop(int) error
+	}{
+		"cloud-hypervisor": &CloudHypervisor{},
+		"qemu":             &Qemu{},
+		"firecracker":      &Firecracker{},
+		"hvt":              &HVT{},
+		"spt":              &SPT{},
+		"hyperlight":       &Hyperlight{},
+	}
+	for name, vmm := range vmms {
+		for _, pid := range []int{-1, 0} {
+			calls := stubSysKill(t)
+			assert.Error(t, vmm.Signal(pid, unix.SIGKILL), "%s Signal(%d, SIGKILL)", name, pid)
+			assert.Error(t, vmm.Signal(pid, unix.SIGTERM), "%s Signal(%d, SIGTERM)", name, pid)
+			assert.Error(t, vmm.Stop(pid), "%s Stop(%d)", name, pid)
+			assert.Empty(t, *calls, "%s pid %d", name, pid)
+		}
+	}
+}
+
+func TestSignalProcessReachesSysKill(t *testing.T) {
+	calls := stubSysKill(t)
+	pid := os.Getpid()
+	assert.NoError(t, signalProcess(pid, 0))
+	assert.Equal(t, [][2]int{{pid, 0}}, *calls)
 }

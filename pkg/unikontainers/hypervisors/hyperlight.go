@@ -63,7 +63,7 @@ func (h *Hyperlight) Ok() error {
 }
 
 func (h *Hyperlight) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
+	return signalProcess(pid, signal)
 }
 
 // BuildExecCmd constructs the hyperlight-unikraft command line.

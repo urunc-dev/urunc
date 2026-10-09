@@ -59,9 +59,26 @@ func BytesToStringMB(argMem uint64) string {
 	return stringMem
 }
 
+// sysKill is the kill(2) used by this package. Tests replace it so that no
+// real signal is ever sent.
+var sysKill = unix.Kill
+
+// signalProcess sends sig to pid. It refuses pids <= 0: kill(2) treats them
+// as process groups (0 is the caller's group, -1 is every process the caller
+// may signal), never as a single monitor process.
+func signalProcess(pid int, sig unix.Signal) error {
+	if pid <= 0 {
+		return fmt.Errorf("refusing to signal invalid pid %d", pid)
+	}
+	return sysKill(pid, sig)
+}
+
 func killProcess(pid int) error {
 	const timeout = 2 * time.Second
-	err := unix.Kill(pid, unix.SIGKILL)
+	if pid <= 0 {
+		return fmt.Errorf("refusing to signal invalid pid %d", pid)
+	}
+	err := sysKill(pid, unix.SIGKILL)
 	if err != nil {
 		if errors.Is(err, unix.ESRCH) {
 			// Process already dead, nothing to do
@@ -71,7 +88,7 @@ func killProcess(pid int) error {
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		if err := unix.Kill(pid, 0); err != nil {
+		if err := sysKill(pid, 0); err != nil {
 			if errors.Is(err, unix.ESRCH) {
 				// process is dead
 				break

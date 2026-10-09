@@ -35,7 +35,7 @@ type Qemu struct {
 }
 
 func (q *Qemu) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
+	return signalProcess(pid, signal)
 }
 
 func (q *Qemu) Stop(pid int) error {

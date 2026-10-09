@@ -32,7 +32,7 @@ type SPT struct {
 }
 
 func (s *SPT) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
+	return signalProcess(pid, signal)
 }
 
 // Stop kills the spt process
