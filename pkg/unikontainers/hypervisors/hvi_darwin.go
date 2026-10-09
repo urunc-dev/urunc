@@ -73,9 +73,13 @@ func (h *HviDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]stri
 	if args.Command != "" {
 		cmd = append(cmd, "--cmdline", args.Command)
 	}
-	if args.BlockDevPath != "" {
-		cmd = append(cmd, "--disk", args.BlockDevPath)
+	// The guest finds its disks by serial, so each one goes out with its
+	// serial, disk<N>, N being its position in the list.
+	disks, err := hviDiskArgs(args.EffectiveBlockDevs())
+	if err != nil {
+		return nil, err
 	}
+	cmd = append(cmd, disks...)
 	seenTags := make(map[string]bool)
 	appendShare := func(path, tag string, readOnly bool) error {
 		if path == "" || tag == "" {
@@ -135,6 +139,63 @@ func (h *HviDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]stri
 		cmd = append(cmd, "--sandbox-id", args.ContainerID)
 	}
 	return cmd, nil
+}
+
+// checkBlockDevs refuses a disk with no path and a path listed twice. The
+// position of a disk in the list is its serial, so either would shift the
+// serials of the disks after it. backend names the builder in the error.
+func checkBlockDevs(backend string, disks []types.BlockDevSpec) error {
+	seen := make(map[string]bool)
+	for i, disk := range disks {
+		if disk.Path == "" {
+			return fmt.Errorf("%s: block device %d has no path", backend, i)
+		}
+		if seen[disk.Path] {
+			return fmt.Errorf("%s: duplicate block device %q", backend, disk.Path)
+		}
+		seen[disk.Path] = true
+	}
+	return nil
+}
+
+// hviDiskArgs returns one --disk path=<p>[,readonly=on],serial=disk<N> per
+// disk, in order, as hvi takes them.
+func hviDiskArgs(disks []types.BlockDevSpec) ([]string, error) {
+	if err := checkBlockDevs("hvi", disks); err != nil {
+		return nil, err
+	}
+	var out []string
+	for i, disk := range disks {
+		// The option string is split on commas, with no escape.
+		if strings.ContainsRune(disk.Path, ',') {
+			return nil, fmt.Errorf("hvi: block device %q: a comma cannot be passed in --disk", disk.Path)
+		}
+		spec := "path=" + disk.Path
+		if disk.ReadOnly {
+			spec += ",readonly=on"
+		}
+		spec += ",serial=disk" + strconv.Itoa(i)
+		out = append(out, "--disk", spec)
+	}
+	return out, nil
+}
+
+// blockDevArgs returns one --disk or --disk-ro flag per disk, in order, as
+// vz-runner takes them. vz-runner gives each disk the serial disk<N> by its
+// position across the two flags.
+func blockDevArgs(backend string, disks []types.BlockDevSpec) ([]string, error) {
+	if err := checkBlockDevs(backend, disks); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, disk := range disks {
+		flag := "--disk"
+		if disk.ReadOnly {
+			flag = "--disk-ro"
+		}
+		out = append(out, flag, disk.Path)
+	}
+	return out, nil
 }
 
 func (h *HviDarwin) PreExec(_ types.ExecArgs) error { return nil }
