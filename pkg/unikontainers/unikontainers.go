@@ -918,6 +918,13 @@ func (u *Unikontainer) removeControlSocket(socketPath string) error {
 
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
+	// A monitor that never started has no pid, and kill(2) reads a pid <= 0
+	// as a process group. There is nothing to signal.
+	if u.State.Pid <= 0 {
+		uniklog.Debugf("container %s has no monitor pid (%d), not signalling", u.State.ID, u.State.Pid)
+		return nil
+	}
+
 	vmmType := u.State.Annotations[annotHypervisor]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
@@ -943,6 +950,12 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 // Kill stops the VMM process, first by asking the VMM struct to stop
 // and consequently by killing the process described in u.State.Pid
 func (u *Unikontainer) Kill() error {
+	// A monitor that never started has no pid and nothing to stop.
+	if u.State.Pid <= 0 {
+		uniklog.Debugf("container %s has no monitor pid (%d), nothing to kill", u.State.ID, u.State.Pid)
+		return nil
+	}
+
 	// Try to join the Network namespace of the monitor before killing it.
 	// If we kill it there might be no process inside the namespace and hence
 	// the namespace gets destroyed.
@@ -1526,6 +1539,11 @@ func (u *Unikontainer) SendMessage(message IPCMessage) error {
 func (u *Unikontainer) isRunning() bool {
 	vmmType := hypervisors.VmmType(u.State.Annotations[annotHypervisor])
 	if vmmType != hypervisors.HedgeVmm {
+		// A monitor that never started has no pid. Probing a pid <= 0
+		// would probe a process group and find it alive.
+		if u.State.Pid <= 0 {
+			return false
+		}
 		return syscall.Kill(u.State.Pid, syscall.Signal(0)) == nil
 	}
 	hedge := hypervisors.Hedge{}
