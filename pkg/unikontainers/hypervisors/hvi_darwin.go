@@ -66,9 +66,13 @@ func (h *HviDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]stri
 	if args.Command != "" {
 		cmd = append(cmd, "--cmdline", args.Command)
 	}
-	if args.BlockDevPath != "" {
-		cmd = append(cmd, "--disk", args.BlockDevPath)
+	// hvi gives each disk the serial disk<N> by its position across --disk
+	// and --disk-ro, and the guest finds its disks by serial.
+	disks, err := blockDevArgs("hvi", args.EffectiveBlockDevs())
+	if err != nil {
+		return nil, err
 	}
+	cmd = append(cmd, disks...)
 	seenTags := make(map[string]bool)
 	appendShare := func(path, tag string, readOnly bool) error {
 		if path == "" || tag == "" {
@@ -117,6 +121,29 @@ func (h *HviDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]stri
 		cmd = append(cmd, "--sandbox-id", args.ContainerID)
 	}
 	return cmd, nil
+}
+
+// blockDevArgs returns one --disk or --disk-ro flag per disk, in order. The
+// position of a disk in the list is its serial, so an entry with no path or a
+// path listed twice is an error. backend names the builder in the error.
+func blockDevArgs(backend string, disks []types.BlockDevSpec) ([]string, error) {
+	var out []string
+	seen := make(map[string]bool)
+	for i, disk := range disks {
+		if disk.Path == "" {
+			return nil, fmt.Errorf("%s: block device %d has no path", backend, i)
+		}
+		if seen[disk.Path] {
+			return nil, fmt.Errorf("%s: duplicate block device %q", backend, disk.Path)
+		}
+		seen[disk.Path] = true
+		flag := "--disk"
+		if disk.ReadOnly {
+			flag = "--disk-ro"
+		}
+		out = append(out, flag, disk.Path)
+	}
+	return out, nil
 }
 
 func (h *HviDarwin) PreExec(_ types.ExecArgs) error { return nil }

@@ -64,10 +64,13 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([
 		cmdArgs = append(cmdArgs, "--mac", args.Net.MAC)
 	}
 
-	// Block device: attach ext4 image as virtio-blk disk
-	if args.BlockDevPath != "" {
+	// Legacy single block device: attach the ext4 image as the root disk. It
+	// takes the place of any root share. Only when BlockDevs is empty; disks
+	// listed there go out over --disk below and leave the root share alone.
+	switch {
+	case len(args.BlockDevs) == 0 && args.BlockDevPath != "":
 		cmdArgs = append(cmdArgs, "--rootfs", args.BlockDevPath)
-	} else if args.Sharedfs.Path != "" {
+	case args.Sharedfs.Path != "":
 		// Root filesystem over virtiofs. Mount tag fs0 matches the shared Linux
 		// unikernel builder's cmdline (root=fs0 rootfstype=virtiofs), the same
 		// convention the QEMU backend uses, so both monitors boot the identical
@@ -81,7 +84,7 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([
 			tag = "fs0"
 		}
 		cmdArgs = append(cmdArgs, flag, args.Sharedfs.Path, tag)
-	} else if args.RootfsPath != "" && args.InitrdPath == "" {
+	case args.RootfsPath != "" && args.InitrdPath == "":
 		// Legacy root share: a caller that builds its own kernel command line
 		// (e.g. the macOS product with root=rootfs) passes RootfsPath instead
 		// of Sharedfs; share it under mount tag "rootfs" to match, mirroring
@@ -91,6 +94,15 @@ func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([
 			cmdArgs = append(cmdArgs, "--share", args.RootfsPath, "rootfs")
 		}
 	}
+
+	// Additional disks, one flag per disk in order. vz-runner gives each the
+	// serial disk<N> by its position across --disk and --disk-ro (a --rootfs
+	// disk is not counted), and the guest finds its disks by serial.
+	disks, err := blockDevArgs("vz", args.BlockDevs)
+	if err != nil {
+		return nil, err
+	}
+	cmdArgs = append(cmdArgs, disks...)
 
 	// Additional tagged shares (one --share per directory). A read-only share
 	// goes over --share-ro, a separate flag rather than a third positional, so
