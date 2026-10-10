@@ -15,6 +15,7 @@
 package hypervisors
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -23,8 +24,10 @@ import (
 
 const (
 	HyperlightVmm    VmmType = "hyperlight-unikraft"
-	HyperlightBinary string  = "hyperlight-unikraft"
+	HyperlightBinary string  = "hluk"
 )
+
+var ErrHyperlightNoInitrd = errors.New("hyperlight-unikraft requires an initrd")
 
 type Hyperlight struct {
 	binaryPath string
@@ -51,12 +54,12 @@ func (h *Hyperlight) SupportsControlSocket() bool {
 	return false
 }
 
-// Path returns the path to the hyperlight binary.
+// Path returns the path to the hluk binary.
 func (h *Hyperlight) Path() string {
 	return h.binaryPath
 }
 
-// Ok checks if the hyperlight-unikraft binary is available.
+// Ok checks if the hluk binary is available.
 // Binary availability is already verified by getVMMPath via exec.LookPath.
 func (h *Hyperlight) Ok() error {
 	return nil
@@ -66,16 +69,44 @@ func (h *Hyperlight) Signal(pid int, signal unix.Signal) error {
 	return signalProcess(pid, signal)
 }
 
-// BuildExecCmd constructs the hyperlight-unikraft command line.
-func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]string, error) {
-	cmdArgs := []string{h.binaryPath, args.UnikernelPath}
-	if args.InitrdPath != "" {
-		cmdArgs = append(cmdArgs, "--initrd", args.InitrdPath)
+// BuildExecCmd constructs the hluk command line: the kernel of the image,
+// the initrd (the rootfs CPIO) sized by its scratch memory, plus whatever the
+// unikernel asks for through MonitorCli, such as the guest command. hluk
+// embeds a Unikraft kernel of its own, so the unikernel binary is passed as
+// --kernel, which boots it in place of the embedded one, and an image
+// without one is left to the embedded kernel. An image that ships a saved
+// snapshot is resumed instead of booted.
+func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
+	extraMonArgs := ukernel.MonitorCli()
+	// A snapshot is a saved guest, kernel and rootfs included, so hluk takes
+	// no kernel, initrd or scratch memory with it, only what to run in it.
+	if args.SnapshotPath != "" {
+		cmdArgs := []string{h.binaryPath, "snapshot", "run", args.SnapshotPath}
+		cmdArgs = append(cmdArgs, extraMonArgs.OtherArgs...)
+		return cmdArgs, nil
 	}
-	if args.MemSizeB > 0 {
-		memArg := strconv.FormatUint(args.MemSizeB, 10)
-		cmdArgs = append(cmdArgs, "--memory", memArg)
+	initrdPath := args.InitrdPath
+	if initrdPath == "" {
+		initrdPath = extraMonArgs.ExtraInitrd
 	}
+	// Without an initrd hluk has nothing to boot but a kernel, so fail
+	// here rather than let the guest start with no filesystem.
+	if initrdPath == "" {
+		return nil, ErrHyperlightNoInitrd
+	}
+
+	cmdArgs := []string{h.binaryPath, "run"}
+	if args.UnikernelPath != "" {
+		cmdArgs = append(cmdArgs, "--kernel", args.UnikernelPath)
+	}
+	cmdArgs = append(cmdArgs, "--initrd", initrdPath)
+	// hluk sizes the guest by its scratch memory in MiB. A limit too small
+	// to express in MiB is left to hluk's own default.
+	if memMiB := bytesToMiB(args.MemSizeB); memMiB > 0 {
+		cmdArgs = append(cmdArgs, "--scratch-mb", strconv.FormatUint(memMiB, 10))
+	}
+	cmdArgs = append(cmdArgs, extraMonArgs.OtherArgs...)
+
 	return cmdArgs, nil
 }
 

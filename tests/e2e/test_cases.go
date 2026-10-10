@@ -663,7 +663,7 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "docker.io/urunc/hello-hyperlight-unikraft:latest",
+			Image:          "ghcr.io/hyperlight-dev/hyperlight-unikraft/hello-urunc:v0.14.1",
 			Name:           "Hyperlight-unikraft-hello",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -676,7 +676,7 @@ func ctrTestCases() []containerTestArgs {
 			StaticNet:      false,
 			SideContainers: []string{},
 			Skippable:      false,
-			ExpectOut:      "Hello from C on Hyperlight!",
+			ExpectOut:      "in a Hyperlight micro-VM, via urunc",
 			TestFunc:       matchTest,
 		},
 		{
