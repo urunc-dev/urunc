@@ -456,6 +456,17 @@ Atoi
 gsub
 getpath
 ints
+KVM
+lsmod
+nginx
+PowerShell
+QEMU
+snapshotter
+WSL
+wslconfig
+WSL2
+initrd
+USERPROFILE
 tomlkit
 delpaths
 vmms
