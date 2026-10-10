@@ -21,7 +21,7 @@ Virtual Machine (VM) or a sandbox. At the same time, in the VM context, every
 VM runs as a process. Subsequently, `urunc` combines these two characteristics
 and treats the VM's process, which executes the unikernel that runs the
 application, as the container's process. This way, `urunc` does not require any
-auxiliary process running alongside the unikernel, maintaining as less overhead
+auxiliary process running alongside the unikernel, maintaining as little overhead
 as possible. Instead `urunc` directly manages the application running in the
 unikernel through the VMM or the sandbox monitor. Moreover, `urunc` does not
 require any modifications in the unikernel framework and hence all unikernel
@@ -56,7 +56,7 @@ higher-level runtime (`containerd`) level:
 
 To support unikernels in a containerized environment, `urunc` requires specific
 metadata embedded in OCI container images. These images must include the
-unikernel binary, configuration and any other files required from the application
+unikernel binary, configuration and any other files required by the application
 or the unikernel and the aforementioned metadata which dictate how the unikernel
 should be run. The metadata can be passed to `urunc` either in the form of
 [annotations](https://github.com/opencontainers/runtime-spec/blob/main/config.md#annotations)

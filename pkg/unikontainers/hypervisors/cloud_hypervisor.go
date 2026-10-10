@@ -33,7 +33,7 @@ type CloudHypervisor struct {
 }
 
 func (ch *CloudHypervisor) Signal(pid int, signal unix.Signal) error {
-	return unix.Kill(pid, signal)
+	return signalProcess(pid, signal)
 }
 
 func (ch *CloudHypervisor) Stop(pid int) error {

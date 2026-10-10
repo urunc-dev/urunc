@@ -107,7 +107,7 @@ kubectl patch configmap/config-features --namespace knative-serving --type merge
 kubectl get ksvc -A -o wide
 ```
 
-Should be empty. Create an simple httpreply
+Should be empty. Create a simple httpreply
 [service](https://github.com/nubificus/c-httpreply/blob/main/service.yaml),
 based on a [simple C program](https://github.com/nubificus/c-httpreply):
 
@@ -141,7 +141,7 @@ NAME             URL                                                  LATESTCREA
 hellounikernelfc http://hellounikernelfc.default.127.0.0.1.nip.io     hellounikernelfc-00001     hellounikernelfc-00001     True
 ```
 
-and once it's on a `Ready` state, you could issue a request:
+and once it's in a `Ready` state, you could issue a request:
 > Note: 10.244.9.220 is the IP of the `kourier-internal` svc. You can check your own from:
 > `kubectl get svc -n kourier-system |grep kourier-internal`
 

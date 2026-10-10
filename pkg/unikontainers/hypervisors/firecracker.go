@@ -79,7 +79,7 @@ func (fc *Firecracker) Signal(pid int, signal unix.Signal) error {
 	if signal == unix.SIGTERM || signal == unix.SIGINT {
 		return fc.Stop(pid)
 	}
-	return unix.Kill(pid, signal)
+	return signalProcess(pid, signal)
 }
 
 func (fc *Firecracker) Stop(pid int) error {
@@ -168,7 +168,7 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	}
 
 	// Block config for Firecracker
-	// TODO: Add support for block devices in FIrecracker
+	// TODO: Add support for block devices in Firecracker
 	FCDrives := make([]FirecrackerDrive, 0)
 
 	bArgs := ukernel.MonitorBlockCli()

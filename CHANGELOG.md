@@ -1,3 +1,55 @@
+# v0.8.1
+
+## What's Changed
+
+### New features
+
+* Support for [FreeBSD](https://www.freebsd.org/) guests over Qemu and
+  Firecracker
+* Control socket for each monitor (QMP for Qemu, API socket for Firecracker and
+  Cloud Hypervisor)
+* Override any value of the urunc configuration through `URUNC_*` environment
+  variables in the `urunc-deploy` DaemonSet
+
+### Internals
+
+* Set the DNS server of Unikraft guests from the container's `resolv.conf`
+* Terminate Firecracker when receiving SIGTERM and SIGINT
+* Do not set the MTU option in Cloud Hypervisor's network device, since it
+  requires `CAP_NET_ADMIN`
+* Let each guest set its own 9pfs cli options and use `remap` for the
+  `multidevs` option of 9pfs
+* Add default monitor values for hyperlight-unikraft in the urunc configuration
+* Refactor block-based mounts discovery using moby;s mountinfo package.
+* Add the missing urunc options to the default configuration shipped with `urunc-deploy`
+* Correctly parse the containerd major version in `urunc-deploy`
+* Restart containerd before removing the cleanup label in `urunc-deploy`
+* Allow the cleanup preStop hook of `urunc-deploy` to exit
+* Clean up the containerd configuration on `urunc-deploy` uninstall, even without access to
+  the API server
+* Do not signal or stop a monitor whose PID is unknown, treat it as stopped instead
+* Update Go dependencies
+
+### CI/CD
+
+* Replace the S3 binaries upload with a rolling `nightly` pre-release that
+  contains the binaries built from the main branch
+* Run the end-to-end tests of a PR against the base branch's test code and run
+  them again with the PR's tests when the PR changes them
+* Remove dead code and unused inputs from workflows and honor input refs
+* Fix the spell check ignoring text between inline code blocks and remove
+  misspelled words from the project dictionary
+* Update GitHub actions
+
+### Documentation
+
+* Improve the wording of the `urunc-deploy` uninstall instructions
+* Fix typos and grammar across the documentation
+
+**Full Changelog**: https://github.com/urunc-dev/urunc/compare/v0.8.0...v0.8.1
+
+# Previous Releases:
+
 # v0.8.0
 
 ## What's Changed
@@ -156,7 +208,7 @@ identification numbers):
 * Update instructions for installing Go and remove obsolete image references
 * Add tutorial for using `urunc` with kind
 * Centralize the version definition of the tools mentioned in docs
-* Add instructions fo using blockfile snapshotter with `urunc`
+* Add instructions for using blockfile snapshotter with `urunc`
 * Provide documentation for using the new [monitors-build repository](https://github.com/urunc-dev/monitors-build)
 
 ## New Contributors
@@ -274,7 +326,7 @@ Big thanks for all new contributors in `urunc`:
   - `SupportsFS()` takes as an argument a filesystem type and checks if the unikernel supports that type.
 - Partial unit tests for pkg/unikontainers
 - Refactor devmapper snapshot handling
-- Define new environment variable `USE_DEVMAPPER_AS_BLOCK`to use devmapper's snapshot as a block image for the unikernel
+- Define new environment variable `USE_DEVMAPPER_AS_BLOCK` to use devmapper's snapshot as a block image for the unikernel
 - Handle newer versions of Unikraft unikernels
 - Enable NAT and IP forwarding in static networking
 
@@ -290,7 +342,7 @@ Big thanks for all new contributors in `urunc`:
 
 #### Misc
 * Bug fixes
-* Refactor handling of normal containers and replaces constants in paths and annotations
+* Refactor handling of normal containers and replace constants in paths and annotations
 * Unikraft FC boot on arm64
 * Huge refactor and update of `urunc`'s documentation. The documentation is available at https://nubificus.github.io/urunc/
 

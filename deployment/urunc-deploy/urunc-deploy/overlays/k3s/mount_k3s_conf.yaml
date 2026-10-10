@@ -24,3 +24,4 @@ spec:
         - name: containerd-conf
           hostPath:
             path: /var/lib/rancher/k3s/agent/etc/containerd/
+            type: Directory

@@ -30,7 +30,7 @@ supported VMM. In particular, in the case of:
 - Qemu, 'urunc' makes use of Qemu's sandbox command line options to activate
   all possible seccomp filters in Qemu.
 - Cloud-Hypervisor, 'urunc' makes use of the `--seccomp true` command line
-  options to enable Cloud-Hypervisor's seccomp filters.
+  option to enable Cloud-Hypervisor's seccomp filters.
 - Solo5-hvt, 'urunc' applies the seccomp filters before executing
   'Solo5-hvt'.
 - Solo5-spt, 'urunc' can not do anything since solo5-spt makes use of seccomp by
@@ -64,4 +64,4 @@ Due to its design, 'urunc' does not allow the definition of a seccomp profile ot
 than the default. However, users can totally disable seccomp by using
 the `--security-opt seccomp=unconfined` command line option. In that scenario,
 'urunc' will not make use of any seccomp filters in all the supported VMMs, except
-of 'Solo5-spt'.
+for 'Solo5-spt'.
