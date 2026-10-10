@@ -83,6 +83,9 @@ signal to the init process of the "ubuntu01" container:
 func parseSignal(rawSignal string) (unix.Signal, error) {
 	s, err := strconv.Atoi(rawSignal)
 	if err == nil {
+		if s <= 0 {
+			return -1, fmt.Errorf("invalid signal number %d: must be positive", s)
+		}
 		return unix.Signal(s), nil
 	}
 	sig := strings.ToUpper(rawSignal)
