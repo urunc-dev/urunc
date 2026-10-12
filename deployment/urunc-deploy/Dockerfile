@@ -42,10 +42,8 @@ FROM golang:1.26.4-alpine3.24@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9
 RUN apk update && \
     apk add --no-cache git make build-base linux-headers
 WORKDIR /app
-ARG REPO=urunc-dev/urunc
-ARG BRANCH=main
-RUN git clone --depth 1 --branch ${BRANCH} https://github.com/${REPO} . && \
-    make
+COPY . .
+RUN make
 WORKDIR /artifacts
 RUN cp -r /app/dist .
 
@@ -107,8 +105,8 @@ FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac
 COPY --from=intermediate /urunc-artifacts /urunc-artifacts
 COPY --from=intermediate /usr/bin/jq /usr/bin/jq
 COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
-COPY scripts/install.sh /urunc-artifacts/scripts/install.sh
-COPY config.toml /deployment/config.toml
+COPY deployment/urunc-deploy/scripts/install.sh /urunc-artifacts/scripts/install.sh
+COPY deployment/urunc-deploy/config.toml /deployment/config.toml
 RUN apk update && \
     apk add --no-cache bash curl py3-pip && \
     pip install --no-cache-dir --break-system-packages yq==3.2.3 && \

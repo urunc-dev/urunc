@@ -8,7 +8,7 @@ on:
         default: '["amd64", "aarch64"]'
       dockerfiles:
         type: string
-        default: '["Dockerfile"]'
+        default: 'deployment/urunc-deploy/Dockerfile'
       registry:
         type: string
         default: 'ghcr.io'
@@ -73,14 +73,11 @@ jobs:
         id: build-and-push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # master
         with:
-          context: ./deployment/urunc-deploy
+          context: .
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: true
           file: ${{ inputs.dockerfiles }}
-          build-args: |
-            BRANCH=${{ github.ref_name }}
-            REPO=${{ github.repository }}
           provenance: false
 
       - name: Install cosign
