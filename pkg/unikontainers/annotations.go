@@ -51,6 +51,7 @@ const (
 	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
 	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
 	annotBlkDev        = "com.urunc.unikernel.solo5BlkDev"
+	annotAdvertiseDNS  = "com.urunc.unikernel.advertiseDNS"
 	annotVAccel        = "com.urunc.unikernel.vAccel"
 	annotRPCAddress    = "com.urunc.unikernel.RPCAddress"
 )
@@ -103,6 +104,7 @@ type UnikernelConfig struct {
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
 	BlkDev           string `json:"com.urunc.unikernel.solo5BlkDev,omitempty"`
+	AdvertiseDNS     string `json:"com.urunc.unikernel.advertiseDNS,omitempty"`
 	// The vAccel annotations are deliberately not part of urunc.json, since their
 	// values are runtime specific and therefore we should only reach them
 	// through the annotations of the spec.
@@ -188,6 +190,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	netDev := spec.Annotations[annotNetDev]
 	blkDev := spec.Annotations[annotBlkDev]
+	advertiseDNS := spec.Annotations[annotAdvertiseDNS]
 	vAccel := spec.Annotations[annotVAccel]
 	rpcAddress := spec.Annotations[annotRPCAddress]
 	uniklog.WithFields(logrus.Fields{
@@ -201,6 +204,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"mountRootfs":      MountRootfs,
 		"netDev":           netDev,
 		"blkDev":           blkDev,
+		"advertiseDNS":     advertiseDNS,
 		"vAccel":           vAccel,
 		"rpcAddress":       rpcAddress,
 	}).WithField("source", "spec").Debug("urunc annotations")
@@ -216,6 +220,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		MountRootfs:      MountRootfs,
 		NetDev:           netDev,
 		BlkDev:           blkDev,
+		AdvertiseDNS:     advertiseDNS,
 		VAccel:           vAccel,
 		RPCAddress:       rpcAddress,
 	}
@@ -258,6 +263,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"mountRootfs":      tryDecode(conf.MountRootfs),
 		"netDev":           tryDecode(conf.NetDev),
 		"blkDev":           tryDecode(conf.BlkDev),
+		"advertiseDNS":     tryDecode(conf.AdvertiseDNS),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -333,6 +339,12 @@ func (c *UnikernelConfig) decode() error {
 	}
 	c.BlkDev = string(decoded)
 
+	decoded, err = base64.StdEncoding.DecodeString(c.AdvertiseDNS)
+	if err != nil {
+		return fmt.Errorf("failed to decode advertiseDNS: %v", err)
+	}
+	c.AdvertiseDNS = string(decoded)
+
 	return nil
 }
 
@@ -368,6 +380,9 @@ func (c *UnikernelConfig) Map() map[string]string {
 	}
 	if c.BlkDev != "" {
 		myMap[annotBlkDev] = c.BlkDev
+	}
+	if c.AdvertiseDNS != "" {
+		myMap[annotAdvertiseDNS] = c.AdvertiseDNS
 	}
 	if c.VAccel != "" {
 		myMap[annotVAccel] = c.VAccel
@@ -420,6 +435,13 @@ func (c *UnikernelConfig) validateValues() error {
 		_, err = strconv.ParseBool(c.MountRootfs)
 		if err != nil {
 			return fmt.Errorf("invalid value %q for %s: expected a boolean: %w", c.MountRootfs, annotMountRootfs, err)
+		}
+	}
+
+	if c.AdvertiseDNS != "" {
+		_, err = strconv.ParseBool(c.AdvertiseDNS)
+		if err != nil {
+			return fmt.Errorf("invalid value %q for %s: expected a boolean: %w", c.AdvertiseDNS, annotAdvertiseDNS, err)
 		}
 	}
 

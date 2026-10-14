@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -124,4 +125,42 @@ func TestMirageBlkDevName(t *testing.T) {
 		assert.Len(t, args, 1)
 		assert.Equal(t, "storage", args[0].ID)
 	})
+}
+
+func TestMirageDNS(t *testing.T) {
+	testCases := []struct {
+		name      string
+		dnsServer string
+		expected  string
+	}{
+		{
+			name:      "DNS server present",
+			dnsServer: "1.1.1.1",
+			expected:  "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 --dns-servers=udp:1.1.1.1,tcp:1.1.1.1 app",
+		},
+		{
+			name:     "DNS server absent",
+			expected: "--ipv4=10.0.0.2/24 --ipv4-gateway=10.0.0.1 app",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newMirage()
+			err := m.Init(types.UnikernelParams{
+				CmdLine: []string{"app"},
+				Net: types.NetDevParams{
+					IP:        "10.0.0.2",
+					Mask:      "255.255.255.0",
+					Gateway:   "10.0.0.1",
+					DNSServer: tc.dnsServer,
+				},
+			})
+			require.NoError(t, err)
+
+			cmd, err := m.CommandString()
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, cmd)
+		})
+	}
 }
