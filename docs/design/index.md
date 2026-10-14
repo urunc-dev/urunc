@@ -52,6 +52,17 @@ higher-level runtime (`containerd`) level:
   lifecycle like any other container through `urunc` (e.g., stopping,
   restarting, or deleting the container).
 
+## Networking
+
+`urunc` expects every container to a separate network namespace than the
+default. At start, it creates a tap device in that namespace and connects it to
+the container's interface, so the sandbox's virtio-net device gets the
+container's network.
+
+Host networking is therefore not supported: `nerdctl run --net=host`,
+`docker run --network host`, and Kubernetes pods with `hostNetwork: true`
+will not work with `urunc` and might hurt host network.
+
 ## Image Format and Annotations
 
 To support unikernels in a containerized environment, `urunc` requires specific

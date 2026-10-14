@@ -74,8 +74,37 @@ func TestDeleteWithoutMonitorPid(t *testing.T) {
 	for _, pid := range unknownMonitorPids {
 		u := unikontainerWithoutMonitor(t, pid)
 		require.NoError(t, os.WriteFile(filepath.Join(u.BaseDir, stateFilename), []byte("{}"), 0o600))
-		require.NoError(t, u.Delete(), "pid %d", pid)
+		require.NoError(t, u.Delete(false), "pid %d", pid)
 		_, err := os.Stat(u.BaseDir)
 		require.True(t, os.IsNotExist(err), "pid %d: %s still exists", pid, u.BaseDir)
 	}
+}
+
+func TestDeleteWithoutSandboxNetNs(t *testing.T) {
+	u := unikontainerWithoutMonitor(t, -1)
+	// The sandbox is gone, and its network namespace with it.
+	u.Spec.Linux.Namespaces = []specs.LinuxNamespace{
+		{Type: specs.NetworkNamespace, Path: filepath.Join(t.TempDir(), "gone")},
+	}
+	require.NoError(t, u.Delete(false))
+	_, err := os.Stat(u.BaseDir)
+	require.True(t, os.IsNotExist(err), "%s still exists", u.BaseDir)
+}
+
+func TestDeleteKeepsStateWhenNetworkCleanupFails(t *testing.T) {
+	u := unikontainerWithoutMonitor(t, -1)
+	// A namespace path with a comma is refused, so the network cleanup fails.
+	nsPath := filepath.Join(t.TempDir(), "net,ns")
+	require.NoError(t, os.WriteFile(nsPath, nil, 0o600))
+	u.Spec.Linux.Namespaces = []specs.LinuxNamespace{
+		{Type: specs.NetworkNamespace, Path: nsPath},
+	}
+
+	require.Error(t, u.Delete(false))
+	_, err := os.Stat(u.BaseDir)
+	require.NoError(t, err, "a failed delete must keep the state, so it can be retried")
+
+	require.NoError(t, u.Delete(true))
+	_, err = os.Stat(u.BaseDir)
+	require.True(t, os.IsNotExist(err), "%s still exists after a forced delete", u.BaseDir)
 }

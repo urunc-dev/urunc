@@ -968,27 +968,14 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 }
 
 // Kill stops the VMM process, first by asking the VMM struct to stop
-// and consequently by killing the process described in u.State.Pid
+// and consequently by killing the process described in u.State.Pid.
+// It returns once the monitor has exited and leaves the release of the
+// container's resources, including its network, to Delete.
 func (u *Unikontainer) Kill() error {
 	// A monitor that never started has no pid and nothing to stop.
 	if u.State.Pid <= 0 {
 		uniklog.Debugf("container %s has no monitor pid (%d), nothing to kill", u.State.ID, u.State.Pid)
 		return nil
-	}
-
-	// Try to join the Network namespace of the monitor before killing it.
-	// If we kill it there might be no process inside the namespace and hence
-	// the namespace gets destroyed.
-	err := u.joinSandboxNetNs()
-	if err != nil {
-		if errors.Is(err, ErrNotExistingNS) {
-			// There is no network namespace to join.
-			// Most probably the sandbox is dead and the namespace
-			// has been destroyed.
-			uniklog.Infof("could not find sandbox's network namespace: %v", err)
-			return nil
-		}
-		return fmt.Errorf("failed to join sandbox netns: %v", err)
 	}
 
 	// get a new vmm
@@ -997,21 +984,18 @@ func (u *Unikontainer) Kill() error {
 	if err != nil {
 		return err
 	}
-	err = vmm.Stop(u.State.Pid)
-	if err != nil {
-		return err
-	}
 
-	err = network.CleanupAllUruncTaps()
-	if err != nil {
-		uniklog.Errorf("failed to cleanup tap devices: %v", err)
-	}
-
-	return nil
+	return vmm.Stop(u.State.Pid)
 }
 
-// Delete removes the monitor rootfs and the container's base directory.
-func (u *Unikontainer) Delete() error {
+// Delete releases the resources of a stopped container and removes its base
+// directory. The resources that outlive the monitor are released before the
+// base directory is removed, so a failed delete can be retried. With force, a
+// failure to release them is only logged, since a forced delete is the last
+// chance to remove the container.
+// This function should be called only from a locked thread
+// (i.e. runtime. LockOSThread()) because it joins a network namespace
+func (u *Unikontainer) Delete(force bool) error {
 	if u.isRunning() {
 		return fmt.Errorf("cannot delete running container: %s", u.State.ID)
 	}
@@ -1023,6 +1007,17 @@ func (u *Unikontainer) Delete() error {
 		if err != nil {
 			return err
 		}
+	}
+
+	// In Kubernetes the pod's network namespace outlives the container, and
+	// so does the tap device of the monitor. Remove it, so a container
+	// restarted in the same pod can set up its network.
+	err := u.cleanupNetwork()
+	if err != nil {
+		if !force {
+			return fmt.Errorf("failed to cleanup network: %w", err)
+		}
+		uniklog.Warnf("failed to cleanup network: %v", err)
 	}
 
 	// Restore the block volume mounts that were unmounted during create,
@@ -1050,37 +1045,72 @@ func (u *Unikontainer) Delete() error {
 	return os.RemoveAll(u.BaseDir)
 }
 
-// joinSandboxNetns joins the network namespace of the sandbox
+// cleanupNetwork removes the urunc tap devices, along with their tc rules,
+// from the sandbox's network namespace. Only a namespace that the container
+// joins by path can outlive the monitor and that is why we join the network
+// namespace only if a path was specified. If we had to create the network
+// namespace, then it will get removed when the monitor process exits (along
+// with the tap devices).
 // This function should be called only from a locked thread
 // (i.e. runtime. LockOSThread())
-func (u Unikontainer) joinSandboxNetNs() error {
-	netNsPath, err := findNS(u.Spec.Linux.Namespaces, specs.NetworkNamespace)
-	if err != nil && !errors.Is(err, ErrNotExistingNS) {
-		return err
-	}
-	// In case no path was specified for the network namespace it means,
-	// that we had to create a new one and therefore we can join it by
-	// using the pid of the monitor process.
-	if netNsPath == "" {
-		netNsPath = fmt.Sprintf("/proc/%d/ns/net", u.State.Pid)
-		err := checkValidNsPath(netNsPath)
-		if err != nil {
-			return err
+func (u *Unikontainer) cleanupNetwork() error {
+	netNsPath := ""
+	for _, ns := range u.Spec.Linux.Namespaces {
+		if ns.Type == specs.NetworkNamespace {
+			netNsPath = ns.Path
+			break
 		}
 	}
-	uniklog.WithFields(logrus.Fields{
-		"path": netNsPath,
-	}).Debug("Joining network namespace")
+	if netNsPath == "" {
+		return nil
+	}
+	err := checkValidNsPath(netNsPath)
+	if errors.Is(err, ErrNotExistingNS) {
+		// Most probably the sandbox is dead and the namespace
+		// has been destroyed, along with the tap devices.
+		uniklog.Infof("could not find sandbox's network namespace %s", netNsPath)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return removeTapsInNetNs(netNsPath)
+}
+
+// removeTapsInNetNs cleans up the tap devices in the network namespace
+// defined by the path of the respective argument.
+// This function should be called only from a locked thread
+// (i.e. runtime. LockOSThread())
+func removeTapsInNetNs(netNsPath string) error {
+	origFd, err := unix.Open("/proc/thread-self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("error opening current network namespace: %w", err)
+	}
+	defer unix.Close(origFd)
+
 	fd, err := unix.Open(netNsPath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return fmt.Errorf("error opening namespace path: %w", err)
 	}
-	err = unix.Setns(int(fd), unix.CLONE_NEWNET)
+	defer unix.Close(fd)
+
+	uniklog.WithFields(logrus.Fields{
+		"path": netNsPath,
+	}).Debug("Joining network namespace")
+
+	err = unix.Setns(fd, unix.CLONE_NEWNET)
 	if err != nil {
 		return fmt.Errorf("error joining namespace: %w", err)
 	}
-	uniklog.Debug("Joined network namespace")
-	return nil
+
+	retErr := network.CleanupAllUruncTaps()
+	err = unix.Setns(origFd, unix.CLONE_NEWNET)
+	if err != nil {
+		retErr = errors.Join(retErr, fmt.Errorf("error returning to the original network namespace: %w", err))
+	}
+
+	return retErr
 }
 
 // Saves current Unikernel state as baseDir/state.json for later use

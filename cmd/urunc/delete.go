@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -70,20 +71,30 @@ status of "ubuntu01" as "stopped" the following will delete resources held for
 				if cmd.Bool("force") {
 					return nil
 				}
+
+				return fmt.Errorf("container %s does not exist: %w", containerID, err)
 			}
 			return err
 		}
-		if cmd.Bool("force") {
+		force := cmd.Bool("force")
+		if force {
 			err := unikontainer.Kill()
 			if err != nil {
 				return err
 			}
 		}
-		err = unikontainer.Delete()
+		err = unikontainer.Delete(force)
 		if err != nil {
 			return err
 		}
 
-		return unikontainer.ExecuteHooks("Poststop")
+		// As the OCI runtime spec requires, a failing poststop hook
+		// does not fail the delete.
+		err = unikontainer.ExecuteHooks("Poststop")
+		if err != nil {
+			logrus.Warnf("failed to execute poststop hooks: %v", err)
+		}
+
+		return nil
 	},
 }
