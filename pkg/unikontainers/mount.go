@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/v2/core/mount"
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/moby/sys/userns"
 	"golang.org/x/sys/unix"

@@ -2,7 +2,7 @@ versions:
   go: "1.26.4"
   nerdctl: "2.1.3"
   docker: "28.3.3"
-  containerd: "2.1.3"
+  containerd: "2.3.7"
   qemu: "8.2.2"
   firecracker: "1.7.0"
   clh: "50.0"

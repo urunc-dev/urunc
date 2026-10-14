@@ -483,3 +483,7 @@ urunce
 zyfy
 preopen
 fuzztime
+bootapi
+anypb
+memfd
+errgrpc

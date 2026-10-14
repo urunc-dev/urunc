@@ -161,6 +161,17 @@ jobs:
             pod_annotations = ["com.urunc.unikernel.*"]
             snapshotter = "devmapper"
         EOT
+        # Since containerd 2.3, CRI pulls the images of a runtime into its
+        # snapshotter, so the transfer service must be able to unpack into
+        # devmapper. Setting unpack_config replaces the default overlayfs entry.
+        sudo tee -a /etc/containerd/config.toml > /dev/null <<EOT
+        [[plugins.'io.containerd.transfer.v1.local'.unpack_config]]
+          platform = "linux/$(dpkg --print-architecture)"
+          snapshotter = "overlayfs"
+        [[plugins.'io.containerd.transfer.v1.local'.unpack_config]]
+          platform = "linux/$(dpkg --print-architecture)"
+          snapshotter = "devmapper"
+        EOT
         sudo systemctl restart containerd
 
     - name: Setup block-based mountpoint

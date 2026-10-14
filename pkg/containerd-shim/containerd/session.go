@@ -24,10 +24,10 @@ import (
 	imagesapi "github.com/containerd/containerd/api/services/images/v1"
 	leasesapi "github.com/containerd/containerd/api/services/leases/v1"
 	snapshotsapi "github.com/containerd/containerd/api/services/snapshots/v1"
-	"github.com/containerd/containerd/defaults"
-	"github.com/containerd/containerd/errdefs"
-	"github.com/containerd/containerd/namespaces"
-	"github.com/containerd/containerd/pkg/dialer"
+	"github.com/containerd/containerd/v2/defaults"
+	"github.com/containerd/containerd/v2/pkg/dialer"
+	"github.com/containerd/containerd/v2/pkg/namespaces"
+	"github.com/containerd/errdefs/pkg/errgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
@@ -143,7 +143,7 @@ func containerdErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	return errdefs.FromGRPC(err)
+	return errgrpc.ToNative(err)
 }
 
 func (s *Session) containersClient() containersapi.ContainersClient {
