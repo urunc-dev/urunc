@@ -15,6 +15,7 @@
 package unikernels
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -59,6 +60,18 @@ type RumprunBlk struct {
 	Mountpoint string `json:"mountpoint"`
 }
 
+// marshalNoEscape works like json.Marshal, but it does not escape
+// the characters &, < and >, since Rumprun does not decode them.
+func marshalNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
 func (r *Rumprun) CommandString() (string, error) {
 	// Rumprun accepts a JSON string to configure the unikernel. However,
 	// Rumprun does not use a valid JSON format. Therefore, we manually
@@ -71,7 +84,7 @@ func (r *Rumprun) CommandString() (string, error) {
 	cmd := RumprunCmd{
 		CmdLine: r.Command,
 	}
-	cmdJSON, err := json.Marshal(cmd)
+	cmdJSON, err := marshalNoEscape(cmd)
 	if err != nil {
 		return "", fmt.Errorf("could not marshal cmdline: %v", err)
 	}
@@ -80,7 +93,7 @@ func (r *Rumprun) CommandString() (string, error) {
 		eVar := RumprunEnv{
 			Env: eVar,
 		}
-		oneVarJSON, err := json.Marshal(eVar)
+		oneVarJSON, err := marshalNoEscape(eVar)
 		if err != nil {
 			return "", fmt.Errorf("could not marshal environment variable: %v", err)
 		}
@@ -94,7 +107,7 @@ func (r *Rumprun) CommandString() (string, error) {
 	}
 	// if Address is empty, we will spawn the unikernel without networking
 	if r.Net.Address != "" {
-		netJSON, err := json.Marshal(r.Net)
+		netJSON, err := marshalNoEscape(r.Net)
 		if err != nil {
 			return "", err
 		}
@@ -103,7 +116,7 @@ func (r *Rumprun) CommandString() (string, error) {
 	}
 	// if Source is empty, we will spawn the unikernel without a block device
 	if r.Blk.Source != "" {
-		blkJSON, err := json.Marshal(r.Blk)
+		blkJSON, err := marshalNoEscape(r.Blk)
 		if err != nil {
 			return "", err
 		}
