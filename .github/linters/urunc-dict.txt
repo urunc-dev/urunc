@@ -481,3 +481,14 @@ sworker
 urunce
 zyfy
 preopen
+KVM
+lsmod
+nginx
+PowerShell
+QEMU
+snapshotter
+WSL
+wslconfig
+WSL2
+initrd
+USERPROFILE
