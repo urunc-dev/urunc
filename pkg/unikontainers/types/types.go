@@ -114,6 +114,7 @@ type ExecArgs struct {
 	VCPUs         uint     // The number of vCPUs to allocate
 	UnikernelPath string   // The path of the unikernel inside rootfs
 	InitrdPath    string   // The path to the initrd of the unikernel
+	SnapshotPath  string   // The directory of a saved hluk snapshot inside the image; empty boots the kernel and initrd
 	VAccelType    string   // Specifies the vAccel acceleration type(e.g. vsock). When empty, vAccel is disabled
 	VSockDevPath  string   // The directory inside the monitor rootfs with the vAccel unix sockets
 	VSockDevID    int      // The guest-cid

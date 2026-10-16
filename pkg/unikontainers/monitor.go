@@ -105,6 +105,10 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 	if err != nil {
 		return err
 	}
+	ms.ExecArgs.SnapshotPath, err = confineToContainerRootfs(ms.ExecArgs.SnapshotPath)
+	if err != nil {
+		return err
+	}
 	ms.GuestParams.Block, err = confineBlockSources(ms.GuestParams.Block)
 	if err != nil {
 		return err
