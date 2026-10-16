@@ -24,14 +24,13 @@ import (
 
 const testCHBinary = "/usr/bin/cloud-hypervisor"
 
-// TestCloudHypervisorBuildExecCmdSocket verifies Cloud Hypervisor emits
-// --api-socket only when socket_path is set.
-func TestCloudHypervisorBuildExecCmdSocket(t *testing.T) {
+func TestCloudHypervisorBuildExecCmd(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name           string
 		args           types.ExecArgs
+		unikernel      types.Unikernel
 		mustContain    []string
 		mustNotContain []string
 	}{
@@ -42,6 +41,7 @@ func TestCloudHypervisorBuildExecCmdSocket(t *testing.T) {
 				Command:       testCommand,
 				SocketPath:    "/run/urunc/ch.sock",
 			},
+			unikernel:   &fakeUnikernel{},
 			mustContain: []string{"--api-socket path=/run/urunc/ch.sock"},
 		},
 		{
@@ -51,7 +51,58 @@ func TestCloudHypervisorBuildExecCmdSocket(t *testing.T) {
 				Command:       testCommand,
 				ContainerID:   "abc123",
 			},
+			unikernel:      &fakeUnikernel{},
 			mustNotContain: []string{"--api-socket"},
+		},
+		{
+			name: "no block device renders no --disk",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+			},
+			unikernel:      &fakeUnikernel{},
+			mustContain:    []string{"--kernel " + testKernelPath},
+			mustNotContain: []string{"--disk"},
+		},
+		{
+			name: "a block device names its image type",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+			},
+			unikernel: &fakeUnikernel{
+				blockCli: []types.MonitorBlockArgs{
+					{ID: "rootfs", Path: "/dev/mapper/urunc-rootfs"},
+				},
+			},
+			mustContain: []string{
+				"--disk path=/dev/mapper/urunc-rootfs,id=rootfs,image_type=raw",
+			},
+		},
+		{
+			name: "a block device without an id still names its image type",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+			},
+			unikernel: &fakeUnikernel{
+				blockCli: []types.MonitorBlockArgs{{Path: "/tmp/rootfs.img"}},
+			},
+			mustContain: []string{"--disk path=/tmp/rootfs.img,image_type=raw"},
+		},
+		{
+			name: "exact block arguments pass through untouched",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+			},
+			unikernel: &fakeUnikernel{
+				blockCli: []types.MonitorBlockArgs{
+					{ExactArgs: []string{"--disk", "path=/tmp/custom.img,readonly=on"}},
+				},
+			},
+			mustContain:    []string{"--disk path=/tmp/custom.img,readonly=on"},
+			mustNotContain: []string{"image_type"},
 		},
 	}
 
@@ -60,7 +111,7 @@ func TestCloudHypervisorBuildExecCmdSocket(t *testing.T) {
 			t.Parallel()
 
 			ch := &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: testCHBinary}
-			out, err := ch.BuildExecCmd(tt.args, &fakeUnikernel{})
+			out, err := ch.BuildExecCmd(tt.args, tt.unikernel)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, out)
 
