@@ -62,6 +62,22 @@ func (h *Hyperlight) UsesTUNTAP() bool {
 	return false
 }
 
+// netArgs opens the network of the container's namespace to the guest.
+// hluk's default is no network at all, and --port alone only lets the guest
+// serve: it can then connect nowhere, not even to a DNS server. A container
+// expects the whole network of its namespace, outbound and inbound, so the
+// guest gets both, with no hluk policy on top: the namespace and whatever
+// NetworkPolicy applies to it stay the boundary, as they are for any other
+// container. A container started with no network has no interface in its
+// namespace, and the guest is then left to hluk's default, as a second
+// boundary.
+func netArgs(args types.ExecArgs) []string {
+	if args.Net.IP == "" {
+		return nil
+	}
+	return []string{"--net", "--port=all"}
+}
+
 // Path returns the path to the hluk binary.
 func (h *Hyperlight) Path() string {
 	return h.binaryPath
@@ -90,6 +106,7 @@ func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) 
 	// no kernel, initrd or scratch memory with it, only what to run in it.
 	if args.SnapshotPath != "" {
 		cmdArgs := []string{h.binaryPath, "snapshot", "run", args.SnapshotPath}
+		cmdArgs = append(cmdArgs, netArgs(args)...)
 		cmdArgs = append(cmdArgs, extraMonArgs.OtherArgs...)
 		return cmdArgs, nil
 	}
@@ -110,6 +127,7 @@ func (h *Hyperlight) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) 
 	if memMiB := bytesToMiB(args.MemSizeB); memMiB > 0 {
 		cmdArgs = append(cmdArgs, "--scratch-mb", strconv.FormatUint(memMiB, 10))
 	}
+	cmdArgs = append(cmdArgs, netArgs(args)...)
 	cmdArgs = append(cmdArgs, extraMonArgs.OtherArgs...)
 
 	return cmdArgs, nil

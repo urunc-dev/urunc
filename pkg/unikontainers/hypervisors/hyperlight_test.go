@@ -100,6 +100,24 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot"},
 		},
 		{
+			name: "the network of the container is opened to a booted guest",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				Net:        types.NetDevParams{IP: "10.244.1.7"},
+			},
+			unikernel: &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: []string{"--guest-exec=/entrypoint.py"}}},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--net", "--port=all", "--guest-exec=/entrypoint.py"},
+		},
+		{
+			name: "the network of the container is opened to a resumed guest",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+				Net:          types.NetDevParams{IP: "10.244.1.7"},
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--net", "--port=all"},
+		},
+		{
 			name: "no initrd is an error",
 			args: types.ExecArgs{
 				UnikernelPath: "/unikernel/kernel",

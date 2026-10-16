@@ -53,6 +53,9 @@ type VMM interface {
 	Ok() error
 }
 
+// NetDevParams describes the network of the container: its interface, and
+// the tap device that the traffic of the interface is redirected to when the
+// monitor uses one. A container started with no network leaves it empty.
 type NetDevParams struct {
 	IP        string // The veth device IP
 	Mask      string // The veth device mask
@@ -61,7 +64,6 @@ type NetDevParams struct {
 	TapDev    string // The tap device name
 	MTU       int    // The MTU value of the tap device
 	DNSServer string // The nameserver of the container, empty if there is none
-	HostNet   bool   // The guest uses the monitor's sockets in the container's netns, no tap
 }
 
 type BlockDevParams struct {
