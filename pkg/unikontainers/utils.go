@@ -46,12 +46,13 @@ const (
 )
 
 // monitorResources holds the chosen guest rootfs params, the mounts and devices
-// that must be replicated inside the monitor's rootfs, and the block parameters
-// the guest needs.
+// that must be replicated inside the monitor's rootfs, whether the monitor gets
+// a tap device, and the block parameters the guest needs.
 type monitorResources struct {
 	Rootfs      types.RootfsParams     `json:"rootfs"`
 	Mounts      []specs.Mount          `json:"mounts"`
 	Devices     []specs.LinuxDevice    `json:"devices"`
+	TUNTAP      bool                   `json:"tuntap"`
 	BlockArgs   []types.BlockDevParams `json:"blockArgs"`
 	Sharedfs    types.SharedfsParams   `json:"sharedfs"`
 	PreStartCmd []string               `json:"preStartCmd,omitempty"`

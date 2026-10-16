@@ -33,6 +33,10 @@ const (
 
 var netlog = logrus.WithField("subsystem", "network")
 
+// ErrNoContainerIface reports a network namespace with no usable interface,
+// as in a container started with no network.
+var ErrNoContainerIface = errors.New("no suitable network interface found in namespace")
+
 type UnikernelNetworkInfo struct {
 	TapDevice string
 	EthDevice Interface
@@ -403,7 +407,18 @@ func discoverContainerIface() (netlink.Link, error) {
 		}
 		netlog.Debugf("skipping interface %s: no default route found", attrs.Name)
 	}
-	return nil, errors.New("no suitable network interface found in namespace")
+	return nil, ErrNoContainerIface
+}
+
+// ContainerIface describes the interface of the container in the current
+// network namespace, without touching it, for a monitor that gets no tap:
+// ErrNoContainerIface when there is none.
+func ContainerIface() (Interface, error) {
+	link, err := discoverContainerIface()
+	if err != nil {
+		return Interface{}, err
+	}
+	return getInterfaceInfo(link.Attrs().Name)
 }
 
 func deleteAllQDiscs(device netlink.Link) error {

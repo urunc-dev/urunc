@@ -176,3 +176,8 @@ func TestExecuteHooksSequential(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "12", string(out))
 }
+
+// noTapVMM is a monitor that opens the guest's sockets itself, with no tap.
+type noTapVMM struct{ types.VMM }
+
+func (noTapVMM) UsesTUNTAP() bool { return false }

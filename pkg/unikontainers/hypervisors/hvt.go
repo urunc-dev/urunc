@@ -135,6 +135,11 @@ func (h *HVT) UsesKVM() bool {
 	return true
 }
 
+// UsesTUNTAP reports that the guest gets its network through a tap device.
+func (h *HVT) UsesTUNTAP() bool {
+	return true
+}
+
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
 func (h *HVT) SupportsSharedfs(_ string) bool {
 	return false

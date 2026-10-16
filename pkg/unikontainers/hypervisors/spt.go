@@ -45,6 +45,11 @@ func (s *SPT) UsesKVM() bool {
 	return false
 }
 
+// UsesTUNTAP reports that the guest gets its network through a tap device.
+func (s *SPT) UsesTUNTAP() bool {
+	return true
+}
+
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
 func (s *SPT) SupportsSharedfs(_ string) bool {
 	return false

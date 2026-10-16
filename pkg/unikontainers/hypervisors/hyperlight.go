@@ -54,6 +54,14 @@ func (h *Hyperlight) SupportsControlSocket() bool {
 	return false
 }
 
+// UsesTUNTAP reports that hluk needs no tap: it serves the guest's sockets
+// itself, each guest socket call becoming a call on a real socket hluk opens,
+// so the guest shares the pod's network namespace, its address, routes and
+// NetworkPolicy, with no tap in between.
+func (h *Hyperlight) UsesTUNTAP() bool {
+	return false
+}
+
 // Path returns the path to the hluk binary.
 func (h *Hyperlight) Path() string {
 	return h.binaryPath

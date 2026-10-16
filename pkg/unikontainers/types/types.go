@@ -41,6 +41,13 @@ type VMM interface {
 	Signal(int, unix.Signal) error
 	Path() string
 	UsesKVM() bool
+	// UsesTUNTAP reports whether the guest gets its network through a tap
+	// device, which urunc creates in the container's network namespace and
+	// redirects the traffic of the container's interface to. A monitor that
+	// opens the guest's sockets itself, in that namespace, reports false, and
+	// urunc leaves the interface untouched: redirecting its traffic to a tap
+	// would take it away from those sockets.
+	UsesTUNTAP() bool
 	SupportsSharedfs(string) bool
 	SupportsControlSocket() bool
 	Ok() error
@@ -54,6 +61,7 @@ type NetDevParams struct {
 	TapDev    string // The tap device name
 	MTU       int    // The MTU value of the tap device
 	DNSServer string // The nameserver of the container, empty if there is none
+	HostNet   bool   // The guest uses the monitor's sockets in the container's netns, no tap
 }
 
 type BlockDevParams struct {

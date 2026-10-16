@@ -124,3 +124,11 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 		})
 	}
 }
+
+func TestHyperlightUsesTUNTAP(t *testing.T) {
+	t.Parallel()
+	assert.False(t, (&Hyperlight{}).UsesTUNTAP(), "hyperlight-unikraft opens the guest's sockets itself, with no tap")
+	for _, tap := range []types.VMM{&Qemu{}, &Firecracker{}, &CloudHypervisor{}, &HVT{}, &SPT{}, &Hedge{}} {
+		assert.True(t, tap.UsesTUNTAP(), "%T gets a tap", tap)
+	}
+}

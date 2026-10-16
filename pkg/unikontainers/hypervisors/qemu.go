@@ -51,6 +51,11 @@ func (q *Qemu) UsesKVM() bool {
 	return true
 }
 
+// UsesTUNTAP reports that the guest gets its network through a tap device.
+func (q *Qemu) UsesTUNTAP() bool {
+	return true
+}
+
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
 func (q *Qemu) SupportsSharedfs(_ string) bool {
 	return true

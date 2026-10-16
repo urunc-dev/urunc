@@ -49,6 +49,11 @@ func (ch *CloudHypervisor) UsesKVM() bool {
 	return true
 }
 
+// UsesTUNTAP reports that the guest gets its network through a tap device.
+func (ch *CloudHypervisor) UsesTUNTAP() bool {
+	return true
+}
+
 // SupportsControlSocket reports that Cloud Hypervisor exposes a control socket
 // (its REST API socket).
 func (ch *CloudHypervisor) SupportsControlSocket() bool {

@@ -280,11 +280,32 @@ func (u *Unikontainer) SetRunningState() error {
 	return u.saveContainerState()
 }
 
-// SetupNet creates the sandbox's network device (tap) in the current network
-// namespace and returns its parameters; uid and gid own the tap device.
-func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
-	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
+// SetupNet gives the guest its network. A monitor on a tap gets one created in
+// the current network namespace, owned by uid and gid, with the traffic of the
+// container's interface redirected to it. Any other monitor opens the guest's
+// sockets in that namespace itself, so the interface is left as it is and only
+// described, for the monitor to know whether the container has a network at
+// all: one started with none gets empty parameters.
+func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	netArgs := types.NetDevParams{}
+	if !tuntap {
+		iface, err := network.ContainerIface()
+		if errors.Is(err, network.ErrNoContainerIface) {
+			uniklog.Debug("no interface in the network namespace of the container, the guest gets no network")
+			return netArgs, nil
+		}
+		if err != nil {
+			return netArgs, fmt.Errorf("failed to describe the container's interface: %w", err)
+		}
+		netArgs.IP = iface.IP
+		netArgs.Mask = iface.Mask
+		netArgs.Gateway = iface.DefaultGateway
+		netArgs.MAC = iface.MAC
+		netArgs.MTU = iface.MTU
+		return netArgs, nil
+	}
+
+	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
 	netManager, err := network.NewNetworkManager(networkType)
 	if err != nil {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
@@ -400,7 +421,10 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 	}
 	res.Mounts = append(res.Mounts, rootfsMounts...)
 
-	res.Devices, err = getMonitorDevices(vmm.UsesKVM())
+	// Whether the monitor gets a tap is decided here, once, for its devices
+	// and for its capabilities.
+	res.TUNTAP = vmm.UsesTUNTAP()
+	res.Devices, err = getMonitorDevices(vmm.UsesKVM(), res.TUNTAP)
 	if err != nil {
 		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}
@@ -652,13 +676,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	netArgs, err := SetupNet(vmm.UsesTUNTAP(), u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
 	}
 	metrics.Capture(m.TS16)
-	withTUNTAP := netArgs.IP != ""
+	withTUNTAP := netArgs.TapDev != ""
 	// SetupNet does not resolve DNS; carry the server resolved at spec build.
 	netArgs.DNSServer = ms.DNSServer
 	unikernelParams.Net = netArgs
