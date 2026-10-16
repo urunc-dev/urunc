@@ -17,6 +17,10 @@ package types
 
 import "golang.org/x/sys/unix"
 
+// ResolvConfPath is where the resolv.conf of the container is mounted in the
+// monitor rootfs, for a monitor that installs it in the guest.
+const ResolvConfPath = "/etc/resolv.conf"
+
 type Unikernel interface {
 	Init(UnikernelParams) error
 	CommandString() (string, error)
@@ -121,6 +125,7 @@ type ExecArgs struct {
 	Command       string   // The unikernel's command line
 	Seccomp       bool     // Enable or disable seccomp filters for the VMM
 	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
+	ResolvConf    bool     // The container's resolv.conf is mounted at ResolvConfPath in the monitor rootfs, for a monitor that installs it in the guest
 	VCPUs         uint     // The number of vCPUs to allocate
 	UnikernelPath string   // The path of the unikernel inside rootfs
 	InitrdPath    string   // The path to the initrd of the unikernel

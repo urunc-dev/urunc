@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -220,7 +221,7 @@ func (u *Unikontainer) InitialSetup() error {
 		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
-	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath)
+	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
 	if err != nil {
 		return err
 	}
@@ -278,6 +279,28 @@ func (u *Unikontainer) Create(pid int, pidFilePath string) error {
 func (u *Unikontainer) SetRunningState() error {
 	u.State.Status = specs.StateRunning
 	return u.saveContainerState()
+}
+
+// monitorResolvConfMount returns the container's own resolv.conf mount, to
+// apply in the monitor rootfs as well, for a monitor that serves the guest's
+// sockets itself: it installs the whole file in the guest, search domains
+// included, so that cluster names resolve as they do in a container, and the
+// guest follows the engine's file as a container does. The monitor only
+// reads it, so it gets it read-only. The other monitors get none, and neither
+// does a container without a resolv.conf.
+func monitorResolvConfMount(vmm types.VMM, cntrMounts []specs.Mount) (specs.Mount, bool) {
+	if vmm.UsesTUNTAP() {
+		return specs.Mount{}, false
+	}
+	m, ok := resolvConfMount(cntrMounts)
+	if !ok {
+		return specs.Mount{}, false
+	}
+	m.Destination = types.ResolvConfPath
+	if !slices.Contains(m.Options, "ro") {
+		m.Options = append(slices.Clone(m.Options), "ro")
+	}
+	return m, true
 }
 
 // SetupNet gives the guest its network. A monitor on a tap gets one created in
@@ -407,7 +430,7 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, plus the block parameters passed to the guest.
-func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string) (monitorResources, error) {
+func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -420,6 +443,9 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 		return res, fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
 	}
 	res.Mounts = append(res.Mounts, rootfsMounts...)
+	if m, ok := monitorResolvConfMount(vmm, cntrMounts); ok {
+		res.Mounts = append(res.Mounts, m)
+	}
 
 	// Whether the monitor gets a tap is decided here, once, for its devices
 	// and for its capabilities.
@@ -593,10 +619,14 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
 	mSpec.PreStartCmd = monRes.PreStartCmd
-	// Resolve the guest DNS server once, here in the builder shared by both the
-	// libcontainer and non-libcontainer paths, where the container mount
-	// sources are available.
-	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	// A monitor without a tap hands the container's resolv.conf, mounted in
+	// its rootfs, to the guest. The others get the nameserver out of it,
+	// resolved once here in the builder shared by both the libcontainer and
+	// non-libcontainer paths, where the container mount sources are available.
+	_, mSpec.ExecArgs.ResolvConf = resolvConfMount(monRes.Mounts)
+	if !mSpec.ExecArgs.ResolvConf {
+		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	}
 
 	return mSpec
 }

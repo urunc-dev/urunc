@@ -70,12 +70,18 @@ func (h *Hyperlight) UsesTUNTAP() bool {
 // NetworkPolicy applies to it stay the boundary, as they are for any other
 // container. A container started with no network has no interface in its
 // namespace, and the guest is then left to hluk's default, as a second
-// boundary.
+// boundary. The guest also gets the container's resolver configuration: the
+// rootfs, or a snapshot of a guest booted elsewhere, carries its own, which
+// knows nothing of the cluster's DNS.
 func netArgs(args types.ExecArgs) []string {
 	if args.Net.IP == "" {
 		return nil
 	}
-	return []string{"--net", "--port=all"}
+	cmdArgs := []string{"--net", "--port=all"}
+	if args.ResolvConf {
+		cmdArgs = append(cmdArgs, "--resolv-conf="+types.ResolvConfPath)
+	}
+	return cmdArgs
 }
 
 // Path returns the path to the hluk binary.
