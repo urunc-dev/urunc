@@ -143,6 +143,12 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 			if blockArg.ID != "" {
 				diskArg += ",id=" + blockArg.ID
 			}
+			// cloud-hypervisor v54.0 removed image type autodetection and
+			// refuses a --disk that does not name one. What urunc hands it
+			// is a block device or a raw file, never a qcow2, so say so,
+			// the way the qemu path says format=raw. The parameter exists
+			// since v51.0.
+			diskArg += ",image_type=raw"
 			exArgs = append(exArgs, "--disk", diskArg)
 		}
 	}
