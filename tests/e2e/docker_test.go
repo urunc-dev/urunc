@@ -19,17 +19,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var dockerImages = newImageCache()
+
 var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 	var tool *dockerInfo
 
 	BeforeAll(func() {
-		cases := dockerTestCases()
-		images := getTestImages(cases)
-		err := pullAllImages(testDocker, images)
-		Expect(err).NotTo(HaveOccurred(), "Failed to pull docker images")
-
 		DeferCleanup(func() {
-			removeAllImages(testDocker, images)
+			removeAllImages(testDocker, dockerImages.images())
 		})
 	})
 
@@ -46,6 +43,7 @@ var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 	DescribeTable("unikernel containers",
 		func(tc containerTestArgs) {
 			skipMissingVolumes(tc)
+			Expect(dockerImages.ensure(testDocker, tc.Image)).To(Succeed(), "Failed to pull "+tc.Image)
 			tool = newDockerTool(tc)
 			runDetachedTest(tool, tc)
 		},
