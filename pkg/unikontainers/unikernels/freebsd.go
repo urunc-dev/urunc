@@ -253,8 +253,11 @@ func qemuMMIOBlock(id string, path string) []string {
 // rootfs at urunitConfPath. The monitor exposes that file to the guest as a
 // raw virtio-blk device.
 func (f *FreeBSD) setupUrunitConfig() error {
-	urunitConfig := f.buildUrunitConfig()
-	err := createFile(urunitConfPath, urunitConfig)
+	urunitConfig, err := f.buildUrunitConfig()
+	if err != nil {
+		return fmt.Errorf("failed to setup urunit config: %w", err)
+	}
+	err = createFile(urunitConfPath, urunitConfig)
 	if err != nil {
 		return fmt.Errorf("failed to setup urunit config: %w", err)
 	}
@@ -266,40 +269,75 @@ func (f *FreeBSD) setupUrunitConfig() error {
 // FreeBSD kernel starts init without arguments) and the network configuration
 // (UNS/UNE, since FreeBSD has no ip= boot parameter). The result is padded to
 // a multiple of the sector size, as it is exposed as a raw block device.
-func (f *FreeBSD) buildUrunitConfig() string {
-	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
+func (f *FreeBSD) buildUrunitConfig() (string, error) {
+	// Every section marker and value is a NUL-terminated record, so a newline
+	// inside a value cannot corrupt framing (see #1068). NUL cannot appear in
+	// valid values, so it is rejected.
+	for _, e := range f.Env {
+		if err := validateUrunitValue("env var", e); err != nil {
+			return "", err
+		}
+	}
+	if err := validateUrunitValue("working directory", f.ProcConfig.WorkDir); err != nil {
+		return "", err
+	}
+	for _, c := range f.Command {
+		if err := validateUrunitValue("command argument", c); err != nil {
+			return "", err
+		}
+	}
+	for _, b := range f.Block {
+		if b.ID == "rootfs" {
+			continue
+		}
+		if err := validateUrunitValue("block ID", b.ID); err != nil {
+			return "", err
+		}
+		if err := validateUrunitValue("block mountpoint", b.MountPoint); err != nil {
+			return "", err
+		}
+	}
+	if err := validateUrunitValue("network address", f.Net.Address); err != nil {
+		return "", err
+	}
+	if err := validateUrunitValue("network gateway", f.Net.Gateway); err != nil {
+		return "", err
+	}
+	if err := validateUrunitValue("network mask", f.Net.Mask); err != nil {
+		return "", err
+	}
 	var sb strings.Builder
 	sb.WriteString(envStartMarker)
-	sb.WriteString("\n")
-	if len(f.Env) > 0 {
-		sb.WriteString(strings.Join(f.Env, "\n"))
-		sb.WriteString("\n")
+	sb.WriteString("\x00")
+	for _, e := range f.Env {
+		sb.WriteString(e)
+		sb.WriteString("\x00")
 	}
 	sb.WriteString(envEndMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(lpcStartMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("UID:")
 	sb.WriteString(strconv.FormatUint(uint64(f.ProcConfig.UID), 10))
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("GID:")
 	sb.WriteString(strconv.FormatUint(uint64(f.ProcConfig.GID), 10))
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("WD:")
 	sb.WriteString(f.ProcConfig.WorkDir)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("ARC:")
 	sb.WriteString(strconv.FormatUint(uint64(len(f.Command)), 10))
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	for _, c := range f.Command {
 		sb.WriteString("ARV:")
 		sb.WriteString(c)
-		sb.WriteString("\n")
+		sb.WriteString("\x00")
 	}
 	sb.WriteString(lpcEndMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(blkStartMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	for _, b := range f.Block {
 		if b.ID == "rootfs" {
 			continue
@@ -309,34 +347,34 @@ func (f *FreeBSD) buildUrunitConfig() string {
 			sb.WriteString("FC")
 		}
 		sb.WriteString(b.ID)
-		sb.WriteString("\n")
+		sb.WriteString("\x00")
 		sb.WriteString("MP:")
 		sb.WriteString(b.MountPoint)
-		sb.WriteString("\n")
+		sb.WriteString("\x00")
 	}
 	sb.WriteString(blkEndMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(netStartMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("IP:")
 	sb.WriteString(f.Net.Address)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("GW:")
 	sb.WriteString(f.Net.Gateway)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("MSK:")
 	sb.WriteString(f.Net.Mask)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(netEndMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	// Pad to a whole number of sectors. The PAD line marks the end of the
 	// configuration for readers; the remaining bytes are newlines.
 	sb.WriteString(paddingMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	for sb.Len()%blockSectorSize != 0 {
 		sb.WriteString("\n")
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func newFreeBSD() *FreeBSD {
