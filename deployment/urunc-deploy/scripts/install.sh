@@ -280,6 +280,12 @@ function install_urunc_config() {
     echo "urunc configuration file installed at ${urunc_config_file}"
 }
 
+# Remove the urunc binaries and directories from the node. Only reset may
+# call it: it runs after the container runtime restarted without the urunc
+# configuration, so nothing references the binaries anymore. Removing them
+# earlier, while the running runtime still has urunc registered (e.g. from
+# the preStop cleanup), leaves pods with runtimeClassName: urunc stuck in
+# Terminating.
 function remove_artifacts() {
     # Remove urunc related artifacts
     rm -f /host/usr/local/bin/urunc
@@ -764,6 +770,11 @@ function reset_runtime() {
 
     wait_till_node_is_ready
 
+    # The runtime restarted without the urunc configuration, so nothing
+    # references the binaries anymore: remove them only now, before removing
+    # the label below deletes this very Pod.
+    remove_artifacts
+
     # Remove the label only as the very last step. The cleanup DaemonSet
     # selects nodes by this label, so removing it makes the DaemonSet
     # controller delete this very Pod. Retry on transient API errors rather
@@ -944,17 +955,20 @@ function main() {
             fi
 
             cleanup_cri_runtime "$runtime" "${conf_files[@]}"
-            # Labeling the node for the cleanup DaemonSet needs the API server,
-            # so a failure must not keep the artifacts on the node
+            # Labeling the node for the cleanup DaemonSet needs the API
+            # server. The artifacts are left on the node on purpose: the
+            # running runtime still references them, and removing the
+            # binaries now would leave urunc Pods stuck in Terminating, so
+            # reset removes them once the runtime has restarted.
             local daemonsets
             if ! daemonsets=$(kubectl -n kube-system get ds --request-timeout=5s) \
                 || { ! grep -q urunc-deploy <<< "$daemonsets" \
                     && ! kubectl label node "$NODE_NAME" --overwrite --request-timeout=5s \
                         urunc.io/urunc-runtime=cleanup; }; then
                 echo "WARNING: cannot label node $NODE_NAME for the cleanup DaemonSet;" \
-                    "restart ${runtime} on the node to unload urunc"
+                    "restart ${runtime} on the node to unload urunc; the urunc artifacts" \
+                    "stay on the node until the cleanup DaemonSet resets it"
             fi
-            remove_artifacts
             ;;
         reset)
             reset_runtime $runtime

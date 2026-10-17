@@ -143,8 +143,9 @@ kubectl apply -k https://github.com/urunc-dev/urunc//deployment/urunc-deploy/uru
 ```
 
 Wait for the cleanup to finish on every node. The cleanup Pod restarts
-`containerd`, removes the `urunc.io/urunc-runtime` label from its node, and
-then exits on its own. The cleanup is complete once no node has the label
+`containerd`, removes the urunc binaries and directories from the node,
+removes the `urunc.io/urunc-runtime` label from its node, and then exits on
+its own. The cleanup is complete once no node has the label
 anymore, i.e. the following command prints `No resources found`:
 
 ```bash
@@ -195,8 +196,9 @@ kubectl apply -f https://raw.githubusercontent.com/urunc-dev/urunc/main/deployme
 ```
 
 Wait for the cleanup to finish on every node. The cleanup Pod restarts
-`containerd`, removes the `urunc.io/urunc-runtime` label from its node, and
-then exits on its own. The cleanup is complete once no node has the label
+`containerd`, removes the urunc binaries and directories from the node,
+removes the `urunc.io/urunc-runtime` label from its node, and then exits on
+its own. The cleanup is complete once no node has the label
 anymore, i.e. the following command prints `No resources found`:
 
 ```bash
@@ -251,9 +253,6 @@ During installation, the following steps take place:
 
 During cleanup, these changes are reverted:
 
-- The `urunc` and `containerd-shim-urunc-v2` binaries are deleted from `/usr/local/bin`.
-- The `/opt/urunc` directory containing hypervisor binaries and QEMU data files is deleted.
-- The `/etc/urunc` configuration directory is deleted.
 - The `urunc` changes are removed from the `containerd` configuration:
     * The `urunc-deploy` drop-in file is deleted.
     * A configuration file that `urunc-deploy` created is deleted, unless it was
@@ -265,6 +264,12 @@ During cleanup, these changes are reverted:
       the installation, is kept.
     * Directories created during the installation are removed if they are empty.
 - `containerd` and the kubelet are restarted (on k3s/rke2, the k3s/rke2 service instead).
+- Once the runtime restarted without the `urunc` configuration, the remaining
+  artifacts are deleted: the `urunc` and `containerd-shim-urunc-v2` binaries
+  from `/usr/local/bin`, the `/opt/urunc` directory containing hypervisor
+  binaries and QEMU data files, and the `/etc/urunc` configuration directory.
+  Until then the binaries stay in place, so that `urunc` Pods can still be
+  deleted while the runtime has `urunc` registered.
 - The `urunc.io/urunc-runtime=true` label is removed from the Node.
 - The RBAC role, the `urunc-deploy` Pod and the runtime class are removed.
 
