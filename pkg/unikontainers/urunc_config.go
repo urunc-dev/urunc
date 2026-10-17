@@ -151,6 +151,7 @@ func defaultMonitorsConfig() map[string]types.MonitorConfig {
 		"spt":                 {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 		"firecracker":         {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 		"cloud-hypervisor":    {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
+		"hvi":                 {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 		"hyperlight-unikraft": {DefaultMemoryMB: defaultMonitorMemoryMB, DefaultVCPUs: defaultMonitorVCPUs},
 	}
 }

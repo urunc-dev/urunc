@@ -135,10 +135,16 @@ func runExecSession(cmd *cli.Command, ready *execReady) error {
 
 	// The agent listens on the same vsock port for every monitor; only the host
 	// side of the transport differs (qemu: host vhost-vsock; firecracker and
-	// cloud-hypervisor: a host unix socket).
+	// cloud-hypervisor: a host unix socket with a CONNECT handshake; hvi: a
+	// host unix socket relayed to the agent port).
 	transport := unikontainer.AgentTransportInfo()
 	var conn io.ReadWriteCloser
-	if transport.VsockUDS != "" {
+	if transport.Relay {
+		conn, err = dialAgentRelay(transport.VsockUDS, 15*time.Second)
+		if err != nil {
+			return fmt.Errorf("could not reach the in-guest exec agent over the relay socket %s: %w", transport.VsockUDS, err)
+		}
+	} else if transport.VsockUDS != "" {
 		conn, err = dialAgentHybridVsock(transport.VsockUDS, agentproto.DefaultVsockPort, 15*time.Second)
 		if err != nil {
 			return fmt.Errorf("could not reach the in-guest exec agent over hybrid vsock %s (port %d): %w", transport.VsockUDS, agentproto.DefaultVsockPort, err)
@@ -462,6 +468,58 @@ func dialAgentHybridVsock(udsPath string, guestPort uint32, timeout time.Duratio
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// relayProbeStream is the stream the relay probe opens on. A session never
+// uses it, since newStreamID never returns 0.
+const relayProbeStream = 0
+
+// dialAgentRelay reaches the agent over a unix socket that the monitor relays
+// straight to the agent's vsock port, as hvi's agent socket does.
+//
+// The relay has no CONNECT reply. Each connection opens a vsock stream to the
+// guest, and a guest with no listener yet resets it, which the host reads as
+// EOF. A connection still waiting for a booting guest looks the same as an
+// accepted one. So this sends the agent an open request with an empty
+// payload on a probe stream. The agent answers it with an Error frame and
+// starts nothing. That frame proves the agent accepted the connection, and the
+// session then continues on the same connection. On EOF, or no answer within
+// a few seconds, it dials again until the timeout elapses.
+func dialAgentRelay(udsPath string, timeout time.Duration) (io.ReadWriteCloser, error) {
+	dir := filepath.Dir(udsPath)
+	base := filepath.Base(udsPath)
+	deadline := time.Now().Add(timeout)
+	for {
+		conn, err := dialUnixFrom(dir, base)
+		if err == nil {
+			if err = relayProbe(conn); err == nil {
+				return conn, nil
+			}
+			_ = conn.Close()
+		}
+		if time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// relayProbe sends the probe open request on conn and waits for the agent's
+// Error frame on the probe stream.
+func relayProbe(conn net.Conn) error {
+	if err := agentproto.WriteFrame(conn, agentproto.TypeOpen, relayProbeStream, nil); err != nil {
+		return err
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
+	f, err := agentproto.ReadFrame(conn)
+	if err != nil {
+		return fmt.Errorf("the agent did not answer the probe: %w", err)
+	}
+	if f.Type != agentproto.TypeError || f.Stream != relayProbeStream {
+		return fmt.Errorf("unexpected answer to the probe: frame type %d on stream %d", f.Type, f.Stream)
+	}
+	return nil
 }
 
 // dialUnixFrom dials a unix socket by basename from its directory, so the path

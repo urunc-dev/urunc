@@ -49,9 +49,11 @@ const ContainerBootInitrdPath = ContainerBootDir + "/initrd"
 const ContainerBootGuestInitrdPath = ContainerBootDir + "/initrd.urunc"
 
 // AgentVsockUDSPath is the monitor-rootfs path of the vsock unix socket that
-// firecracker creates for the in-guest exec agent. Unlike qemu, which reaches a
-// guest's vsock through the host's /dev/vhost-vsock, firecracker multiplexes
-// vsock over this host unix socket: urunc exec connects to it and asks for the
-// agent's guest port with a "CONNECT <port>" line. It is relative to the
-// pivoted monitor rootfs, so the host path is <monRootfs>/urunc-agent.vsock.
+// firecracker, cloud-hypervisor and hvi create for the in-guest exec agent.
+// Unlike qemu, which reaches a guest's vsock through the host's
+// /dev/vhost-vsock, these monitors serve vsock over this host unix socket.
+// On firecracker and cloud-hypervisor urunc exec asks for the agent's guest
+// port with a "CONNECT <port>" line. hvi relays every connection to the agent
+// port with no handshake. The path is relative to the pivoted monitor rootfs,
+// so the host path is <monRootfs>/urunc-agent.vsock.
 const AgentVsockUDSPath = "/urunc-agent.vsock"
