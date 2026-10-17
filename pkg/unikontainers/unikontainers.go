@@ -324,6 +324,10 @@ func monitorResolvConfMount(vmm types.VMM, cntrMounts []specs.Mount) (specs.Moun
 	return m, true
 }
 
+// newNetworkManager builds the network manager SetupNet uses. Tests replace
+// it with a fake.
+var newNetworkManager = network.NewNetworkManager
+
 // SetupNet gives the guest its network. A monitor on a tap gets one created in
 // the current network namespace, owned by uid and gid, with the traffic of the
 // container's interface redirected to it. Any other monitor opens the guest's
@@ -350,7 +354,7 @@ func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevPar
 	}
 
 	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
-	netManager, err := network.NewNetworkManager(networkType)
+	netManager, err := newNetworkManager(networkType)
 	if err != nil {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
 	}
