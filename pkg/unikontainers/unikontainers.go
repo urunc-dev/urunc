@@ -361,13 +361,15 @@ func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevPar
 
 	networkInfo, err := netManager.NetworkSetup(uid, gid)
 	if err != nil {
-		// TODO: Handle this case better. We do not need to show an error
-		// since there was no network in the container. Therefore, we
-		// need better error handling and specifically check if the container
-		// did not have any network.
-		uniklog.Errorf("Failed to setup network :%v. Possibly due to ctr", err)
+		if errors.Is(err, network.ErrNoContainerIface) {
+			// ctr and similar runtimes give the container no interface.
+			uniklog.WithError(err).Info("no network interface in the container's network namespace, the guest boots without a network device")
+			return netArgs, nil
+		}
+		return netArgs, fmt.Errorf("network setup (%s) failed: %w", networkType, err)
 	}
-	// if network info is nil, we didn't find eth0, so we are running with ctr
+	// The no-interface case (ctr) returned above, so a nil error comes with
+	// network info.
 	if networkInfo != nil {
 		netArgs.TapDev = networkInfo.TapDevice
 		netArgs.IP = networkInfo.EthDevice.IP
