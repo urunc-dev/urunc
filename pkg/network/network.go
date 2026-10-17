@@ -88,8 +88,11 @@ func NewNetworkManager(networkType string) (Manager, error) {
 	}
 }
 
+// netInterfacesFn is the seam the setup tests replace.
+var netInterfacesFn = net.Interfaces
+
 func getTapIndex() (int, error) {
-	ifaces, err := net.Interfaces()
+	ifaces, err := netInterfacesFn()
 	if err != nil {
 		return 0, err
 	}
@@ -127,6 +130,14 @@ func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.L
 		return nil, fmt.Errorf("failed to create tap device: %w", err)
 	}
 
+	// The tap exists from here on, so a failure removes it again.
+	fail := func(err error) (netlink.Link, error) {
+		if delErr := deleteTapDevice(tapLink); delErr != nil {
+			netlog.Warnf("failed to remove tap %s after a failed setup: %v", name, delErr)
+		}
+		return nil, err
+	}
+
 	// LinkAdd opened the tap device's fd and set TUNSETPERSIST, so the
 	// interface survives independently of any open fd. Nothing after the
 	// owner/group ioctl calls uses the fd (the remaining setup goes through
@@ -141,7 +152,7 @@ func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.L
 			if closeErr := tapFd.Close(); closeErr != nil {
 				netlog.Warnf("failed to close tap %s fd after owner ioctl error: %v", name, closeErr)
 			}
-			return nil, fmt.Errorf("failed to set tap %s owner to uid %d: %w", name, ownerUID, err)
+			return fail(fmt.Errorf("failed to set tap %s owner to uid %d: %w", name, ownerUID, err))
 		}
 
 		err = unix.IoctlSetInt(int(tapFd.Fd()), unix.TUNSETGROUP, int(ownerGID))
@@ -149,18 +160,18 @@ func createTapDevice(name string, mtu int, ownerUID, ownerGID uint32) (netlink.L
 			if closeErr := tapFd.Close(); closeErr != nil {
 				netlog.Warnf("failed to close tap %s fd after group ioctl error: %v", name, closeErr)
 			}
-			return nil, fmt.Errorf("failed to set tap %s group to gid %d: %w", name, ownerGID, err)
+			return fail(fmt.Errorf("failed to set tap %s group to gid %d: %w", name, ownerGID, err))
 		}
 
 		err = tapFd.Close()
 		if err != nil {
-			return nil, fmt.Errorf("failed to close the fd of tap %s: %w", name, err)
+			return fail(fmt.Errorf("failed to close the fd of tap %s: %w", name, err))
 		}
 	}
 
 	err = netlink.LinkSetMTU(tapLink, mtu)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set tap device MTU to %d: %w", mtu, err)
+		return fail(fmt.Errorf("failed to set tap device MTU to %d: %w", mtu, err))
 	}
 
 	return tapLink, nil
@@ -234,21 +245,29 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
 	// Create TAP
 	netlog.Debugf("creating tap device %s (mtu=%d)", tapName, redirectLink.Attrs().MTU)
-	newTapDevice, err := createTapDevice(tapName, redirectLink.Attrs().MTU, uid, gid)
+	newTapDevice, err := createTapDeviceFn(tapName, redirectLink.Attrs().MTU, uid, gid)
 	if err != nil {
 		return nil, fmt.Errorf("createTapDevice(%s) failed: %w", tapName, err)
 	}
 	netlog.Debugf("created tap device %s (index=%d)", newTapDevice.Attrs().Name, newTapDevice.Attrs().Index)
 
+	// ethQdiscAdded records whether this setup added the ingress qdisc on
+	// redirectLink, so a rollback removes it only then.
+	ethQdiscAdded := false
+	fail := func(err error) (netlink.Link, error) {
+		rollbackTap(newTapDevice, redirectLink, ethQdiscAdded)
+		return nil, err
+	}
+
 	// Bring TAP up before qdisc
-	if err = netlink.LinkSetUp(newTapDevice); err != nil {
-		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", newTapDevice.Attrs().Name, err)
+	if err = linkSetUpFn(newTapDevice); err != nil {
+		return fail(fmt.Errorf("LinkSetUp(%s) failed: %w", newTapDevice.Attrs().Name, err))
 	}
 	netlog.Debugf("TAP %s is UP", newTapDevice.Attrs().Name)
 
 	// Bring redirectLink (eth0) up before using it in filters
-	if err = netlink.LinkSetUp(redirectLink); err != nil {
-		return nil, fmt.Errorf("LinkSetUp(%s) failed: %w", redirectLink.Attrs().Name, err)
+	if err = linkSetUpFn(redirectLink); err != nil {
+		return fail(fmt.Errorf("LinkSetUp(%s) failed: %w", redirectLink.Attrs().Name, err))
 	}
 	netlog.Debugf("redirectLink %s is UP", redirectLink.Attrs().Name)
 
@@ -256,16 +275,17 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	if addTCRules {
 		netlog.Debug("adding tc ingress qdisc + redirect filters")
 
-		if err = addIngressQdisc(newTapDevice); err != nil {
-			return nil, fmt.Errorf("addIngressQdisc(tap=%s) failed: %w",
-				newTapDevice.Attrs().Name, err)
+		if err = addIngressQdiscFn(newTapDevice); err != nil {
+			return fail(fmt.Errorf("addIngressQdisc(tap=%s) failed: %w",
+				newTapDevice.Attrs().Name, err))
 		}
-		if err = addIngressQdisc(redirectLink); err != nil {
-			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
-				redirectLink.Attrs().Name, err)
+		if err = addIngressQdiscFn(redirectLink); err != nil {
+			return fail(fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
+				redirectLink.Attrs().Name, err))
 		}
+		ethQdiscAdded = true
 		if _, err = addRedirectFilters(newTapDevice, redirectLink, redirectClassifiers); err != nil {
-			return nil, err
+			return fail(err)
 		}
 	}
 
@@ -274,11 +294,11 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 		netlog.Debugf("assigning IP %s to %s", ipAddress, newTapDevice.Attrs().Name)
 		ipn, err := netlink.ParseAddr(ipAddress)
 		if err != nil {
-			return nil, fmt.Errorf("ParseAddr(%s) failed: %w", ipAddress, err)
+			return fail(fmt.Errorf("ParseAddr(%s) failed: %w", ipAddress, err))
 		}
-		if err = netlink.AddrReplace(newTapDevice, ipn); err != nil {
-			return nil, fmt.Errorf("AddrReplace(%s, %s) failed: %w",
-				newTapDevice.Attrs().Name, ipAddress, err)
+		if err = addrReplaceFn(newTapDevice, ipn); err != nil {
+			return fail(fmt.Errorf("AddrReplace(%s, %s) failed: %w",
+				newTapDevice.Attrs().Name, ipAddress, err))
 		}
 	}
 
@@ -286,18 +306,30 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 	return newTapDevice, nil
 }
 
+// CleanupAllUruncTaps removes every tapN_urunc device in the current network
+// namespace. This is the blanket cleanup of the stop path. For each tap it
+// deletes every filter at HANDLE_ROOT and the ingress qdisc on both the tap
+// and the container interface, and then the tap itself. rollbackTap is
+// different: it undoes only what a failed setup created. When the namespace
+// has no container interface, only the tap side is cleaned.
 func CleanupAllUruncTaps() error {
 	netlog.Debug("net cleanup called")
 
-	handle, err := newNetlinkHandle()
+	handle, err := newNetlinkHandle(unix.NETLINK_ROUTE)
 	if err != nil {
-		return fmt.Errorf("failed to get netlink handle: %w", err)
+		return fmt.Errorf("failed to open a netlink route handle: %w", err)
 	}
 	defer handle.Close()
 
 	links, err := handle.LinkList()
 	if err != nil {
 		return fmt.Errorf("failed to list links: %w", err)
+	}
+
+	eth, err := selectContainerIface(handle, links)
+	if err != nil {
+		netlog.Debugf("no usable container interface, cleaning tap side only: %v", err)
+		eth = nil
 	}
 
 	var retErr error
@@ -314,15 +346,15 @@ func CleanupAllUruncTaps() error {
 
 		netlog.Debugf("cleaning up tap device %s", name)
 		var devErr error
-		if err := deleteAllTCFilters(link); err != nil {
+		if err := deleteAllTCFiltersFn(link, eth); err != nil {
 			netlog.Errorf("failed to delete TC filters for %s: %v", name, err)
 			devErr = errors.Join(devErr, err)
 		}
-		if err := deleteAllQDiscs(link); err != nil {
+		if err := deleteAllQDiscsFn(link, eth); err != nil {
 			netlog.Errorf("failed to delete qdiscs for %s: %v", name, err)
 			devErr = errors.Join(devErr, err)
 		}
-		if err := deleteTapDevice(link); err != nil {
+		if err := deleteTapDeviceFn(link); err != nil {
 			netlog.Errorf("failed to delete tap %s: %v", name, err)
 			devErr = errors.Join(devErr, err)
 		}
@@ -334,6 +366,18 @@ func CleanupAllUruncTaps() error {
 
 	return retErr
 }
+
+// Seams for the setup, rollback and cleanup tests.
+var (
+	createTapDeviceFn    = createTapDevice
+	linkSetUpFn          = netlink.LinkSetUp
+	addIngressQdiscFn    = addIngressQdisc
+	addrReplaceFn        = netlink.AddrReplace
+	deleteIngressQdiscFn = deleteIngressQdisc
+	deleteTapDeviceFn    = deleteTapDevice
+	deleteAllTCFiltersFn = deleteAllTCFilters
+	deleteAllQDiscsFn    = deleteAllQDiscs
+)
 
 func deleteIngressQdisc(link netlink.Link) error {
 	qdiscs, err := netlink.QdiscList(link)
@@ -359,34 +403,41 @@ func deleteIngressQdisc(link netlink.Link) error {
 func rollbackTap(tap netlink.Link, eth netlink.Link, ethQdiscAdded bool) {
 	name := tap.Attrs().Name
 	if ethQdiscAdded && eth != nil {
-		if err := deleteIngressQdisc(eth); err != nil {
+		if err := deleteIngressQdiscFn(eth); err != nil {
 			netlog.Warnf("rollback of %s after a failed network setup: %v", name, err)
 		}
 	}
-	if err := deleteTapDevice(tap); err != nil {
+	if err := deleteTapDeviceFn(tap); err != nil {
 		netlog.Warnf("rollback of %s after a failed network setup: %v", name, err)
 	}
 }
 
 // discoverContainerIface discovers the container's network interface by
 // scanning all links in the current network namespace and returning the first
-// non-loopback link that has an IP address and a default route.
+// non-loopback link that has an IP address and a default route. It returns
+// ErrNoContainerIface when no link qualifies, and a different error when the
+// links cannot be listed.
 func discoverContainerIface() (netlink.Link, error) {
-	handle, err := newNetlinkHandle()
+	// Discovery needs only a route socket. A handle with no families also
+	// opens `XFRM` and `NETFILTER` sockets, and a kernel without one of them
+	// refuses the whole handle with "protocol not supported".
+	handle, err := newNetlinkHandle(unix.NETLINK_ROUTE)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open a netlink route handle: %w", err)
 	}
 	defer handle.Close()
 	links, err := handle.LinkList()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list links: %w", err)
 	}
 	return selectContainerIface(handle, links)
 }
 
 // selectContainerIface returns the first link in links that is not a
 // loopback, has an address and has a default route, asking handle for the
-// addresses and routes. It returns ErrNoContainerIface when none qualifies.
+// addresses and routes. It returns ErrNoContainerIface when none qualifies,
+// and a different error when a link cannot be inspected, so a netlink failure
+// is never taken for a container without an interface.
 func selectContainerIface(handle netlinkHandle, links []netlink.Link) (netlink.Link, error) {
 	for _, link := range links {
 		attrs := link.Attrs()
@@ -401,9 +452,10 @@ func selectContainerIface(handle netlinkHandle, links []netlink.Link) (netlink.L
 		}
 		// must have addresses configured
 		addrs, err := handle.AddrList(link, netlink.FAMILY_ALL)
-		if err != nil {
-			netlog.Debugf("skipping interface %s: failed to list addresses: %v", attrs.Name, err)
-			continue
+		// A dump interrupted by a concurrent change still returns usable
+		// results.
+		if err != nil && !errors.Is(err, netlink.ErrDumpInterrupted) {
+			return nil, fmt.Errorf("failed to list addresses of %s: %w", attrs.Name, err)
 		}
 		if len(addrs) == 0 {
 			netlog.Debugf("skipping interface %s: no addresses configured", attrs.Name)
@@ -411,20 +463,17 @@ func selectContainerIface(handle netlinkHandle, links []netlink.Link) (netlink.L
 		}
 		// look for a default route on this interface
 		routes, err := handle.RouteList(link, netlink.FAMILY_ALL)
-		if err != nil {
-			netlog.Debugf("skipping interface %s: failed to list routes: %v", attrs.Name, err)
-			continue
+		if err != nil && !errors.Is(err, netlink.ErrDumpInterrupted) {
+			return nil, fmt.Errorf("failed to list routes of %s: %w", attrs.Name, err)
 		}
 		for _, r := range routes {
 			// default route: Dst == nil OR represented as 0.0.0.0/0 or ::/0
 			if r.Dst == nil {
 				return link, nil
 			}
-			if r.Dst != nil {
-				dstStr := r.Dst.String()
-				if dstStr == "0.0.0.0/0" || dstStr == "::/0" {
-					return link, nil
-				}
+			dstStr := r.Dst.String()
+			if dstStr == "0.0.0.0/0" || dstStr == "::/0" {
+				return link, nil
 			}
 		}
 		netlog.Debugf("skipping interface %s: no default route found", attrs.Name)
@@ -443,39 +492,34 @@ func ContainerIface() (Interface, error) {
 	return getInterfaceInfo(link.Attrs().Name)
 }
 
-func deleteAllQDiscs(device netlink.Link) error {
-	err := deleteIngressQdisc(device)
-	if err != nil {
+// deleteAllQDiscs deletes the ingress qdisc on device and, when eth is not
+// nil, on eth.
+func deleteAllQDiscs(device, eth netlink.Link) error {
+	if err := deleteIngressQdisc(device); err != nil {
 		return err
 	}
-	device, err = discoverContainerIface()
-	if err != nil {
-		return err
+	if eth == nil {
+		return nil
 	}
-	err = deleteIngressQdisc(device)
-	if err != nil {
-		return err
-	}
-	return nil
+	return deleteIngressQdisc(eth)
 }
 
-func deleteAllTCFilters(device netlink.Link) error {
-	var allFilters []netlink.Filter
+// deleteAllTCFilters deletes every filter at HANDLE_ROOT on device and, when
+// eth is not nil, on eth.
+func deleteAllTCFilters(device, eth netlink.Link) error {
 	parent := uint32(netlink.HANDLE_ROOT)
-	tapFilters, err := netlink.FilterList(device, parent)
+	allFilters, err := netlink.FilterList(device, parent)
 	if err != nil {
 		return err
 	}
-	allFilters = append(allFilters, tapFilters...)
-	device, err = discoverContainerIface()
-	if err != nil {
-		return err
+	if eth != nil {
+		var ethFilters []netlink.Filter
+		ethFilters, err = netlink.FilterList(eth, parent)
+		if err != nil {
+			return err
+		}
+		allFilters = append(allFilters, ethFilters...)
 	}
-	ethFilters, err := netlink.FilterList(device, parent)
-	if err != nil {
-		return err
-	}
-	allFilters = append(allFilters, ethFilters...)
 	for _, filter := range allFilters {
 		err = netlink.FilterDel(filter)
 		if err != nil {
