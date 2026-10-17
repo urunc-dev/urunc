@@ -181,7 +181,7 @@ kernel:
   from: harbor.nbfc.io/nubificus/urunc/linux-kernel-qemu:v6.14
   path: /kernel
 
-cmdline: "/usr/local/bin/redis-server"
+cmd: ["/usr/local/bin/redis-server"]
 ```
 
 We can build the container with:
@@ -199,36 +199,11 @@ kernel:
   path: bzImage
 ```
 
-By default, this setup will run redis-server as the init process.  To include
-[urunit](https://github.com/nubificus/urunit) in the redis:alpine image, we can
-use the following Containerfile:
-
-```
-FROM harbor.nbfc.io/nubificus/urunit:latest AS init
-
-FROM redis:alpine
-
-COPY --from=init /urunit /urunit
-```
-
-> **NOTE**: We are working towards enabling the addition of extra files from the
-> `bunnyfile`. We will update this page once this feature is supported.
-
-After building the above container, make sure to specify it in the `from` field
-of rootfs in `bunnyfile`:
-
-```yaml
-rootfs:
-  from: redis/urunit:alpine
-  type: raw
-```
-
-At last we need to modify the `cmdline` section of `bunnyfile` to execute
-[urunit](https://github.com/nubificus/urunit):
-
-```yaml
-cmdline: "/urunit /usr/local/bin/redis-server"
-```
+Bunny's Containerfile frontend adds `urunit` automatically and prepends it
+to the entrypoint by default. Set `LABEL bunny.urunit=false` in a
+Containerfile to disable this behavior. When using a `bunnyfile`, specify the
+application command with the `cmd` list as shown above; the legacy
+`cmdline` field is retained only for backward compatibility.
 
 #### Running the container
 
@@ -425,7 +400,7 @@ kernel:
   from: harbor.nbfc.io/nubificus/urunc/linux-kernel-firecracker:v6.14
   path: /kernel
 
-cmdline: "/urunit /whoami"
+cmd: ["/whoami"]
 ```
 
 We can build the container with:
