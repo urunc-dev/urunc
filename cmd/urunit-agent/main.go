@@ -28,6 +28,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -160,6 +161,34 @@ type session struct {
 	cmd   *exec.Cmd
 	ptmx  *os.File       // tty sessions
 	stdin io.WriteCloser // non-tty sessions
+}
+
+// relayOutput forwards everything r yields to write, one read at a time. It
+// returns when write fails or r reports an error, and it never closes r.
+// On a pty master (tty set), n_tty_read can return EIO for TTY_OTHER_CLOSED
+// once the slave side has closed, while the child's last bytes are still
+// queued. The next read returns those bytes, and it cannot block since the
+// slave is already gone. So on a tty the first EIO is provisional and a
+// second one ends the relay, while a pipe ends on any error.
+func relayOutput(r io.Reader, tty bool, write func([]byte) error) {
+	buf := make([]byte, 32*1024)
+	retried := false
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			if werr := write(buf[:n]); werr != nil {
+				return
+			}
+		}
+		if err == nil {
+			continue
+		}
+		if tty && !retried && errors.Is(err, syscall.EIO) {
+			retried = true
+			continue
+		}
+		return
+	}
 }
 
 func serveConn(rw io.ReadWriter) {
@@ -354,22 +383,13 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 	// relays forward them to the peer, and the exit report waits for them.
 	var outputs []*os.File
 	var relays sync.WaitGroup
-	relay := func(r *os.File, typ byte) {
+	relay := func(r io.Reader, typ byte, tty bool) {
 		relays.Add(1)
 		go func() {
 			defer relays.Done()
-			buf := make([]byte, 32*1024)
-			for {
-				n, err := r.Read(buf)
-				if n > 0 {
-					if werr := c.writeFrame(typ, stream, buf[:n]); werr != nil {
-						return
-					}
-				}
-				if err != nil {
-					return
-				}
-			}
+			relayOutput(r, tty, func(b []byte) error {
+				return c.writeFrame(typ, stream, b)
+			})
 		}()
 	}
 	if req.TTY {
@@ -403,7 +423,7 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 		_ = tts.Close()
 		s.ptmx = ptmx
 		outputs = []*os.File{ptmx}
-		relay(ptmx, agentproto.TypeStdout)
+		relay(ptmx, agentproto.TypeStdout, true)
 	} else {
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
@@ -435,8 +455,8 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 		}
 		s.stdin = stdin
 		outputs = []*os.File{stdoutR, stderrR}
-		relay(stdoutR, agentproto.TypeStdout)
-		relay(stderrR, agentproto.TypeStderr)
+		relay(stdoutR, agentproto.TypeStdout, false)
+		relay(stderrR, agentproto.TypeStderr, false)
 	}
 
 	c.addSession(stream, s)
