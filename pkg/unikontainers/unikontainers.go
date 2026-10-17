@@ -588,18 +588,26 @@ type AgentTransport struct {
 	// line. firecracker and cloud-hypervisor work this way. When empty (qemu),
 	// exec dials AF_VSOCK(CID, port) through the host vhost-vsock.
 	VsockUDS string
+	// Relay marks VsockUDS as a socket the monitor relays straight to the
+	// agent's port, with no CONNECT line. hvi works this way.
+	Relay bool
 }
 
 // AgentTransportInfo returns how to reach this container's exec agent, derived
 // from the same state the monitor used to configure the vsock device.
 func (u *Unikontainer) AgentTransportInfo() AgentTransport {
 	t := AgentTransport{CID: u.AgentVsockCID()}
-	// firecracker and cloud-hypervisor expose vsock as a host unix socket in the
-	// monitor rootfs; qemu uses the host's /dev/vhost-vsock (no socket path).
+	// firecracker, cloud-hypervisor and hvi expose vsock as a host unix socket
+	// in the monitor rootfs; qemu uses the host's /dev/vhost-vsock (no socket
+	// path).
 	switch hypervisors.VmmType(u.State.Annotations[annotHypervisor]) {
 	case hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm:
 		monRootfs := filepath.Join(filepath.Clean(u.State.Bundle), monitorRootfsDirName)
 		t.VsockUDS = filepath.Join(monRootfs, constants.AgentVsockUDSPath)
+	case hypervisors.HviVmm:
+		monRootfs := filepath.Join(filepath.Clean(u.State.Bundle), monitorRootfsDirName)
+		t.VsockUDS = filepath.Join(monRootfs, constants.AgentVsockUDSPath)
+		t.Relay = true
 	}
 	return t
 }

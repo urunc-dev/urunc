@@ -92,6 +92,7 @@ var supportedGuestMonitorPairs = map[guestMonitorPair]bool{
 	{hypervisors.FirecrackerVmm, unikernels.UnikraftUnikernel}:  true,
 	{hypervisors.FirecrackerVmm, unikernels.FreeBSDUnikernel}:   true,
 	{hypervisors.CloudHypervisorVmm, unikernels.LinuxUnikernel}: true,
+	{hypervisors.HviVmm, unikernels.LinuxUnikernel}:             true,
 	{hypervisors.HyperlightVmm, unikernels.UnikraftUnikernel}:   true,
 }
 
@@ -622,16 +623,17 @@ func (c *UnikernelConfig) validateContainerBoot() error {
 	}
 
 	// A generic container boot shares the image rootfs into the guest: over a
-	// shared filesystem on qemu and cloud-hypervisor, or as a block device on
-	// firecracker (which has no shared-fs) and, with the devmapper snapshotter,
-	// on cloud-hypervisor. All boot the host kernel and initrd. Other monitors do
-	// not support a Linux guest and are already rejected by the guest/monitor
-	// pair check above.
+	// shared filesystem on qemu, cloud-hypervisor and hvi, or as a block device
+	// on firecracker (which has no shared-fs) and, with the devmapper
+	// snapshotter, on cloud-hypervisor and hvi. All boot the host kernel and
+	// initrd. Other monitors do not support a Linux guest and are already
+	// rejected by the guest/monitor pair check above.
 	switch hypervisors.VmmType(c.Hypervisor) {
-	case hypervisors.QemuVmm, hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm:
+	case hypervisors.QemuVmm, hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm, hypervisors.HviVmm:
 	default:
-		return fmt.Errorf("%s requires %s to be one of %q, %q or %q, got %q", annotBootKernel, annotHypervisor,
-			hypervisors.QemuVmm, hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm, c.Hypervisor)
+		return fmt.Errorf("%s requires %s to be one of %q, %q, %q or %q, got %q", annotBootKernel, annotHypervisor,
+			hypervisors.QemuVmm, hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm, hypervisors.HviVmm,
+			c.Hypervisor)
 	}
 
 	if c.UnikernelBinary != "" {

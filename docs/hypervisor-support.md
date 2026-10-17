@@ -187,6 +187,36 @@ An example guest:
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest
 ```
 
+### hvi
+
+[hvi](https://github.com/brig-sh/hvi-vmm) is a small VMM for Linux guests on
+KVM, for x86-64 and aarch64. It owns guest RAM and the virtio devices, so it
+can report what the guest does at the device boundary. It presents every device
+over virtio-mmio.
+
+#### Installing hvi
+
+hvi is a single static binary. Build it from the repository with the Rust
+toolchain it pins:
+
+```bash
+cargo build --release --locked --target "$(uname -m)-unknown-linux-musl"
+sudo install -m 0755 "target/$(uname -m)-unknown-linux-musl/release/hvi" /usr/local/bin/hvi
+```
+
+#### hvi and `urunc`
+
+`urunc` attaches the guest to its tap device, passes the initrd and the single
+block device hvi supports, and, for a virtiofs rootfs, starts `virtiofsd` and
+hands hvi the daemon's socket. A container that asks for more than one block
+device is refused. `urunc exec` reaches the guest agent through hvi's agent
+socket, which hvi relays to the agent's vsock port. The guest kernel needs
+`CONFIG_VIRTIO_MMIO` and `CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES`.
+
+Supported guests with `urunc`:
+
+- [Linux](../unikernel-support#linux)
+
 ### Solo5-hvt
 
 [Solo5-hvt](https://github.com/Solo5/solo5) is a lightweight, high-performance

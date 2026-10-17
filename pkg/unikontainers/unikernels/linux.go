@@ -114,6 +114,9 @@ func (l *Linux) CommandString() (string, error) {
 		// "--" that starts the app's arguments. The virtio console has
 		// neither problem.
 		consoleStr = "console=hvc0"
+	} else if l.Monitor == "hvi" && runtime.GOARCH == "arm64" {
+		// hvi has no virtio console. Its arm64 UART is a PL011.
+		consoleStr = "console=ttyAMA0"
 	} else {
 		consoleStr = "console=ttyS0"
 	}
@@ -237,7 +240,7 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 				Path: aBlock.Source,
 			})
 		}
-	case "cloud-hypervisor":
+	case "cloud-hypervisor", "hvi":
 		for _, aBlock := range l.Blk {
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
 				ID:   aBlock.ID,
@@ -272,7 +275,7 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 			extraCliArgs.ExtraInitrd = urunitConfPath
 		}
 		return extraCliArgs
-	case "firecracker", "cloud-hypervisor":
+	case "firecracker", "cloud-hypervisor", "hvi":
 		if l.urunitConfAsInitrd() {
 			return types.MonitorCliArgs{
 				ExtraInitrd: urunitConfPath,

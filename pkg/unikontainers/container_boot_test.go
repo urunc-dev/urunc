@@ -71,7 +71,7 @@ func TestContainerBootAnnotations(t *testing.T) {
 		require.NoError(t, config.validateValues())
 	})
 
-	for _, mon := range []hypervisors.VmmType{hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm} {
+	for _, mon := range []hypervisors.VmmType{hypervisors.FirecrackerVmm, hypervisors.CloudHypervisorVmm, hypervisors.HviVmm} {
 		t.Run("monitor "+string(mon)+" is accepted", func(t *testing.T) {
 			t.Parallel()
 			config := getConfigFromSpec(containerBootSpec(map[string]string{

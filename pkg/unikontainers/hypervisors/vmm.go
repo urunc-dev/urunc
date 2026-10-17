@@ -66,6 +66,12 @@ var vmmFactories = map[VmmType]VMMFactory{
 			return &CloudHypervisor{binary: binary, binaryPath: binaryPath}
 		},
 	},
+	HviVmm: {
+		binary: HviBinary,
+		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
+			return &Hvi{binary: binary, binaryPath: binaryPath}
+		},
+	},
 	HyperlightVmm: {
 		binary: HyperlightBinary,
 		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
