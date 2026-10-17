@@ -362,7 +362,6 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 		return err
 	}
 
-	log.Printf("open stream %d: argv=%v tty=%v user=%q", stream, req.Argv, req.TTY, req.User)
 	cmd := exec.Command(req.Argv[0], req.Argv[1:]...)
 	cmd.Env = defaultEnv(req.Env, gu)
 	cmd.Dir = req.Cwd
