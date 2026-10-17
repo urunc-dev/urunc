@@ -179,6 +179,70 @@ func TestAgentExecBackgroundHoldsOutput(t *testing.T) {
 	}
 }
 
+// TestAgentSessionsIgnoreBlockedConsole points the agent's logger at a console
+// that never drains and fills the log queue. A slow console write used to hold
+// the logger mutex. That stalled serveConn's read loop and every session's
+// exit report.
+func TestAgentSessionsIgnoreBlockedConsole(t *testing.T) {
+	sink := newBlockingSink()
+	w := newAsyncWriter(sink, logQueueDepth)
+	swapLogOutput(t, w)
+	t.Cleanup(func() { close(sink.release) })
+
+	cli := dialAgent(t)
+	// serveConn logs each frame of an undefined type. The first line holds
+	// the writer's goroutine in the blocked sink. The writer resets its drop
+	// count only when it takes the next line, so the overflow stays counted.
+	sendUnknown := func(n int) {
+		t.Helper()
+		for i := 0; i < n; i++ {
+			if err := agentproto.WriteFrame(cli, 200, 9, nil); err != nil {
+				t.Fatalf("send frame %d: %v", i, err)
+			}
+		}
+	}
+	sendUnknown(1)
+	select {
+	case <-sink.Entered():
+	case <-time.After(2 * time.Second):
+		t.Fatal("the log writer did not reach the console")
+	}
+	sendUnknown(logQueueDepth + 8)
+	waitFor(t, 2*time.Second, "dropped log lines", func() bool {
+		return w.Dropped() > 0
+	})
+
+	start := time.Now()
+	stdout, _, code := runSession(t, cli, 1, agentproto.OpenRequest{
+		Argv: []string{"/bin/echo", "marker"},
+	})
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("echo session took %v, want it within 2s", elapsed)
+	}
+	if !strings.Contains(stdout, "marker") {
+		t.Errorf("stdout missing marker, got %q", stdout)
+	}
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+
+	// This session logs that its output is still open right before the Exit
+	// frame.
+	start = time.Now()
+	stdout, _, code = runSession(t, cli, 2, agentproto.OpenRequest{
+		Argv: []string{"/bin/sh", "-c", "echo early; sleep 10 &"},
+	})
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("exit reported after %v, want it within 5s", elapsed)
+	}
+	if !strings.Contains(stdout, "early") {
+		t.Errorf("stdout missing marker, got %q", stdout)
+	}
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+}
+
 // TestAgentStdinRoundTrip feeds bytes to the child over TypeStdin and reads
 // them back, checking the full duplex stdin path and CloseStdin handling.
 func TestAgentStdinRoundTrip(t *testing.T) {

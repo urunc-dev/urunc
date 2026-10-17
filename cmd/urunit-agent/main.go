@@ -49,6 +49,9 @@ import (
 func main() {
 	log.SetPrefix("urunit-agent: ")
 	log.SetFlags(0)
+	// stderr is the guest console, and a slow console must not stall the
+	// logger's callers.
+	log.SetOutput(newAsyncWriter(os.Stderr, logQueueDepth))
 
 	// The agent starts early during guest boot with a near-empty
 	// environment. exec.Command resolves bare command names against the
