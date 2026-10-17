@@ -15,11 +15,14 @@
 package unikontainers
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/network"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 // fakeNetManager is a network.Manager that returns fixed results.
@@ -53,4 +56,58 @@ func TestStubNetworkManagerIsUsed(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "10.4.1.2", params.IP)
+}
+
+func TestSetupNetNoContainerIface(t *testing.T) {
+	stubNetworkManager(t, &fakeNetManager{err: fmt.Errorf("wrapped: %w", network.ErrNoContainerIface)}, nil)
+
+	params, err := SetupNet(true, "dynamic", 0, 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, types.NetDevParams{}, params)
+	assert.Equal(t, "", params.IP)
+}
+
+func TestSetupNetOtherErrorFails(t *testing.T) {
+	cause := errors.New("protocol not supported")
+	stubNetworkManager(t, &fakeNetManager{err: fmt.Errorf("failed to open a netlink route handle: %w", cause)}, nil)
+
+	params, err := SetupNet(true, "dynamic", 0, 0)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, cause)
+	assert.Contains(t, err.Error(), "network setup (dynamic) failed")
+	assert.Equal(t, types.NetDevParams{}, params)
+}
+
+func TestSetupNetSuccess(t *testing.T) {
+	stubNetworkManager(t, &fakeNetManager{info: &network.UnikernelNetworkInfo{
+		TapDevice: "tap0_urunc",
+		EthDevice: network.Interface{
+			IP:             "10.4.1.2",
+			Mask:           "255.255.255.0",
+			DefaultGateway: "10.4.1.1",
+			MAC:            "aa:bb:cc:dd:ee:ff",
+			MTU:            1450,
+		},
+	}}, nil)
+
+	params, err := SetupNet(true, "static", 0, 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, "tap0_urunc", params.TapDev)
+	assert.Equal(t, "10.4.1.2", params.IP)
+	assert.Equal(t, "255.255.255.0", params.Mask)
+	assert.Equal(t, "10.4.1.1", params.Gateway)
+	assert.Equal(t, "aa:bb:cc:dd:ee:ff", params.MAC)
+	assert.EqualValues(t, 1450, params.MTU)
+}
+
+func TestSetupNetManagerError(t *testing.T) {
+	stubNetworkManager(t, nil, errors.New("unknown network type"))
+
+	_, err := SetupNet(true, "bogus", 0, 0)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
 }
