@@ -93,15 +93,15 @@ func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkIn
 	addTCRules := false
 	redirectLink, err := discoverContainerIface()
 	if err != nil {
-		netlog.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to find container interface (unikernel may have been spawned using ctr): %w", err)
 	}
 	newTapDevice, err := networkSetup(newTapName, StaticIPAddr, redirectLink, addTCRules, uid, gid)
 	if err != nil {
 		return nil, err
 	}
-	err = setNATRule(redirectLink.Attrs().Name, StaticIPAddr)
+	err = setNATRuleFn(redirectLink.Attrs().Name, StaticIPAddr)
 	if err != nil {
+		rollbackTap(newTapDevice, redirectLink, false)
 		return nil, err
 	}
 	return &UnikernelNetworkInfo{
@@ -115,3 +115,6 @@ func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkIn
 		},
 	}, nil
 }
+
+// setNATRuleFn is the seam the setup rollback tests replace.
+var setNATRuleFn = setNATRule

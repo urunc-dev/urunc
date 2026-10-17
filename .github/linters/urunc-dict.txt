@@ -42,6 +42,7 @@ NEWIPC
 NEWNET
 NEWNS
 NEWPID
+NEWTFILTER
 NEWTIME
 NEWUSER
 NEWUTS
@@ -102,6 +103,7 @@ VNET
 Vcpu
 Virt
 Warnf
+XFRM
 Zerolog
 ananos
 annot
@@ -188,6 +190,7 @@ ipam
 iversion
 jackpal
 javascripts
+jetson
 johnp
 kata
 keystr
@@ -212,6 +215,7 @@ logrus
 lseek
 mand
 masq
+matchall
 mewz
 mkdocs
 mkdocstrings
@@ -481,3 +485,5 @@ sworker
 urunce
 zyfy
 preopen
+parms
+eaction

@@ -57,8 +57,9 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 	netlog.Debugf("tap device created: %s", newTapDevice.Attrs().Name)
 
 	netlog.Debugf("fetching info for %s", redirectLink.Attrs().Name)
-	ifInfo, err := getInterfaceInfo(redirectLink.Attrs().Name)
+	ifInfo, err := getInterfaceInfoFn(redirectLink.Attrs().Name)
 	if err != nil {
+		rollbackTap(newTapDevice, redirectLink, true)
 		return nil, fmt.Errorf("getInterfaceInfo(%s) failed: %w", redirectLink.Attrs().Name, err)
 	}
 
@@ -67,3 +68,6 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 		EthDevice: ifInfo,
 	}, nil
 }
+
+// getInterfaceInfoFn is the seam the setup rollback tests replace.
+var getInterfaceInfoFn = getInterfaceInfo
