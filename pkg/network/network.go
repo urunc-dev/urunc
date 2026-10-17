@@ -33,9 +33,31 @@ const (
 
 var netlog = logrus.WithField("subsystem", "network")
 
-// ErrNoContainerIface reports a network namespace with no usable interface,
-// as in a container started with no network.
+// ErrNoContainerIface is returned when the network namespace has no
+// non-loopback interface with an address and a default route. That is the
+// one network setup failure a caller may tolerate: the container was started
+// without a network (ctr, for instance), so the guest boots without a network
+// device. Every other failure is a different error.
 var ErrNoContainerIface = errors.New("no suitable network interface found in namespace")
+
+// netlinkHandle is the part of *netlink.Handle that interface discovery
+// uses. It exists so tests can hand discovery a fake instead of a socket.
+type netlinkHandle interface {
+	LinkList() ([]netlink.Link, error)
+	AddrList(link netlink.Link, family int) ([]netlink.Addr, error)
+	RouteList(link netlink.Link, family int) ([]netlink.Route, error)
+	Close()
+}
+
+// newNetlinkHandle opens a netlink handle for the given socket families.
+// Tests replace it to record the families and return a fake.
+var newNetlinkHandle = func(nlFamilies ...int) (netlinkHandle, error) {
+	h, err := netlink.NewHandle(nlFamilies...)
+	if err != nil {
+		return nil, err
+	}
+	return h, nil
+}
 
 type UnikernelNetworkInfo struct {
 	TapDevice string
@@ -207,25 +229,6 @@ func addIngressQdisc(link netlink.Link) error {
 	return netlink.QdiscAdd((ingress))
 }
 
-func addRedirectFilter(source netlink.Link, target netlink.Link) error {
-	return netlink.FilterAdd(&netlink.U32{
-		FilterAttrs: netlink.FilterAttrs{
-			LinkIndex: source.Attrs().Index,
-			Parent:    netlink.MakeHandle(0xffff, 0),
-			Protocol:  unix.ETH_P_ALL,
-		},
-		Actions: []netlink.Action{
-			&netlink.MirredAction{
-				ActionAttrs: netlink.ActionAttrs{
-					Action: netlink.TC_ACT_STOLEN,
-				},
-				MirredAction: netlink.TCA_EGRESS_REDIR,
-				Ifindex:      target.Attrs().Index,
-			},
-		},
-	})
-}
-
 func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, addTCRules bool, uid uint32, gid uint32) (netlink.Link, error) {
 	netlog.Debugf("starting for tapName=%s ipAddress=%s redirectLink=%s addTCRules=%v",
 		tapName, ipAddress, redirectLink.Attrs().Name, addTCRules)
@@ -261,13 +264,8 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 			return nil, fmt.Errorf("addIngressQdisc(redirect=%s) failed: %w",
 				redirectLink.Attrs().Name, err)
 		}
-		if err = addRedirectFilter(newTapDevice, redirectLink); err != nil {
-			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
-				newTapDevice.Attrs().Name, redirectLink.Attrs().Name, err)
-		}
-		if err = addRedirectFilter(redirectLink, newTapDevice); err != nil {
-			return nil, fmt.Errorf("addRedirectFilter(%s->%s) failed: %w",
-				redirectLink.Attrs().Name, newTapDevice.Attrs().Name, err)
+		if _, err = addRedirectFilters(newTapDevice, redirectLink, redirectClassifiers); err != nil {
+			return nil, err
 		}
 	}
 
@@ -291,7 +289,7 @@ func networkSetup(tapName string, ipAddress string, redirectLink netlink.Link, a
 func CleanupAllUruncTaps() error {
 	netlog.Debug("net cleanup called")
 
-	handle, err := netlink.NewHandle()
+	handle, err := newNetlinkHandle()
 	if err != nil {
 		return fmt.Errorf("failed to get netlink handle: %w", err)
 	}
@@ -353,11 +351,28 @@ func deleteIngressQdisc(link netlink.Link) error {
 	return nil
 }
 
+// rollbackTap undoes what a failed network setup created, and nothing else:
+// the ingress qdisc on eth only when this setup added it (deleting it takes
+// the eth->tap filter with it and leaves anything a CNI plugin installed on
+// eth alone), then the tap, whose qdisc and filter go with the device. It is
+// best effort: failures are logged and the caller returns its original error.
+func rollbackTap(tap netlink.Link, eth netlink.Link, ethQdiscAdded bool) {
+	name := tap.Attrs().Name
+	if ethQdiscAdded && eth != nil {
+		if err := deleteIngressQdisc(eth); err != nil {
+			netlog.Warnf("rollback of %s after a failed network setup: %v", name, err)
+		}
+	}
+	if err := deleteTapDevice(tap); err != nil {
+		netlog.Warnf("rollback of %s after a failed network setup: %v", name, err)
+	}
+}
+
 // discoverContainerIface discovers the container's network interface by
 // scanning all links in the current network namespace and returning the first
 // non-loopback link that has an IP address and a default route.
 func discoverContainerIface() (netlink.Link, error) {
-	handle, err := netlink.NewHandle()
+	handle, err := newNetlinkHandle()
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +381,13 @@ func discoverContainerIface() (netlink.Link, error) {
 	if err != nil {
 		return nil, err
 	}
+	return selectContainerIface(handle, links)
+}
+
+// selectContainerIface returns the first link in links that is not a
+// loopback, has an address and has a default route, asking handle for the
+// addresses and routes. It returns ErrNoContainerIface when none qualifies.
+func selectContainerIface(handle netlinkHandle, links []netlink.Link) (netlink.Link, error) {
 	for _, link := range links {
 		attrs := link.Attrs()
 		if attrs == nil {
