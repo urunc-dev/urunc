@@ -533,6 +533,38 @@ func TestQemuQMPSocketPrecedence(t *testing.T) {
 	}
 }
 
+// AgentSockPath bridges a host unix socket to the guest agent's virtio-serial
+// port. QEMU gets a single virtio-serial-pci, also when the virtio console
+// already added one.
+func TestQemuAgentSockPath(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{"console=hvc0 8250.nr_uarts=0", "console=ttyS0"} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+
+			q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+			got, err := q.BuildExecCmd(types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       command,
+				AgentSockPath: "/run/hull/agent.sock",
+			}, &fakeUnikernel{})
+			assert.NoError(t, err)
+
+			serial := 0
+			for _, arg := range got {
+				if arg == "virtio-serial-pci" {
+					serial++
+				}
+			}
+			assert.Equal(t, 1, serial, "expected one virtio-serial-pci in %v", got)
+			joined := strings.Join(got, " ")
+			assert.Contains(t, joined, "-chardev socket,id=uragent0,path=/run/hull/agent.sock,server=on,wait=off")
+			assert.Contains(t, joined, "-device virtserialport,chardev=uragent0,name=io.urunc.agent.0")
+		})
+	}
+}
+
 // PreExec removes a stale QMP socket, and a missing one is not an error.
 func TestQemuPreExecRemovesStaleQMPSocket(t *testing.T) {
 	t.Parallel()

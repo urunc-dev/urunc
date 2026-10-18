@@ -29,6 +29,7 @@ vz-runner --kernel <path> [options]
 | `--mac <address>` | no | MAC address for the NAT network device (colon-separated hex). When omitted the runner may use a random address; the backend passes a deterministic one so the guest's DHCP lease can be located on the host by MAC |
 | `--net-fd <n>` | no | Inherited file descriptor of a connected datagram socket; the runner backs the guest's single virtio-net device with it (`VZFileHandleNetworkDeviceAttachment`) **instead of** the NAT attachment. Used by orchestration layers to place guests on a user-mode gateway network, since the NAT attachment isolates guests from each other. The guest still sees exactly one interface |
 | `--qmp <socket>` | no | Unix socket path on which the runner serves a minimal QMP endpoint (used for graceful shutdown) |
+| `--agent-sock <socket>` | no | Unix socket path the runner listens on. It relays each connection to guest vsock port 1024, where `urunit-agent` serves exec sessions |
 
 ## Runtime behavior
 
