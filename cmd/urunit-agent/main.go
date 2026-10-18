@@ -50,6 +50,9 @@ import (
 func main() {
 	log.SetPrefix("urunit-agent: ")
 	log.SetFlags(0)
+	// stderr is the guest console, and a slow console must not stall the
+	// logger's callers.
+	log.SetOutput(newAsyncWriter(os.Stderr, logQueueDepth))
 
 	// The agent starts early during guest boot with a near-empty
 	// environment. exec.Command resolves bare command names against the
@@ -129,7 +132,10 @@ func serveVirtioPort(dev string) {
 	log.Printf("serving on virtio port %s", dev)
 	f, err := os.OpenFile(dev, os.O_RDWR, 0)
 	if err != nil {
-		log.Fatalf("open %s: %v", dev, err)
+		// The process exits next, so a queued line would not reach the
+		// console.
+		fmt.Fprintf(os.Stderr, "urunit-agent: open %s: %v\n", dev, err)
+		os.Exit(1)
 	}
 	serveConn(struct {
 		io.Reader
@@ -419,7 +425,6 @@ func (c *connState) open(stream uint32, req agentproto.OpenRequest) error {
 		return err
 	}
 
-	log.Printf("open stream %d: argv=%v tty=%v user=%q", stream, req.Argv, req.TTY, req.User)
 	cmd := exec.Command(req.Argv[0], req.Argv[1:]...)
 	cmd.Env = defaultEnv(req.Env, gu)
 	cmd.Dir = req.Cwd
