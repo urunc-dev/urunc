@@ -84,11 +84,13 @@ Apart from the above, `urunc` accepts the following optional annotations:
 - `com.urunc.unikernel.bootInitrd`: An absolute host path to the generic
   container boot initrd built by
   `packaging/container-initrd/build-container-initrd.sh`. Its `/init` mounts the
-  container's rootfs, shared into the guest through virtiofs (or 9p), and hands
-  over to `urunit`, which starts the `urunc exec` agent and runs the
-  container's command with the image's environment, user and working
-  directory. The initrd's `urunit` must be a version that starts the agent it
-  finds at `/run/urunc/urunit-agent`. With the
+  container's rootfs, shared into the guest through virtiofs (or 9p). It then
+  becomes the supervisor of the container's command. The supervisor runs the
+  command with the image's environment, user and working directory, and it
+  starts the `urunc exec` agent as a child. Both are in the single static
+  `urunit` binary of the initrd, which is the `/init` entry. The binary comes
+  from [urunit](https://github.com/NOFireAI/urunit), at the commit
+  `packaging/container-initrd/urunit.pin` names. With the
   two boot annotations set, `unikernelType` defaults to `linux`, `hypervisor`
   to `qemu` and `mountRootfs` to `true`, and `binary` is not required; the
   boot annotations are accepted only at runtime (never from `urunc.json`) and
@@ -96,12 +98,13 @@ Apart from the above, `urunc` accepts the following optional annotations:
   initrd are mounted read-only inside the monitor's rootfs; the guest boots a
   private copy of the initrd with only the `urunit` configuration appended.
 
-  The initrd also carries `/vz-init`, the early init for macOS. hull boots it
-  with `rdinit=/vz-init` on Vz and hvi. It mounts the unpacked OCI rootfs from
-  the `rootfs` virtiofs tag and uses it as a read-only overlay lower layer, or
-  mounts it directly when the export is writable. It then stages the agent
-  at `/run/urunc/urunit-agent` and hands over to `urunit`, which starts it. Linux hosts boot `/init` and never
-  run `/vz-init`.
+  The initrd also carries `/vz-init`, the early init for macOS. It is the same
+  binary, and hull boots it with `rdinit=/vz-init` on Vz and hvi. It mounts the
+  unpacked OCI rootfs from the `rootfs` virtiofs tag and uses it as a read-only
+  overlay lower layer, or mounts it directly when the export is writable. It
+  then becomes the supervisor. Linux hosts boot `/init` and never run
+  `/vz-init`. The layout, the modes and the boot contract are described in the
+  [guest init design](../design/guest-init.md).
 
   On its other path hull boots the same `/init`. It has no bind mounts to prepare the
   rootfs with, so it appends a few more files to its copy of the initrd, all

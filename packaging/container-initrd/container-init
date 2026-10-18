@@ -1,4 +1,6 @@
 #!/busybox sh
+# Superseded by urunit itself (NOFireAI/urunit), which runs as /init and
+# /vz-init. Kept for INITRD_LAYOUT=legacy.
 # Early userspace of a generic container boot (rdinit=/init).
 #
 # urunc boots an unmodified OCI image with a host kernel and this initrd. The

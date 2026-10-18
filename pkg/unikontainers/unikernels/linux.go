@@ -31,11 +31,10 @@ const (
 	LinuxUnikernel   string = "linux"
 	urunitConfPath   string = "/urunit.conf"
 	retainInitrdPath string = "/sys/firmware/initrd"
-	// containerBootInit is the early userspace of a generic container boot: the
-	// boot initrd's /init, which mounts the shared container rootfs, stages
-	// urunit and the exec agent (at /run/urunc/urunit-agent, where urunit
-	// starts it from) and switch_roots into urunit with the container's
-	// command.
+	// containerBootInit is the init of a generic container boot: /init in the
+	// boot initrd. It is the init mode of the urunit binary, which mounts the
+	// shared container rootfs, switches to it and becomes the supervisor of
+	// the container's command. The exec agent runs inside that supervisor.
 	containerBootInit string = "/init"
 	envStartMarker    string = "UES"
 	envEndMarker      string = "UEE"
