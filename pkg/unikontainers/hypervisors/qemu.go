@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -134,6 +135,21 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		)
 	} else {
 		exArgs = append(exArgs, "-serial", "stdio")
+	}
+
+	// The exec agent transport on hosts without vhost-vsock (macOS): a
+	// virtio-serial port bridged to a host unix socket. The guest agent
+	// finds the port by its name in sysfs, so the name must match the
+	// agent's virtio port name. One virtio-serial-pci serves both the
+	// console and the agent port.
+	if args.AgentSockPath != "" {
+		if !slices.Contains(exArgs, "virtio-serial-pci") {
+			exArgs = append(exArgs, "-device", "virtio-serial-pci")
+		}
+		exArgs = append(exArgs,
+			"-chardev", "socket,id=uragent0,path="+args.AgentSockPath+",server=on,wait=off",
+			"-device", "virtserialport,chardev=uragent0,name=io.urunc.agent.0",
+		)
 	}
 
 	if args.VCPUs > 0 {

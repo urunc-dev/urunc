@@ -131,6 +131,18 @@ func TestVzDarwinCommand(t *testing.T) {
 	}, out)
 }
 
+// vz-runner relays the agent socket to the guest's vsock port, after --qmp.
+func TestVzDarwinAgentSock(t *testing.T) {
+	v := &VzDarwin{vzRunnerPath: "/opt/hull/vz-runner"}
+	v.SetQMPSocket("/run/hull/vz.qmp")
+	out, err := v.BuildExecCmd(types.ExecArgs{
+		KernelPath:    "/img/Image",
+		AgentSockPath: "/run/hull/agent.sock",
+	}, &fakeUnikernel{})
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"--qmp", "/run/hull/vz.qmp", "--agent-sock", "/run/hull/agent.sock"}, out[len(out)-4:])
+}
+
 // A legacy RootfsPath directory is shared under tag rootfs.
 func TestVzDarwinLegacyRootfsShare(t *testing.T) {
 	dir := t.TempDir()
