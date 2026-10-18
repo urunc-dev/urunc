@@ -16,8 +16,8 @@
 // (urunc exec) and the in-guest urunit-agent.
 //
 // The protocol is a minimal multiplexed byte stream, designed to run over
-// any single reliable transport: a vsock connection (the QEMU and Vz
-// backends), or a plain unix socket in tests.
+// any single reliable transport: a vsock connection (QEMU/KVM, Vz, hvi), a
+// virtio-serial port (QEMU on macOS), or a plain unix socket in tests.
 //
 // Every frame is:
 //
@@ -53,6 +53,13 @@ const (
 // DefaultVsockPort is the guest vsock port the agent listens on. The host
 // dials (guest-cid, DefaultVsockPort) over AF_VSOCK to reach it.
 const DefaultVsockPort = 1024
+
+// VirtioPortName is the virtio-serial port name the agent serves on when the
+// guest has no vsock device. QEMU on macOS uses it, since HVF has no
+// vhost-vsock: the host side is a unix socket chardev bound to this port, and
+// the guest device appears as /dev/virtio-ports/<name> (or /dev/vportNpM,
+// resolved through sysfs, when no udev runs).
+const VirtioPortName = "io.urunc.agent.0"
 
 // MaxPayload bounds a single frame payload.
 const MaxPayload = 1 << 20
