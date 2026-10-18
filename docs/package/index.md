@@ -96,6 +96,13 @@ Apart from the above, `urunc` accepts the following optional annotations:
   initrd are mounted read-only inside the monitor's rootfs; the guest boots a
   private copy of the initrd with only the `urunit` configuration appended.
 
+  The initrd also carries `/vz-init`, the early init for macOS. hull boots it
+  with `rdinit=/vz-init` on Vz and hvi. It mounts the unpacked OCI rootfs from
+  the `rootfs` virtiofs tag and uses it as a read-only overlay lower layer, or
+  mounts it directly when the export is writable. It then stages the agent
+  at `/run/urunc/urunit-agent` and hands over to `urunit`, which starts it. Linux hosts boot `/init` and never
+  run `/vz-init`.
+
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container
 runtime, `urunc` can also read the above information from a file inside the
