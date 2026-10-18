@@ -438,14 +438,28 @@ func (l *Linux) setupContainerBootInitrd(urunitConfig string) error {
 	return initrd.AddFileToInitrd(constants.ContainerBootGuestInitrdPath, urunitConfig, urunitConfPath)
 }
 
-// buildEnvConfig creates the environment configuration content for urunit.
+// buildUrunitConfig creates the configuration content for urunit from the
+// guest's environment, process identity and block mounts.
 func (l *Linux) buildUrunitConfig() string {
+	return BuildUrunitConfig(l.Env, l.ProcConfig, l.Blk, l.Monitor)
+}
+
+// BuildUrunitConfig renders a urunit configuration blob from the container's
+// environment, process identity and auxiliary block mounts, in urunit's wire
+// format (UES/UEE environment, UCS/UCE process config, UBS/UBE block mounts).
+// monitor is the monitor family: firecracker names its block devices with an
+// FC prefix.
+//
+// It is exported so that runners outside this package, which stage the guest
+// rootfs and write this file themselves, produce the exact config urunit
+// expects instead of duplicating the format.
+func BuildUrunitConfig(env []string, proc types.ProcessConfig, blk []types.BlockDevParams, monitor string) string {
 	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
 	var sb strings.Builder
 	sb.WriteString(envStartMarker)
 	sb.WriteString("\n")
-	if len(l.Env) > 0 {
-		sb.WriteString(strings.Join(l.Env, "\n"))
+	if len(env) > 0 {
+		sb.WriteString(strings.Join(env, "\n"))
 		sb.WriteString("\n")
 	}
 	sb.WriteString(envEndMarker)
@@ -453,24 +467,24 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString(lpcStartMarker)
 	sb.WriteString("\n")
 	sb.WriteString("UID:")
-	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.UID), 10))
+	sb.WriteString(strconv.FormatUint(uint64(proc.UID), 10))
 	sb.WriteString("\n")
 	sb.WriteString("GID:")
-	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.GID), 10))
+	sb.WriteString(strconv.FormatUint(uint64(proc.GID), 10))
 	sb.WriteString("\n")
 	sb.WriteString("WD:")
-	sb.WriteString(l.ProcConfig.WorkDir)
+	sb.WriteString(proc.WorkDir)
 	sb.WriteString("\n")
 	sb.WriteString(lpcEndMarker)
 	sb.WriteString("\n")
 	sb.WriteString(blkStartMarker)
 	sb.WriteString("\n")
-	for _, b := range l.Blk {
+	for _, b := range blk {
 		if b.ID == "rootfs" {
 			continue
 		}
 		sb.WriteString("ID:")
-		if l.Monitor == "firecracker" {
+		if monitor == "firecracker" {
 			sb.WriteString("FC")
 		}
 		sb.WriteString(b.ID)
