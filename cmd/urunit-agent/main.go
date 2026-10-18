@@ -16,10 +16,22 @@
 
 // urunit-agent is a small in-guest agent that spawns additional processes
 // (exec sessions) on behalf of the host. It speaks the agentproto framed
-// protocol over vsock (port agentproto.DefaultVsockPort): the QEMU backend
-// gives the guest a vhost-vsock device and urunc exec dials it, and the Vz
-// backend bridges host connections to guest vsock, both matching hull. vsock
-// accepts many concurrent connections, so exec sessions are independent.
+// protocol over one of two transports, tried in order:
+//
+//  1. A vsock listener on port agentproto.DefaultVsockPort. The QEMU/KVM
+//     backend gives the guest a vhost-vsock device and urunc exec dials it,
+//     and Vz and hvi bridge host connections to guest vsock, all matching
+//     hull. vsock accepts many concurrent connections, so exec sessions are
+//     independent.
+//  2. The virtio-serial port agentproto.VirtioPortName, probed only when
+//     vsock fails. QEMU on macOS has no vhost-vsock and exposes the agent
+//     this way instead. The port is one byte stream to one host peer, so all
+//     sessions multiplex on it.
+//
+// URUNIT_AGENT_TRANSPORT=vsock keeps the agent on vsock and never probes
+// the port (hull's vz-init sets it), and URUNIT_AGENT_TRANSPORT=virtio-port
+// skips vsock. A guest with vsock serves exactly as it did before the port
+// fallback existed.
 //
 // For tty sessions the agent allocates a pseudo-terminal next to the
 // workload, so the exec'd process gets full terminal semantics (raw mode,
@@ -38,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -60,15 +73,27 @@ func main() {
 		_ = os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
 	}
 
-	// Serve exec sessions over vsock, the only transport. Keep retrying rather
-	// than dying: the agent starts early during guest boot, possibly before the
-	// vsock device is ready. serveVsock blocks accepting connections and only
-	// returns on error.
+	// Serve exec sessions over vsock first and probe the virtio-serial port
+	// only when vsock fails, unless URUNIT_AGENT_TRANSPORT pins one of them.
+	// Keep retrying rather than dying: the agent starts early during guest
+	// boot, possibly before either device is ready. serveVsock blocks
+	// accepting connections and only returns on error, and serveVirtioPort
+	// only returns when the port fails.
+	plan := chooseTransport(os.Getenv(transportEnv))
 	for {
-		if err := serveVsock(); err != nil {
-			log.Printf("vsock transport unavailable: %v; retrying", err)
-			time.Sleep(200 * time.Millisecond)
+		if plan.vsock {
+			if err := serveVsock(); err != nil {
+				log.Printf("vsock transport unavailable: %v; retrying", err)
+			}
 		}
+		if plan.port {
+			if dev := probeVirtioPort(); dev != "" {
+				if err := serveVirtioPort(dev); err != nil {
+					log.Printf("virtio port transport unavailable: %v; retrying", err)
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
@@ -119,13 +144,23 @@ type connState struct {
 	mu sync.Mutex
 	w  io.Writer
 
+	// closed is set when the peer is gone. The port outlives the peer, so
+	// a late frame from a session of a dead peer would reach the next one.
+	closed atomic.Bool
+
 	sessMu   sync.Mutex
 	sessions map[uint32]*session
 }
 
 func (c *connState) writeFrame(typ byte, stream uint32, payload []byte) error {
+	if c.closed.Load() {
+		return io.ErrClosedPipe
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return io.ErrClosedPipe
+	}
 	return agentproto.WriteFrame(c.w, typ, stream, payload)
 }
 
@@ -202,7 +237,10 @@ func serveConn(rw io.ReadWriter) {
 			if err != io.EOF {
 				log.Printf("read: %v", err)
 			}
-			// Tear down every session still attached to this peer.
+			// Tear down every session still attached to this peer. Mark
+			// the peer closed first so their exit and output frames are
+			// dropped instead of reaching the next peer on a shared port.
+			c.closed.Store(true)
 			c.sessMu.Lock()
 			for _, s := range c.sessions {
 				if s.cmd.Process != nil {
