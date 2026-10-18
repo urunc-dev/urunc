@@ -4,6 +4,8 @@
 # com.urunc.unikernel.bootKernel. It contains only what has to run before the
 # container's own rootfs takes over:
 #   /init          the early userspace script next to this file (container-init)
+#   /vz-init       the macOS early init (vz-init). hull boots it with
+#                  rdinit=/vz-init; Linux hosts boot /init and never run it
 #   /busybox       a static BusyBox, for the shell and the mount/switch_root tools
 #   /urunit        the guest init that becomes PID 1 (URUNIT)
 #   /urunit-agent  the in-guest exec agent, cross-built from this checkout
@@ -40,6 +42,7 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
 install -m0755 "$here/container-init" "$stage/init"
+install -m0755 "$here/vz-init" "$stage/vz-init"
 install -m0755 "$URUNIT" "$stage/urunit"
 
 # Must be named exactly "busybox": busybox dispatches `busybox <applet>` only
@@ -63,11 +66,15 @@ else
     go build -trimpath -ldflags "-s -w" -o "$stage/urunit-agent" ./cmd/urunit-agent)
 fi
 
-# The mountpoints /init uses.
-mkdir -p "$stage/proc" "$stage/dev" "$stage/newroot" "$stage/run"
+# The mountpoints /init uses. /vz-init also mounts sysfs on /sys.
+mkdir -p "$stage/proc" "$stage/sys" "$stage/dev" "$stage/newroot" "$stage/run"
 
 mkdir -p "$(dirname "$INITRD")"
 ( cd "$stage" && find . -mindepth 1 -print | LC_ALL=C sort | cpio -o -H newc --quiet ) > "$INITRD"
 
-echo "Container boot initrd: $INITRD ($(stat -c%s "$INITRD") bytes, cpio newc, uncompressed)"
+case "$(uname -s)" in
+  Darwin) initrd_size="$(stat -f%z "$INITRD")" ;;
+  *)      initrd_size="$(stat -c%s "$INITRD")" ;;
+esac
+echo "Container boot initrd: $INITRD ($initrd_size bytes, cpio newc, uncompressed)"
 echo "Pass it as com.urunc.unikernel.bootInitrd together with a kernel as com.urunc.unikernel.bootKernel."
