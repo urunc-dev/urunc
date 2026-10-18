@@ -95,10 +95,12 @@ LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
 
 # urunit, the single guest binary, comes from the commit
 # packaging/container-initrd/urunit.pin names. build-urunit.sh builds it with
-# musl in a container; URUNIT_SRC points it at a local checkout instead.
+# musl in a container; URUNIT_SRC points it at a local checkout instead. The
+# protocol tests in tests/urunit drive that binary.
 #? TARGET_ARCH Architecture of the urunit guest binary (default: ARCH)
 TARGET_ARCH    ?= $(ARCH)
 URUNIT_BIN     := $(BUILD_DIR)/urunit_static_$(TARGET_ARCH)
+URUNIT_TEST_IMG ?= docker.io/library/golang:1.26-alpine
 
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)
 DOCS_CNTR_IMG  ?= harbor.nbfc.io/nubificus/urunc/mkdocs:latest
@@ -255,7 +257,7 @@ test: unittest e2etest
 
 ## unittest Run all unit tests
 .PHONY: unittest
-unittest: test_unikontainers test_initrd test_metrics test_network test_hypervisors test_unikernels
+unittest: test_unikontainers test_initrd test_metrics test_network test_hypervisors test_unikernels test_urunit
 
 ## e2etest Run all end-to-end tests
 .PHONY: e2etest
@@ -307,6 +309,18 @@ fuzz: fuzz_unikontainers_GetUnikernelConfig
 fuzz_unikontainers_%:
 	@echo "Fuzzing Fuzz$* in unikontainers"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers -run='^$$' -fuzz='^Fuzz$*$$' -fuzztime=$(FUZZTIME) -v
+	@echo " "
+
+## test_urunit Run the protocol tests against the pinned urunit guest binary
+.PHONY: test_urunit
+test_urunit: urunit
+	@echo "Testing the urunit guest binary"
+ifeq ($(shell uname -s),Linux)
+	@URUNIT_BIN=$(URUNIT_BIN) $(GO) test -count=1 ./tests/urunit -v
+else
+	@$(CNTR_TOOL) $(CNTR_OPTS) -v $(CURDIR):/src -w /src $(URUNIT_TEST_IMG) \
+		sh -c 'URUNIT_BIN=/src/$(patsubst $(CURDIR)/%,%,$(URUNIT_BIN)) go test -count=1 ./tests/urunit -v'
+endif
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
