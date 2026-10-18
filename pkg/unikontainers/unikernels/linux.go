@@ -102,22 +102,23 @@ func (l *Linux) CommandString() (string, error) {
 	// TODO: Check under which conditions console should be set to
 	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
 	// for both amd64 and arm64.
-	if l.Monitor == "qemu" {
-		// QEMU provides a virtio console (hvc0). Prefer it over the
+	switch {
+	case l.Monitor == "qemu" || l.Monitor == "vz":
+		// QEMU and Vz provide a virtio console (hvc0). Prefer it over the
 		// emulated UART, where every output byte costs a VM exit. With
 		// no UART in use, also skip the 8250 driver probing at boot.
 		// Requires CONFIG_VIRTIO_CONSOLE=y in the guest kernel.
 		consoleStr = "console=hvc0 8250.nr_uarts=0"
-	} else if l.Monitor == "cloud-hypervisor" && runtime.GOARCH == "arm64" {
+	case l.Monitor == "cloud-hypervisor" && runtime.GOARCH == "arm64":
 		// Cloud Hypervisor's arm64 UART is a PL011, ttyAMA0, with no ttyS0.
 		// Enabling it also appends earlycon= to the command line, after the
 		// "--" that starts the app's arguments. The virtio console has
 		// neither problem.
 		consoleStr = "console=hvc0"
-	} else if l.Monitor == "hvi" && runtime.GOARCH == "arm64" {
+	case l.Monitor == "hvi" && runtime.GOARCH == "arm64":
 		// hvi has no virtio console. Its arm64 UART is a PL011.
 		consoleStr = "console=ttyAMA0"
-	} else {
+	default:
 		consoleStr = "console=ttyS0"
 	}
 	bootParams += " " + consoleStr
