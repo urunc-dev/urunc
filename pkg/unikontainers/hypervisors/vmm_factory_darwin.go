@@ -20,6 +20,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -37,8 +38,9 @@ var qemuDarwinFactory = VMMFactory{
 	},
 }
 
-// vmmFactories holds the monitors urunc can start on darwin: QEMU with HVF
-// and Virtualization.framework through vz-runner. The Linux-only monitors
+// vmmFactories holds the monitors urunc can start on darwin: QEMU with HVF,
+// Virtualization.framework through vz-runner, and hvi on
+// Hypervisor.framework. The Linux-only monitors
 // (spt, hvt, firecracker, cloud-hypervisor, hedge, hyperlight) are absent.
 var vmmFactories = map[VmmType]VMMFactory{
 	QemuVmm:      qemuDarwinFactory,
@@ -47,6 +49,13 @@ var vmmFactories = map[VmmType]VMMFactory{
 		precheck: func() error { return NewVzDarwin().Ok() },
 		createFunc: func(_, _ string, _ bool) types.VMM {
 			return NewVzDarwin()
+		},
+	},
+	HviVmm: {
+		binary:   HviBinary,
+		pathFunc: darwinHviPath,
+		createFunc: func(_, binaryPath string, _ bool) types.VMM {
+			return NewHviDarwin(binaryPath)
 		},
 	},
 }
@@ -80,4 +89,23 @@ func darwinQemuPath(monitors map[string]types.MonitorConfig) (string, error) {
 		return "", errors.New("qemu-system-aarch64 not found in PATH; install with: brew install qemu")
 	}
 	return p, nil
+}
+
+// darwinHviPath resolves the hvi binary: the monitor config path first, then
+// an executable hvi next to the running binary (where hull bundles its signed
+// helpers, as it does vz-runner), then PATH.
+func darwinHviPath(monitors map[string]types.MonitorConfig) (string, error) {
+	if p := monitors[string(HviVmm)].BinaryPath; p != "" {
+		return p, nil
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), HviBinary)
+		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return candidate, nil
+		}
+	}
+	if p, err := exec.LookPath(HviBinary); err == nil {
+		return p, nil
+	}
+	return "", errors.New("hvi not found next to the executable or in PATH")
 }
