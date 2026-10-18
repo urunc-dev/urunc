@@ -24,9 +24,6 @@ import (
 )
 
 const (
-	HviVmm    VmmType = "hvi"
-	HviBinary string  = "hvi"
-
 	// hviVirtiofsTag is the tag the Linux boot line mounts as root
 	// (root=fs0 rootfstype=virtiofs). Cloud Hypervisor and QEMU use it too.
 	hviVirtiofsTag = "fs0"

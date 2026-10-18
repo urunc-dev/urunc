@@ -26,9 +26,8 @@ import (
 )
 
 const (
-	FirecrackerVmm    VmmType = "firecracker"
-	FirecrackerBinary string  = "firecracker"
-	FCJsonFilename    string  = "fc.json"
+	FirecrackerBinary string = "firecracker"
+	FCJsonFilename    string = "fc.json"
 )
 
 type Firecracker struct {
