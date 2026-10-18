@@ -25,11 +25,14 @@ vz-runner --kernel <path> [options]
 | `--initrd <path>` | no | Initial ramdisk |
 | `--cmdline <string>` | no | Kernel command line |
 | `--rootfs <path>` | no | Disk image attached as a virtio block device (`/dev/vda`) |
-| `--share <host-path> <tag>` | no, repeatable | Host directory exported over virtiofs with the given tag. The backend uses tag `rootfs` for the root filesystem and `shared` for user-shared directories |
+| `--share <host-path> <tag>` | no, repeatable | Host directory exported over virtiofs with the given tag. The backend uses tag `fs0` for the root filesystem export (`rootfs` with the legacy `--rootfs` path) and the caller-supplied tag for each additional shared directory |
 | `--mac <address>` | no | MAC address for the NAT network device (colon-separated hex). When omitted the runner may use a random address; the backend passes a deterministic one so the guest's DHCP lease can be located on the host by MAC |
 | `--net-fd <n>` | no | Inherited file descriptor of a connected datagram socket; the runner backs the guest's single virtio-net device with it (`VZFileHandleNetworkDeviceAttachment`) **instead of** the NAT attachment. Used by orchestration layers to place guests on a user-mode gateway network, since the NAT attachment isolates guests from each other. The guest still sees exactly one interface |
 | `--qmp <socket>` | no | Unix socket path on which the runner serves a minimal QMP endpoint (used for graceful shutdown) |
 | `--agent-sock <socket>` | no | Unix socket path the runner listens on. It relays each connection to guest vsock port 1024, where `urunit-agent` serves exec sessions |
+| `--share-ro <host-path> <tag>` | no, repeatable | Like `--share`, but the directory is exported read-only (`VZSharedDirectory` with `readOnly`) |
+| `--gui` | no | Attach a `VZVirtioGraphicsDevice` and show the VM in a window |
+| `--gui-title <string>` | no | Title of that window. Only used with `--gui` |
 
 ## Runtime behavior
 
