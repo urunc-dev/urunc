@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build linux
+
 package initrd
 
 import (
@@ -19,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/cavaliergopher/cpio"
@@ -352,4 +355,36 @@ func lastContentAtLookupPath(entries []archiveEntry, lookupPath string) string {
 		}
 	}
 	return content
+}
+
+// AddFileToInitrd builds its header without syscall.Stat_t. Its bytes must
+// match what addInitrdRecord writes for the Stat_t AddFileToInitrd used to
+// pass, with the same mtime.
+func TestAddFileToInitrdMatchesStatRecord(t *testing.T) {
+	initrdPath := filepath.Join(t.TempDir(), "initrd.cpio")
+	const data = "UES:\nUBS:\n"
+	const name = "/urunit.conf"
+
+	require.NoError(t, AddFileToInitrd(initrdPath, data, name))
+	got := readFile(t, initrdPath)
+
+	f, err := os.Open(initrdPath)
+	require.NoError(t, err)
+	defer f.Close()
+	hdr, err := cpio.NewReader(f).Next()
+	require.NoError(t, err)
+
+	var want bytes.Buffer
+	w := cpio.NewWriter(&want)
+	fileInfo := syscall.Stat_t{
+		Mode: syscall.S_IFREG | 0400,
+		Size: int64(len(data)),
+		Mtim: syscall.Timespec{Sec: hdr.ModTime.Unix()},
+		Uid:  0,
+		Gid:  0,
+	}
+	require.NoError(t, addInitrdRecord(w, []byte(data), &fileInfo, name, 0))
+	require.NoError(t, w.Close())
+
+	require.Equal(t, want.Bytes(), got)
 }
