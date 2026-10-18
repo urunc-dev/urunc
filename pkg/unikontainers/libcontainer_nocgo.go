@@ -1,4 +1,4 @@
-//go:build !cgo
+//go:build linux && !cgo
 
 // Copyright (c) 2023-2026, Nubificus LTD
 //

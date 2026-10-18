@@ -1,3 +1,5 @@
+//go:build linux
+
 // Copyright (c) 2023-2026, Nubificus LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +20,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -180,4 +183,25 @@ func TestMonitorSpecFile(t *testing.T) {
 		_, err := LoadMonitorSpec(t.TempDir())
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
+}
+
+// The quota reaches the monitor only for a container boot. A unikernel given
+// the same limit keeps the monitor default.
+func TestBuildMonitorSpecVCPUs(t *testing.T) {
+	t.Parallel()
+	limit := cpuResources(i64(200000), u64(100000), "")
+
+	u, rootfsParams := newSpecUnikontainer(t, t.TempDir())
+	u.Spec.Linux.Resources = limit
+	u.State.Annotations[annotBootKernel] = "/opt/urunc/boot/bzImage"
+	u.State.Annotations[annotBootInitrd] = "/opt/urunc/boot/container-initrd"
+	require.True(t, u.isContainerBoot())
+	got := u.buildMonitorSpec(rootfsParams, monitorResources{})
+	assert.Equal(t, uint(min(2, runtime.NumCPU())), got.ExecArgs.VCPUs)
+
+	u, rootfsParams = newSpecUnikontainer(t, t.TempDir())
+	u.Spec.Linux.Resources = limit
+	require.False(t, u.isContainerBoot())
+	got = u.buildMonitorSpec(rootfsParams, monitorResources{})
+	assert.Equal(t, u.UruncCfg.Monitors["qemu"].DefaultVCPUs, got.ExecArgs.VCPUs)
 }

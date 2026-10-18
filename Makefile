@@ -35,6 +35,8 @@ ifeq ($(origin ARCH), undefined)
         ARCH := amd64
     else ifeq ($(UNAME_ARCH),aarch64)
         ARCH := arm64
+    else ifeq ($(UNAME_ARCH),arm64)
+        ARCH := arm64
     else
         $(error Unsupported architecture: $(UNAME_ARCH))
     endif
