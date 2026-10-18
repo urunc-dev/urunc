@@ -30,56 +30,29 @@ type VmmType string
 var ErrVMMNotInstalled = errors.New("vmm not found")
 var vmmLog = logrus.WithField("subsystem", "monitors")
 
+// The monitors below are named here because the Linux and the darwin
+// registries both refer to them.
+const (
+	HvtVmm         VmmType = "hvt"
+	FirecrackerVmm VmmType = "firecracker"
+	HviVmm         VmmType = "hvi"
+	HviBinary      string  = "hvi"
+)
+
+// VMMFactory describes how NewVMM builds one monitor type.
 type VMMFactory struct {
+	// binary is the name looked up in PATH. An empty binary means the
+	// monitor has no executable and NewVMM resolves no path for it.
 	binary     string
 	createFunc func(binary, binaryPath string, vhost bool) types.VMM
+	// precheck, when set, runs first. Its error is returned as is.
+	precheck func() error
+	// pathFunc, when set, resolves the binary path instead of getVMMPath.
+	pathFunc func(monitors map[string]types.MonitorConfig) (string, error)
 }
 
-var vmmFactories = map[VmmType]VMMFactory{
-	SptVmm: {
-		binary: SptBinary,
-		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
-			return &SPT{binary: binary, binaryPath: binaryPath}
-		},
-	},
-	HvtVmm: {
-		binary: HvtBinary,
-		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
-			return &HVT{binary: binary, binaryPath: binaryPath}
-		},
-	},
-	QemuVmm: {
-		binary: QemuBinary,
-		createFunc: func(binary, binaryPath string, vhost bool) types.VMM {
-			return &Qemu{binary: binary, binaryPath: binaryPath, vhost: vhost}
-		},
-	},
-	FirecrackerVmm: {
-		binary: FirecrackerBinary,
-		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
-			return &Firecracker{binary: binary, binaryPath: binaryPath}
-		},
-	},
-	CloudHypervisorVmm: {
-		binary: CloudHypervisorBinary,
-		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
-			return &CloudHypervisor{binary: binary, binaryPath: binaryPath}
-		},
-	},
-	HviVmm: {
-		binary: HviBinary,
-		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
-			return &Hvi{binary: binary, binaryPath: binaryPath}
-		},
-	},
-	HyperlightVmm: {
-		binary: HyperlightBinary,
-		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
-			return &Hyperlight{binary: binary, binaryPath: binaryPath}
-		},
-	},
-}
-
+// NewVMM builds the monitor vmmType from the registry of the platform urunc
+// runs on.
 func NewVMM(vmmType VmmType, monitors map[string]types.MonitorConfig) (vmm types.VMM, err error) {
 	defer func() {
 		if err != nil {
@@ -87,23 +60,27 @@ func NewVMM(vmmType VmmType, monitors map[string]types.MonitorConfig) (vmm types
 		}
 	}()
 
-	// Handle Hedge separately since it is not in vmmFactories
-	if vmmType == HedgeVmm {
-		hedge := Hedge{}
-		if err := hedge.Ok(); err != nil {
-			return nil, ErrVMMNotInstalled
-		}
-		return &hedge, nil
-	}
-
 	factory, exists := vmmFactories[vmmType]
 	if !exists {
 		return nil, fmt.Errorf("vmm \"%s\" is not supported", vmmType)
 	}
 
-	vmmPath, err := getVMMPath(vmmType, factory.binary, monitors)
-	if err != nil {
-		return nil, err
+	if factory.precheck != nil {
+		if err := factory.precheck(); err != nil {
+			return nil, err
+		}
+	}
+
+	vmmPath := ""
+	if factory.binary != "" {
+		if factory.pathFunc != nil {
+			vmmPath, err = factory.pathFunc(monitors)
+		} else {
+			vmmPath, err = getVMMPath(vmmType, factory.binary, monitors)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return factory.createFunc(factory.binary, vmmPath, monitors[string(vmmType)].Vhost), nil

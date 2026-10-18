@@ -24,8 +24,7 @@ import (
 )
 
 const (
-	HvtVmm    VmmType = "hvt"
-	HvtBinary string  = "solo5-hvt"
+	HvtBinary string = "solo5-hvt"
 	// solo5ArgsSeparator terminates the tender options in a solo5 cli
 	solo5ArgsSeparator = "--"
 )
