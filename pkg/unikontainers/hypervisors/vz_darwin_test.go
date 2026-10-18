@@ -19,6 +19,7 @@ package hypervisors
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -141,6 +142,49 @@ func TestVzDarwinAgentSock(t *testing.T) {
 	}, &fakeUnikernel{})
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"--qmp", "/run/hull/vz.qmp", "--agent-sock", "/run/hull/agent.sock"}, out[len(out)-4:])
+}
+
+func TestVzDarwinGUI(t *testing.T) {
+	tests := []struct {
+		name  string
+		gui   bool
+		title string
+		want  []string
+	}{
+		{name: "no window", title: "ignored", want: []string{}},
+		{name: "window", gui: true, want: []string{"--gui"}},
+		{name: "titled window", gui: true, title: "ubuntu", want: []string{"--gui", "--gui-title", "ubuntu"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := &VzDarwin{vzRunnerPath: "/opt/hull/vz-runner"}
+			out, err := v.BuildExecCmd(types.ExecArgs{
+				KernelPath:    "/img/Image",
+				AgentSockPath: "/run/hull/agent.sock",
+				GUI:           tt.gui,
+				GUITitle:      tt.title,
+			}, &fakeUnikernel{})
+			assert.NoError(t, err)
+			idx := slices.Index(out, "/run/hull/agent.sock")
+			if assert.NotEqual(t, -1, idx) {
+				assert.Equal(t, tt.want, out[idx+1:])
+			}
+		})
+	}
+}
+
+// The QEMU darwin builder has no graphics window.
+func TestQemuDarwinIgnoresGUI(t *testing.T) {
+	q := NewQemuDarwin("/opt/homebrew/bin/qemu-system-aarch64")
+	out, err := q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: "/img/kernel",
+		Command:       "console=hvc0",
+		GUI:           true,
+		GUITitle:      "ubuntu",
+	}, &fakeUnikernel{})
+	assert.NoError(t, err)
+	assert.NotContains(t, strings.Join(out, " "), "gui")
+	assert.Contains(t, out, "-display")
 }
 
 // A legacy RootfsPath directory is shared under tag rootfs.
