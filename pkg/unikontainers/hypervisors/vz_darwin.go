@@ -1,0 +1,225 @@
+// Copyright (c) 2023-2026, Nubificus LTD
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//go:build darwin
+
+package hypervisors
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
+)
+
+const VzVmm VmmType = "vz"
+
+// VzDarwin implements the VMM interface for Apple Virtualization.framework
+type VzDarwin struct {
+	vzRunnerPath string
+	qmpSocket    string
+}
+
+// NewVzDarwin creates a new Vz VMM instance
+func NewVzDarwin() *VzDarwin {
+	// Find vz-runner in the same directory as the running executable
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = "./vz-runner"
+	} else {
+		exePath = filepath.Join(filepath.Dir(exePath), "vz-runner")
+	}
+
+	return &VzDarwin{
+		vzRunnerPath: exePath,
+	}
+}
+
+// BuildExecCmd builds the command to launch the VM via vz-runner
+func (v *VzDarwin) BuildExecCmd(args types.ExecArgs, _ types.Unikernel) ([]string, error) {
+	if args.KernelPath == "" {
+		return nil, fmt.Errorf("kernel path required for Vz backend")
+	}
+
+	cmdArgs := []string{
+		v.vzRunnerPath,
+		"--kernel", args.KernelPath,
+		"--mem", fmt.Sprintf("%d", args.MemSizeB/(1024*1024)),
+		"--cpus", fmt.Sprintf("%d", args.VCPUs),
+	}
+
+	// Add initrd if provided
+	if args.InitrdPath != "" {
+		cmdArgs = append(cmdArgs, "--initrd", args.InitrdPath)
+	}
+
+	// Add kernel cmdline
+	if args.Command != "" {
+		cmdArgs = append(cmdArgs, "--cmdline", args.Command)
+	}
+
+	// Deterministic MAC address for the NAT network device, so the guest's
+	// DHCP lease (and therefore its IP) can be found on the host by MAC.
+	if args.Net.MAC != "" {
+		cmdArgs = append(cmdArgs, "--mac", args.Net.MAC)
+	}
+
+	switch {
+	case args.BlockDevPath != "":
+		// Block device: attach ext4 image as virtio-blk disk
+		cmdArgs = append(cmdArgs, "--rootfs", args.BlockDevPath)
+	case args.Sharedfs.Path != "":
+		// Root filesystem over virtiofs. Mount tag fs0 matches the shared Linux
+		// unikernel builder's cmdline (root=fs0 rootfstype=virtiofs), the same
+		// convention the QEMU backend uses, so both monitors boot the identical
+		// kernel command line.
+		flag := "--share"
+		if args.Sharedfs.ReadOnly {
+			flag = "--share-ro"
+		}
+		tag := args.Sharedfs.Tag
+		if tag == "" {
+			tag = "fs0"
+		}
+		cmdArgs = append(cmdArgs, flag, args.Sharedfs.Path, tag)
+	case args.RootfsPath != "" && args.InitrdPath == "":
+		// Legacy root share: a caller that builds its own kernel command line
+		// (e.g. the macOS product with root=rootfs) passes RootfsPath instead
+		// of Sharedfs; share it under mount tag "rootfs" to match, mirroring
+		// the QEMU backend's darwinRootfsArgs.
+		info, err := os.Stat(args.RootfsPath)
+		if err == nil && info.IsDir() {
+			cmdArgs = append(cmdArgs, "--share", args.RootfsPath, "rootfs")
+		}
+	}
+
+	// Additional tagged shares (one --share per directory). A read-only share
+	// goes over --share-ro, a separate flag rather than a third positional, so
+	// the argument shape stays fixed and an older runner cannot mistake a mode
+	// for a tag.
+	for _, dir := range args.SharedDirs {
+		flag := "--share"
+		if dir.ReadOnly {
+			flag = "--share-ro"
+		}
+		cmdArgs = append(cmdArgs, flag, dir.Path, dir.Tag)
+	}
+
+	// QMP socket for graceful shutdown control
+	if v.qmpSocket != "" {
+		cmdArgs = append(cmdArgs, "--qmp", v.qmpSocket)
+	}
+
+	return cmdArgs, nil
+}
+
+// PreExec performs any pre-execution setup
+func (v *VzDarwin) PreExec(_ types.ExecArgs) error {
+	// Create QMP socket directory if needed
+	if v.qmpSocket != "" {
+		sockDir := filepath.Dir(v.qmpSocket)
+		if err := os.MkdirAll(sockDir, 0700); err != nil {
+			return fmt.Errorf("failed to create QMP socket directory: %w", err)
+		}
+	}
+	return nil
+}
+
+// Signal sends a signal to the vz-runner process
+func (v *VzDarwin) Signal(pid int, signal unix.Signal) error {
+	return signalProcess(pid, signal)
+}
+
+// Stop stops the VM
+func (v *VzDarwin) Stop(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	// Ask for a graceful stop with SIGINT first. vz-runner's signal
+	// handlers stop the VM cleanly.
+	if err := proc.Signal(os.Interrupt); err != nil {
+		// If SIGINT fails, fall back to SIGKILL
+		return proc.Kill()
+	}
+
+	// Give the process time to shut down gracefully (5 seconds)
+	// This is a simplified timeout; could be enhanced with polling
+	done := make(chan error, 1)
+	go func() {
+		_, err := proc.Wait()
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil && err.Error() != "waitid: no child processes" {
+			return err
+		}
+		return nil
+	case <-time.After(5 * time.Second):
+		// If still running after 5 seconds, force kill
+		return proc.Kill()
+	}
+}
+
+// Path returns the path to the vz-runner binary
+func (v *VzDarwin) Path() string {
+	return v.vzRunnerPath
+}
+
+// UsesKVM returns false (Vz uses HVF, not KVM)
+func (v *VzDarwin) UsesKVM() bool {
+	return false
+}
+
+// SupportsSharedfs returns true (Vz supports directory sharing)
+func (v *VzDarwin) SupportsSharedfs(_ string) bool {
+	return true
+}
+
+// UsesTUNTAP returns false: macOS has no tap, and Vz networks the guest
+// through vmnet.
+func (v *VzDarwin) UsesTUNTAP() bool {
+	return false
+}
+
+// SupportsControlSocket reports that vz-runner serves a QMP endpoint.
+func (v *VzDarwin) SupportsControlSocket() bool {
+	return true
+}
+
+// Ok checks if the Vz backend is available
+func (v *VzDarwin) Ok() error {
+	// Check if vz-runner exists and is executable
+	info, err := os.Stat(v.vzRunnerPath)
+	if err != nil {
+		return fmt.Errorf("vz-runner not found at %s: %w", v.vzRunnerPath, err)
+	}
+
+	if info.IsDir() {
+		return fmt.Errorf("vz-runner is a directory, not an executable")
+	}
+
+	return nil
+}
+
+// SetQMPSocket sets the QMP socket path for this instance
+func (v *VzDarwin) SetQMPSocket(path string) {
+	v.qmpSocket = path
+}

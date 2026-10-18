@@ -15,6 +15,8 @@
 package hypervisors
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -403,4 +405,171 @@ func TestQemuGuestCommandIsASingleAppendValue(t *testing.T) {
 	assert.Equal(t, "-append", got[len(got)-2])
 	assert.Equal(t, "console=ttyS0 root=/dev/vda", got[len(got)-1],
 		"qemu must receive the guest cmdline as a single element")
+}
+
+// TestQemuBuildExecCmdLinuxGolden pins the whole argv of the Linux/KVM
+// backend for a guest with every Linux feature at once: a QMP socket, a
+// virtio console, a tap device, a block device, an initrd, virtiofs, an
+// extra initrd and the agent's vsock device. The darwin fields of Qemu
+// must not change a single element of it.
+func TestQemuBuildExecCmdLinuxGolden(t *testing.T) {
+	t.Parallel()
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary, vhost: true}
+	got, err := q.BuildExecCmd(types.ExecArgs{
+		ContainerID:   "golden",
+		UnikernelPath: testKernelPath,
+		InitrdPath:    "/rootfs/initrd.img",
+		Command:       "console=hvc0 8250.nr_uarts=0 root=/dev/vda rw",
+		MemSizeB:      512 * 1000 * 1000,
+		VCPUs:         2,
+		Seccomp:       true,
+		SocketPath:    "/run/urunc/golden.sock",
+		AgentVsockCID: 7,
+		Net:           types.NetDevParams{TapDev: "tap0_urunc", MAC: "52:54:00:12:34:56", MTU: 1500},
+		Sharedfs:      types.SharedfsParams{Type: "virtiofs", Path: "/srv/share"},
+	}, &fakeUnikernel{
+		blockCli:   []types.MonitorBlockArgs{{ID: "data0", Path: "/disks/data0.img"}},
+		monitorCli: types.MonitorCliArgs{ExtraInitrd: "/urunit.conf", OtherArgs: []string{"-no-reboot"}},
+	})
+	assert.NoError(t, err)
+
+	machine := []string{}
+	netDev := "virtio-net-pci"
+	if runtime.GOARCH == "arm64" {
+		machine = []string{"-M", "virt"}
+		netDev = "virtio-net-device"
+	}
+	want := []string{
+		testQemuBinary,
+		"-m", "512M",
+		"-L", "/usr/share/qemu",
+		"-cpu", "host",
+		"-enable-kvm",
+		"-display", "none",
+		"-vga", "none",
+		"-monitor", "null",
+		"-qmp", "unix:/run/urunc/golden.sock,server=on,wait=off",
+		"-chardev", "stdio,id=urunc-console,signal=off",
+		"-device", "virtio-serial-pci",
+		"-device", "virtconsole,chardev=urunc-console",
+		"-smp", "2",
+		"--sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny",
+	}
+	want = append(want, machine...)
+	want = append(want,
+		"-kernel", testKernelPath,
+		"-netdev", "tap,id=net0,script=no,downscript=no,ifname=tap0_urunc,vhost=on",
+		"-device", netDev+",netdev=net0,host_mtu=1500,mac=52:54:00:12:34:56",
+		"-device", "virtio-blk-pci,serial=data0,drive=data0,scsi=off",
+		"-drive", "format=raw,if=none,id=data0,file=/disks/data0.img",
+		"-initrd", "/rootfs/initrd.img",
+		"-object", "memory-backend-file,id=mem,size=512M,mem-path=/tmp,share=on",
+		"-numa", "node,memdev=mem",
+		"-chardev", "socket,id=char0,path=/tmp/vhostqemu",
+		"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0",
+		"-initrd", "/urunit.conf",
+		"-no-reboot",
+		"-device", "vhost-vsock-pci,id=vhost-vsock-pci0,guest-cid=7",
+		"-append", "console=hvc0 8250.nr_uarts=0 root=/dev/vda rw",
+	)
+	assert.Equal(t, want, got)
+}
+
+// qmpOptions returns the value of every -qmp option in argv.
+func qmpOptions(argv []string) []string {
+	var opts []string
+	for i, arg := range argv {
+		if arg == "-qmp" && i+1 < len(argv) {
+			opts = append(opts, argv[i+1])
+		}
+	}
+	return opts
+}
+
+// QEMU takes a single -qmp. ExecArgs.SocketPath (Linux) wins over a socket
+// set on the monitor (hull on darwin), and the monitor's socket is used only
+// when SocketPath is empty.
+func TestQemuQMPSocketPrecedence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		qmpSocket  string
+		socketPath string
+		want       []string
+	}{
+		{
+			name:       "SocketPath wins over SetQMPSocket",
+			qmpSocket:  "/tmp/hull-qmp.sock",
+			socketPath: "/run/urunc/q.sock",
+			want:       []string{"unix:/run/urunc/q.sock,server=on,wait=off"},
+		},
+		{
+			name:      "SetQMPSocket alone renders its socket",
+			qmpSocket: "/tmp/hull-qmp.sock",
+			want:      []string{"unix:/tmp/hull-qmp.sock,server,nowait"},
+		},
+		{
+			name: "neither renders no -qmp",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+			q.SetQMPSocket(tt.qmpSocket)
+			assert.Equal(t, tt.qmpSocket, q.GetQMPSocket())
+			got, err := q.BuildExecCmd(types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+				SocketPath:    tt.socketPath,
+			}, &fakeUnikernel{})
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, qmpOptions(got))
+		})
+	}
+}
+
+// PreExec removes a stale QMP socket, and a missing one is not an error.
+func TestQemuPreExecRemovesStaleQMPSocket(t *testing.T) {
+	t.Parallel()
+
+	sock := filepath.Join(t.TempDir(), "qmp.sock")
+	assert.NoError(t, os.WriteFile(sock, nil, 0o600))
+
+	q := &Qemu{}
+	q.SetQMPSocket(sock)
+	assert.NoError(t, q.PreExec(types.ExecArgs{}))
+	_, err := os.Stat(sock)
+	assert.True(t, os.IsNotExist(err), "stale QMP socket must be removed")
+	assert.NoError(t, q.PreExec(types.ExecArgs{}))
+}
+
+// The zero value is the Linux/KVM backend: the fields only the darwin
+// backends read change nothing in its argv.
+func TestQemuLinuxIgnoresDarwinFields(t *testing.T) {
+	t.Parallel()
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+	assert.True(t, q.UsesKVM())
+	base := types.ExecArgs{UnikernelPath: testKernelPath, Command: testCommand}
+	want, err := q.BuildExecCmd(base, &fakeUnikernel{})
+	assert.NoError(t, err)
+
+	args := base
+	args.RootfsPath = t.TempDir()
+	args.BlockDevPath = "/disks/root.img"
+	args.SharedDirs = []types.SharedDirParams{{Path: "/srv/data", Tag: "data"}}
+	args.Net.UnixSocket = "/tmp/gw.sock"
+	args.GUI = true
+	args.GUITitle = "guest"
+	got, err := q.BuildExecCmd(args, &fakeUnikernel{})
+	assert.NoError(t, err)
+	assert.Equal(t, want, got)
+
+	q.SetBinaryPath("/opt/qemu/bin/qemu-system-x86_64")
+	assert.Equal(t, "/opt/qemu/bin/qemu-system-x86_64", q.Path())
 }

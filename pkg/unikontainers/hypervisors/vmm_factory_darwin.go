@@ -16,7 +16,68 @@
 
 package hypervisors
 
-// vmmFactories holds the monitors urunc can start on darwin. It is empty
-// until the darwin backends (QEMU with HVF, Vz and hvi) are added, so
-// NewVMM reports every monitor type as not supported.
-var vmmFactories = map[VmmType]VMMFactory{}
+import (
+	"errors"
+	"os"
+	"os/exec"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+)
+
+// QemuHvfAlias is the monitor name hull records in image annotations for
+// QEMU with HVF. It resolves to the same factory as "qemu".
+const QemuHvfAlias VmmType = "qemu-hvf"
+
+var qemuDarwinFactory = VMMFactory{
+	binary:   "qemu-system-aarch64",
+	precheck: requireHVF,
+	pathFunc: darwinQemuPath,
+	createFunc: func(_, binaryPath string, _ bool) types.VMM {
+		return NewQemuDarwin(binaryPath)
+	},
+}
+
+// vmmFactories holds the monitors urunc can start on darwin: QEMU with HVF
+// and Virtualization.framework through vz-runner. The Linux-only monitors
+// (spt, hvt, firecracker, cloud-hypervisor, hedge, hyperlight) are absent.
+var vmmFactories = map[VmmType]VMMFactory{
+	QemuVmm:      qemuDarwinFactory,
+	QemuHvfAlias: qemuDarwinFactory,
+	VzVmm: {
+		precheck: func() error { return NewVzDarwin().Ok() },
+		createFunc: func(_, _ string, _ bool) types.VMM {
+			return NewVzDarwin()
+		},
+	},
+}
+
+func requireHVF() error {
+	if !IsHVFAvailable() {
+		return errors.New("HVF acceleration not available on this system (requires Apple Silicon)")
+	}
+	return nil
+}
+
+// darwinQemuPath resolves the qemu-system-aarch64 binary: the monitor config
+// path (under "qemu", then "qemu-hvf") first, then re-signed copies in /tmp
+// or /usr/local/bin (once needed for the hypervisor entitlement), then PATH.
+func darwinQemuPath(monitors map[string]types.MonitorConfig) (string, error) {
+	for _, name := range []VmmType{QemuVmm, QemuHvfAlias} {
+		if p := monitors[string(name)].BinaryPath; p != "" {
+			return p, nil
+		}
+	}
+	for _, candidate := range []string{
+		"/tmp/qemu-system-aarch64",
+		"/usr/local/bin/qemu-system-aarch64",
+	} {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+	p, err := exec.LookPath("qemu-system-aarch64")
+	if err != nil {
+		return "", errors.New("qemu-system-aarch64 not found in PATH; install with: brew install qemu")
+	}
+	return p, nil
+}
