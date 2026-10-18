@@ -68,6 +68,9 @@ type NetDevParams struct {
 	TapDev    string // The tap device name
 	MTU       int    // The MTU value of the tap device
 	DNSServer string // The nameserver of the container, empty if there is none
+	// UnixSocket is a host unix socket that carries the guest's network
+	// traffic on darwin (a QEMU stream netdev, or hvi's --net-gateway).
+	UnixSocket string
 }
 
 type BlockDevParams struct {
@@ -84,8 +87,18 @@ type BlockDevParams struct {
 }
 
 type SharedfsParams struct {
-	Type string // The type of shared-fs 9p or virtiofs
-	Path string // The path in the host to share with guest
+	Type     string // The type of shared-fs 9p or virtiofs
+	Path     string // The path in the host to share with guest
+	Tag      string // The guest mount tag; empty means the backend default
+	ReadOnly bool   // Export the share read-only
+}
+
+// SharedDirParams describes an extra host directory that a darwin backend
+// exports to the guest next to the rootfs share.
+type SharedDirParams struct {
+	Path     string // The host directory
+	Tag      string // The guest mount tag
+	ReadOnly bool   // Export the directory read-only
 }
 
 type RootfsParams struct {
@@ -153,6 +166,21 @@ type ExecArgs struct {
 	SocketPath    string   // The path of the monitor's control socket (empty means no control socket)
 	Net           NetDevParams
 	Sharedfs      SharedfsParams
+
+	// hull fills the fields below and the darwin backends read them. The
+	// Linux backends ignore them, so their zero values change nothing there.
+
+	KernelPath         string            // The kernel image, when it is not UnikernelPath
+	RootfsPath         string            // A directory or file rootfs for the guest
+	BlockDevPath       string            // A raw image attached as virtio-blk
+	LogFile            string            // The file the monitor writes its log to
+	AgentSockPath      string            // The host unix socket the VMM bridges to the guest agent
+	VirtiofsSocketPath string            // The vhost-user socket of an external virtiofsd
+	SharedDirs         []SharedDirParams // Extra host directories exported to the guest
+	GuestUID           uint32            // The uid that owns the exported files in the guest
+	GuestGID           uint32            // The gid that owns the exported files in the guest
+	GUI                bool              // Open a window for the guest display
+	GUITitle           string            // The title of that window
 }
 
 type MonitorCliArgs struct {
