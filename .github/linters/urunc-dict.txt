@@ -49,6 +49,7 @@ uapi
 Mirred
 Mkdev
 Mountpoint
+NETFILTER
 NEWCGROUP
 NEWIPC
 NEWNET
