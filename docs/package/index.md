@@ -103,6 +103,13 @@ Apart from the above, `urunc` accepts the following optional annotations:
   at `/run/urunc/urunit-agent` and hands over to `urunit`, which starts it. Linux hosts boot `/init` and never
   run `/vz-init`.
 
+  On its other path hull boots the same `/init`. It has no bind mounts to prepare the
+  rootfs with, so it appends a few more files to its copy of the initrd, all
+  named `/urunc-*`: the host time (hvi has no RTC), an overlay request for the
+  read-only image root, the extra virtio-fs exports, the network files, the
+  command and a Rosetta marker. `/init` handles each when present and ignores
+  it otherwise, which is the case on Linux hosts.
+
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container
 runtime, `urunc` can also read the above information from a file inside the

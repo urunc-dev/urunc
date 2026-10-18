@@ -22,6 +22,16 @@
 # /etc/resolv.conf, /etc/hosts and /etc/hostname, the volumes) already reaches
 # the guest through the kernel command line and the shared rootfs itself.
 #
+# hull on macOS has no bind mounts to prepare the rootfs with, so it appends a
+# few more files, all named /urunc-*. Each is handled in a block marked "hull"
+# below and ignored when absent, which is the case on every Linux host:
+#   /urunc-epoch       the host time in seconds; hvi has no RTC
+#   /urunc-rosetta     run an amd64 rootfs under Rosetta (Vz)
+#   /urunc-overlay     keep the shared root read-only under a tmpfs overlay
+#   /urunc-mounts      extra virtio-fs exports: <tag>\t<guest path>\t<ro|rw>
+#   /urunc-resolv.conf, /urunc-hosts, /urunc-hostname  the network files
+#   /urunc-cmd         the container command, one argument per line
+#
 # urunit mounts /proc and /sys in the new root itself and fails when they are
 # already mounted, so they are not mounted there here. The devtmpfs this script
 # needs for the console is moved into the new root rather than mounted twice,
@@ -40,6 +50,26 @@ fail() {
 $BB mount -t proc proc /proc || fail "could not mount /proc"
 $BB mount -t devtmpfs dev /dev || fail "could not mount /dev"
 
+# hull: seed the clock from the host before anything checks a certificate.
+if [ -s /urunc-epoch ]; then
+  _epoch=$($BB cat /urunc-epoch)
+  case "$_epoch" in
+    ''|*[!0-9]*) ;;
+    *) $BB date -u -s "@$_epoch" >/dev/null 2>&1 ;;
+  esac
+fi
+
+# hull: register Rosetta for amd64 ELF binaries. The F flag opens the
+# interpreter now, so the registration survives switch_root.
+if [ -f /urunc-rosetta ]; then
+  $BB mkdir -p /mnt/rosetta /proc/sys/fs/binfmt_misc
+  $BB mount -t virtiofs rosetta /mnt/rosetta || fail "could not mount the rosetta share"
+  $BB mount -t binfmt_misc none /proc/sys/fs/binfmt_misc || fail "could not mount binfmt_misc"
+  $BB printf '%s' ':rosetta:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00:\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/mnt/rosetta/rosetta:OCF' > /proc/sys/fs/binfmt_misc/register \
+    || fail "could not register the rosetta handler"
+  $BB umount /proc/sys/fs/binfmt_misc
+fi
+
 # The root the kernel was told about: root=<tag> rootfstype=<fs> [rootflags=<opts>].
 # Parameters after "--" belong to the container command and are not looked at.
 root=""
@@ -55,11 +85,27 @@ for _p in $($BB cat /proc/cmdline); do
 done
 [ -n "$root" ] && [ -n "$fstype" ] || fail "no root= and rootfstype= on the kernel command line"
 
-$BB mkdir -p /newroot
-if [ -n "$flags" ]; then
-  $BB mount -t "$fstype" -o "$flags" "$root" /newroot || fail "could not mount $fstype root $root ($flags)"
+# hull: the shared root is the unpacked image, read-only for every instance,
+# so it becomes the lower layer of a tmpfs overlay and guest writes stay in
+# the guest. Without the file the root is mounted directly, as on Linux.
+if [ -f /urunc-overlay ]; then
+  lower=/lowerroot
 else
-  $BB mount -t "$fstype" "$root" /newroot || fail "could not mount $fstype root $root"
+  lower=/newroot
+fi
+$BB mkdir -p "$lower"
+if [ -n "$flags" ]; then
+  $BB mount -t "$fstype" -o "$flags" "$root" "$lower" || fail "could not mount $fstype root $root ($flags)"
+else
+  $BB mount -t "$fstype" "$root" "$lower" || fail "could not mount $fstype root $root"
+fi
+if [ -f /urunc-overlay ]; then
+  $BB mkdir -p /newroot /run/urunc-overlay
+  $BB mount -t tmpfs tmpfs /run/urunc-overlay || fail "could not mount the overlay tmpfs"
+  $BB mkdir -p /run/urunc-overlay/upper /run/urunc-overlay/work
+  $BB mount -t overlay overlay \
+    -o lowerdir=/lowerroot,upperdir=/run/urunc-overlay/upper,workdir=/run/urunc-overlay/work \
+    /newroot || fail "could not mount the overlay over $root"
 fi
 $BB umount /proc
 
@@ -82,10 +128,40 @@ else
   echo "container-init: no urunit.conf in the initrd; urunit runs the command as root with no environment" >&2
 fi
 
+# hull: every other export is its own virtio-fs device and gets mounted here.
+if [ -f /urunc-mounts ]; then
+  while IFS="	" read -r _tag _dest _mode; do
+    [ -n "$_tag" ] && [ -n "$_dest" ] || continue
+    $BB mkdir -p "/newroot$_dest"
+    if [ "$_mode" = ro ]; then
+      $BB mount -t virtiofs -o ro "$_tag" "/newroot$_dest" || fail "could not mount export $_tag at $_dest"
+    else
+      $BB mount -t virtiofs "$_tag" "/newroot$_dest" || fail "could not mount export $_tag at $_dest"
+    fi
+  done < /urunc-mounts
+fi
+
+# hull: the network files, which Linux hosts bind-mount into the rootfs.
+if [ -s /urunc-resolv.conf ] || [ -s /urunc-hosts ] || [ -s /urunc-hostname ]; then
+  $BB mkdir -p /newroot/etc
+  [ -s /urunc-resolv.conf ] && $BB cp /urunc-resolv.conf /newroot/etc/resolv.conf
+  [ -s /urunc-hosts ] && $BB cp /urunc-hosts /newroot/etc/hosts
+  [ -s /urunc-hostname ] && $BB cp /urunc-hostname /newroot/etc/hostname
+  $BB chmod 0644 /newroot/etc/resolv.conf /newroot/etc/hosts /newroot/etc/hostname 2>/dev/null
+fi
+
 $BB mkdir -p /newroot/dev
 $BB mount --move /dev /newroot/dev || fail "could not move /dev into the new root"
-$BB mkdir -p /newroot/dev/pts
+$BB mkdir -p /newroot/dev/pts /newroot/dev/shm
 $BB mount -t devpts -o gid=5,mode=0620,ptmxmode=0666 devpts /newroot/dev/pts || fail "could not mount devpts"
+$BB mount -t tmpfs -o mode=1777 shm /newroot/dev/shm || fail "could not mount /dev/shm"
+
+# hull: the command comes as a file, one argument per line, since the kernel
+# command line splits on whitespace. It replaces the arguments after "--".
+if [ -f /urunc-cmd ]; then
+  set --
+  while IFS= read -r _a; do set -- "$@" "$_a"; done < /urunc-cmd
+fi
 
 # switch_root execs urunit directly, so a bare command such as "bash" is
 # resolved against the new root's standard directories first.
