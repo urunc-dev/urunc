@@ -93,6 +93,13 @@ LINT_CNTR_OPTS ?= $(CNTR_OPTS) -v $(CURDIR):/app -w /app
 LINT_CNTR_IMG  ?= golangci/golangci-lint:v2.9
 LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
 
+# urunit, the single guest binary, comes from the commit
+# packaging/container-initrd/urunit.pin names. build-urunit.sh builds it with
+# musl in a container; URUNIT_SRC points it at a local checkout instead.
+#? TARGET_ARCH Architecture of the urunit guest binary (default: ARCH)
+TARGET_ARCH    ?= $(ARCH)
+URUNIT_BIN     := $(BUILD_DIR)/urunit_static_$(TARGET_ARCH)
+
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)
 DOCS_CNTR_IMG  ?= harbor.nbfc.io/nubificus/urunc/mkdocs:latest
 
@@ -194,6 +201,13 @@ $(SHIM_BIN)_dynamic_%: $(SHIM_SRC) | prepare
 		$(VENDOR_DIR)/github.com/containerd/go-runc/runc.go
 	GOARCH=$* $(GO) build \
 		-o $(SHIM_BIN)_dynamic_$* $(CURDIR)/cmd/containerd-shim-urunc-v2
+
+## urunit Build the pinned urunit guest binary statically for TARGET_ARCH (musl, in a container)
+.PHONY: urunit
+urunit:
+	@mkdir -p $(BUILD_DIR)
+	CNTR_TOOL=$(CNTR_TOOL) TARGET_ARCH=$(TARGET_ARCH) \
+		$(CURDIR)/packaging/container-initrd/build-urunit.sh $(URUNIT_BIN)
 
 ## install Install urunc and shim in PREFIX
 .PHONY: install

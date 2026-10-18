@@ -14,6 +14,9 @@
 
 //go:build linux
 
+// Superseded by the exec agent built into urunit (NOFireAI/urunit). Kept for
+// INITRD_LAYOUT=legacy.
+
 // urunit-agent is a small in-guest agent that spawns additional processes
 // (exec sessions) on behalf of the host. It speaks the agentproto framed
 // protocol over one of two transports, tried in order:

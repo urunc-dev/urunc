@@ -1,4 +1,6 @@
 #!/busybox sh
+# Superseded by urunit itself (NOFireAI/urunit), which runs as /init and
+# /vz-init. Kept for INITRD_LAYOUT=legacy.
 # Generic macOS virtiofs early init. Vz exports the OCI cache read-only and uses
 # a tmpfs-backed overlay. HVI can instead export Hull's per-instance APFS clone
 # read-write and mount it directly, preserving changes without charging them to
