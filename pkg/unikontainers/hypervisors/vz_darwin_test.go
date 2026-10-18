@@ -83,7 +83,7 @@ func TestVzDarwinContainerBootRootShareIsTaggedReadOnly(t *testing.T) {
 		UnikernelPath: "/host/Image",
 		KernelPath:    "/host/Image",
 		InitrdPath:    "/instance/container-initrd",
-		Command:       "rdinit=/vz-init console=hvc0",
+		Command:       "rdinit=/init console=hvc0",
 		Sharedfs: types.SharedfsParams{
 			Path: "/store/ubuntu/rootfs", Tag: "rootfs", ReadOnly: true,
 		},
@@ -97,7 +97,7 @@ func TestVzDarwinContainerBootRootShareIsTaggedReadOnly(t *testing.T) {
 		"--kernel /host/Image",
 		"--initrd /instance/container-initrd",
 		"--share-ro /store/ubuntu/rootfs rootfs",
-		"--cmdline rdinit=/vz-init console=hvc0",
+		"--cmdline rdinit=/init console=hvc0",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("expected %q in Vz command:\n%s", want, joined)

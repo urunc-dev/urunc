@@ -3,7 +3,9 @@
 # com.urunc.unikernel.bootInitrd points at, paired with a Linux kernel through
 # com.urunc.unikernel.bootKernel. It contains only what has to run before the
 # container's own rootfs takes over:
-#   /init          the early userspace script next to this file (container-init)
+#   /init          the early userspace script next to this file (container-init);
+#                  hull on macOS can boot the same script and append its own
+#                  /urunc-* files, see the comment there
 #   /vz-init       the macOS early init (vz-init). hull boots it with
 #                  rdinit=/vz-init; Linux hosts boot /init and never run it
 #   /busybox       a static BusyBox, for the shell and the mount/switch_root tools
@@ -66,7 +68,8 @@ else
     go build -trimpath -ldflags "-s -w" -o "$stage/urunit-agent" ./cmd/urunit-agent)
 fi
 
-# The mountpoints /init uses. /vz-init also mounts sysfs on /sys.
+# The mountpoints /init uses; /sys for the agent's virtio-port lookup and
+# for /vz-init, which mounts sysfs there.
 mkdir -p "$stage/proc" "$stage/sys" "$stage/dev" "$stage/newroot" "$stage/run"
 
 mkdir -p "$(dirname "$INITRD")"

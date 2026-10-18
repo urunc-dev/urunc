@@ -29,7 +29,7 @@
 //     sessions multiplex on it.
 //
 // URUNIT_AGENT_TRANSPORT=vsock keeps the agent on vsock and never probes
-// the port (hull's vz-init sets it), and URUNIT_AGENT_TRANSPORT=virtio-port
+// the port, and URUNIT_AGENT_TRANSPORT=virtio-port
 // skips vsock. A guest with vsock serves exactly as it did before the port
 // fallback existed.
 //

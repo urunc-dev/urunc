@@ -31,7 +31,7 @@ import (
 )
 
 // transportEnv names the environment variable that pins the agent to one
-// transport. hull's vz-init sets it to "vsock".
+// transport.
 const transportEnv = "URUNIT_AGENT_TRANSPORT"
 
 // The values transportEnv accepts.
