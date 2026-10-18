@@ -16,6 +16,8 @@ package hypervisors
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -29,10 +31,22 @@ const (
 	QemuBinary string  = "qemu-system-"
 )
 
+// Qemu is the QEMU backend on every platform. The zero value targets Linux
+// with KVM. NewQemuDarwin sets the platform fields below to target
+// Hypervisor.framework on macOS, so both platforms share one command builder
+// and the platform choices (accelerator, firmware path, network backend and
+// the darwin rootfs) sit in explicit branches.
 type Qemu struct {
 	binaryPath string
 	binary     string
 	vhost      bool
+
+	// Platform configuration. The zero values reproduce the Linux/KVM
+	// command line exactly.
+	darwin    bool   // Hypervisor.framework (macOS) instead of KVM (Linux)
+	accel     string // accelerator flags; "" means -enable-kvm
+	firmware  string // -L firmware path; "" means /usr/share/qemu
+	qmpSocket string // QMP socket set by a darwin caller; "" means none
 }
 
 func (q *Qemu) Signal(pid int, signal unix.Signal) error {
@@ -47,9 +61,9 @@ func (q *Qemu) Ok() error {
 	return nil
 }
 
-// UsesKVM returns a bool value depending on if the monitor uses KVM
+// UsesKVM reports whether the monitor uses KVM (Linux) rather than HVF.
 func (q *Qemu) UsesKVM() bool {
-	return true
+	return !q.darwin
 }
 
 // UsesTUNTAP reports that the guest gets its network through a tap device.
@@ -71,18 +85,37 @@ func (q *Qemu) Path() string {
 	return q.binaryPath
 }
 
+// accelArgs returns the accelerator arguments: -enable-kvm on Linux, or the
+// configured flags (e.g. "-accel hvf") split into argv words on darwin.
+func (q *Qemu) accelArgs() []string {
+	if q.accel != "" {
+		return strings.Fields(q.accel)
+	}
+	return []string{"-enable-kvm"}
+}
+
+// firmwarePath returns the directory QEMU loads its bios and data from.
+func (q *Qemu) firmwarePath() string {
+	if q.firmware != "" {
+		return q.firmware
+	}
+	return "/usr/share/qemu"
+}
+
 func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
 	qemuMem := BytesToStringMB(args.MemSizeB)
 	exArgs := []string{
 		q.binaryPath,
 		"-m", qemuMem + "M",
-		"-L", "/usr/share/qemu", // Set the path for qemu bios/data
+		"-L", q.firmwarePath(), // Set the path for qemu bios/data
 		"-cpu", "host", // Choose CPU
-		"-enable-kvm",      // Enable KVM to use CPU virt extensions
+	}
+	exArgs = append(exArgs, q.accelArgs()...) // KVM (Linux) or HVF (darwin) for CPU virt extensions
+	exArgs = append(exArgs,
 		"-display", "none", // Disable graphic output
 		"-vga", "none",
 		"-monitor", "null",
-	}
+	)
 	// Expose the QMP socket only when socket_path is set. server=on,wait=off lets
 	// QEMU boot without waiting for a client.
 	if args.SocketPath != "" {
@@ -123,28 +156,30 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		exArgs = append(exArgs, "-M", "virt")
 	}
 
-	exArgs = append(exArgs, "-kernel", args.UnikernelPath)
-	if args.Net.TapDev != "" {
-		netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
-		if len(netcli) == 0 {
-			netdevArg := fmt.Sprintf("tap,id=net0,script=no,downscript=no,ifname=%s", args.Net.TapDev)
-			if q.vhost {
-				netdevArg += ",vhost=on"
-			}
-			exArgs = append(exArgs, "-netdev", netdevArg)
-
-			devType := "virtio-net-pci"
-			if runtime.GOARCH == "arm64" {
-				devType = "virtio-net-device"
-			}
-			netCliDev := fmt.Sprintf("%s,netdev=net0,host_mtu=%d,mac=%s", devType, args.Net.MTU, args.Net.MAC)
-			exArgs = append(exArgs, "-device", netCliDev)
-		} else {
-			exArgs = append(exArgs, netcli...)
-		}
-	} else {
-		exArgs = append(exArgs, "-nic", "none")
+	// Kernel or disk image. On darwin a disk.img next to the unikernel
+	// boots directly with EDK2 firmware; otherwise QEMU boots the kernel.
+	// KernelPath (set on darwin) falls back to UnikernelPath, so Linux
+	// boots UnikernelPath as before.
+	useDiskImage := false
+	kernelPath := args.UnikernelPath
+	if args.KernelPath != "" {
+		kernelPath = args.KernelPath
 	}
+	if q.darwin {
+		diskImagePath := filepath.Join(filepath.Dir(args.UnikernelPath), "disk.img")
+		if _, err := os.Stat(diskImagePath); err == nil {
+			exArgs = append(exArgs,
+				"-drive", "format=raw,file="+diskImagePath+",if=virtio",
+				"-bios", "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+			)
+			useDiskImage = true
+		}
+	}
+	if !useDiskImage {
+		exArgs = append(exArgs, "-kernel", kernelPath)
+	}
+
+	exArgs = append(exArgs, q.netCli(args, ukernel)...)
 
 	blockArgs := ukernel.MonitorBlockCli()
 	for _, blockArg := range blockArgs {
@@ -179,9 +214,30 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		// Nothing to add
 	}
 
+	// On darwin QEMU also realizes the container rootfs, as a raw disk, a
+	// 9p share (directory) or an initrd (file), plus any extra tagged
+	// shares. On Linux the rootfs is set up before QEMU starts.
+	if q.darwin {
+		exArgs = append(exArgs, q.darwinRootfsArgs(args)...)
+		for _, dir := range args.SharedDirs {
+			exArgs = append(exArgs,
+				"-fsdev", "local,id="+dir.Tag+",security_model=none,path="+dir.Path,
+				"-device", "virtio-9p-pci,fsdev="+dir.Tag+",mount_tag="+dir.Tag,
+			)
+		}
+	}
+
 	extraMonArgs := ukernel.MonitorCli()
-	if extraMonArgs.ExtraInitrd != "" {
-		exArgs = append(exArgs, "-initrd", extraMonArgs.ExtraInitrd)
+	if extraInitrd := extraMonArgs.ExtraInitrd; extraInitrd != "" {
+		// The unikernel returns the guest-absolute path of the urunit
+		// config (e.g. /urunit.conf). On Linux QEMU runs inside the
+		// container's mount namespace, where that path resolves against
+		// the rootfs. darwin has no such namespace, so resolve it against
+		// the host rootfs directory instead.
+		if q.darwin && filepath.IsAbs(extraInitrd) && args.Sharedfs.Path != "" {
+			extraInitrd = filepath.Join(args.Sharedfs.Path, extraInitrd)
+		}
+		exArgs = append(exArgs, "-initrd", extraInitrd)
 	}
 	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
 
@@ -197,11 +253,97 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		exArgs = append(exArgs, "-device", vsockArg)
 	}
 
-	exArgs = append(exArgs, "-append", args.Command)
+	// A darwin caller that sets the QMP socket on the monitor gets it here,
+	// unless ExecArgs.SocketPath already added one: QEMU takes one -qmp.
+	if args.SocketPath == "" && q.qmpSocket != "" {
+		exArgs = append(exArgs, "-qmp", "unix:"+q.qmpSocket+",server,nowait")
+	}
+
+	// A disk image carries its own boot configuration, so -append only
+	// goes with a kernel.
+	if !useDiskImage {
+		exArgs = append(exArgs, "-append", args.Command)
+	}
 	return exArgs, nil
 }
 
-// PreExec performs pre-execution setup. QEMU has no special pre-exec requirements.
+// netCli returns the network arguments. On Linux that is a tap device, with
+// vhost when configured. On darwin it is a stream netdev to a user-mode
+// gateway socket, or vmnet-shared. A unikernel's own MonitorNetCli wins over
+// the tap and vmnet defaults.
+func (q *Qemu) netCli(args types.ExecArgs, ukernel types.Unikernel) []string {
+	if q.darwin {
+		if args.Net.UnixSocket != "" {
+			return []string{
+				"-netdev", "stream,id=net0,addr.type=unix,addr.path=" + args.Net.UnixSocket,
+				"-device", "virtio-net-pci,netdev=net0,mac=" + args.Net.MAC,
+			}
+		}
+		if args.Net.TapDev != "" {
+			if netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC); len(netcli) > 0 {
+				return netcli
+			}
+			return []string{
+				"-netdev", "vmnet-shared,id=net0",
+				"-device", "virtio-net-pci,netdev=net0,mac=" + args.Net.MAC,
+			}
+		}
+		return []string{"-nic", "none"}
+	}
+
+	if args.Net.TapDev == "" {
+		return []string{"-nic", "none"}
+	}
+	if netcli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC); len(netcli) > 0 {
+		return netcli
+	}
+	netdevArg := fmt.Sprintf("tap,id=net0,script=no,downscript=no,ifname=%s", args.Net.TapDev)
+	if q.vhost {
+		netdevArg += ",vhost=on"
+	}
+	devType := "virtio-net-pci"
+	if runtime.GOARCH == "arm64" {
+		devType = "virtio-net-device"
+	}
+	netCliDev := fmt.Sprintf("%s,netdev=net0,host_mtu=%d,mac=%s", devType, args.Net.MTU, args.Net.MAC)
+	return []string{"-netdev", netdevArg, "-device", netCliDev}
+}
+
+// darwinRootfsArgs attaches BlockDevPath as a raw virtio disk, or shares a
+// RootfsPath directory over 9p (mount tag rootfs), or attaches a RootfsPath
+// file as an initrd.
+func (q *Qemu) darwinRootfsArgs(args types.ExecArgs) []string {
+	if args.BlockDevPath != "" {
+		return []string{"-drive", "format=raw,file=" + args.BlockDevPath + ",if=virtio"}
+	}
+	if args.RootfsPath == "" {
+		return nil
+	}
+	if info, err := os.Stat(args.RootfsPath); err == nil && info.IsDir() {
+		return []string{
+			"-fsdev", "local,id=rootdev,security_model=none,path=" + args.RootfsPath,
+			"-device", "virtio-9p-pci,fsdev=rootdev,mount_tag=rootfs",
+		}
+	}
+	return []string{"-initrd", args.RootfsPath}
+}
+
+// PreExec removes a stale QMP socket left by an earlier darwin run, so QEMU
+// can bind it again. Linux needs nothing here.
 func (q *Qemu) PreExec(_ types.ExecArgs) error {
+	if q.qmpSocket != "" {
+		if err := os.Remove(q.qmpSocket); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale QMP socket %s: %w", q.qmpSocket, err)
+		}
+	}
 	return nil
 }
+
+// GetQMPSocket returns the QMP socket a darwin caller set.
+func (q *Qemu) GetQMPSocket() string { return q.qmpSocket }
+
+// SetQMPSocket sets the QMP socket. ExecArgs.SocketPath takes precedence.
+func (q *Qemu) SetQMPSocket(path string) { q.qmpSocket = path }
+
+// SetBinaryPath overrides the QEMU binary path.
+func (q *Qemu) SetBinaryPath(path string) { q.binaryPath = path }

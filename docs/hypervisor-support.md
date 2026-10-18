@@ -415,6 +415,30 @@ An example unikernel:
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 docker.io/urunc/hello-hyperlight-unikraft:v[[ versions["hyperlight-unikraft"] ]]
 ```
 
+## Monitors on macOS
+
+On macOS `urunc` builds as a library. The `urunc` and shim commands are
+Linux-only. A darwin runner (eg. hull) uses the shared core to parse the
+bundle, pick the guest rootfs and build the monitor command line. It then
+starts the monitor itself. All three darwin monitors run Linux guests on
+Apple Silicon through Hypervisor.framework, so none of them uses KVM.
+
+| Monitor name | VMM | Binary | Guest rootfs | Exec agent transport |
+|--------------|-----|--------|--------------|----------------------|
+| `qemu-hvf` (or `qemu`) | QEMU with `-accel hvf` | `qemu-system-aarch64` from the monitor config, `/tmp`, `/usr/local/bin` or `$PATH` | 9p share, initrd or raw disk | virtio-serial port `io.urunc.agent.0` |
+| `vz` | Virtualization.framework | `vz-runner`, next to the running executable | virtiofs share or raw disk | vsock, relayed by `vz-runner` |
+| `hvi` | hvi on Hypervisor.framework | `hvi` from the monitor config, next to the running executable or `$PATH` | virtiofs share or raw disk | vsock, relayed by `hvi` |
+
+A few notes:
+
+- QEMU gets its firmware from `/opt/homebrew/share/qemu`, so we expect the
+  Homebrew `qemu` package. The guest network is a stream netdev to a
+  user-mode gateway socket, or `vmnet-shared`.
+- `vz-runner` is a separate helper. The flags it must accept are in the
+  [vz-runner contract](vz-runner-contract.md). It must be signed with the
+  `com.apple.security.virtualization` entitlement.
+- Linux guests on QEMU and Vz use the virtio console (`console=hvc0`).
+
 ## Software-based isolation monitors
 
 Except for the traditional VM-based isolation solutions, there are other
