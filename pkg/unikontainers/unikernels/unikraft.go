@@ -155,9 +155,13 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	}
 
 	setCompatArgs := func() {
-		u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
-		u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
-		u.Net.Mask = "netdev.ipv4_subnet_mask=" + ethDeviceMask
+		// Without an address the guest has no network device. An empty
+		// "netdev.ipv4_addr=" would make it configure one anyway.
+		if ethDeviceIP != "" {
+			u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
+			u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
+			u.Net.Mask = "netdev.ipv4_subnet_mask=" + ethDeviceMask
+		}
 		// TODO: We need to add support for actual block devices (e.g. virtio-blk)
 		// and sharedfs or any other Unikraft related ways to pass data to guest.
 		if rootFsType == "initrd" {
@@ -168,7 +172,10 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	}
 
 	setCurrentArgs := func() {
-		u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":" + dnsServer
+		// See setCompatArgs: no address means no netdev.* arguments.
+		if ethDeviceIP != "" {
+			u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":" + dnsServer
+		}
 		switch rootFsType {
 		case "initrd":
 			// TODO: This needs better handling. We need to revisit this
