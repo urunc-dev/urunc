@@ -490,3 +490,4 @@ anypb
 memfd
 errgrpc
 Inuth
+clusterfuzzlite
