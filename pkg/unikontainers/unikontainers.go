@@ -1077,6 +1077,19 @@ func (u *Unikontainer) removeControlSocket(socketPath string) error {
 
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
+	return u.SignalWith(signal, nil)
+}
+
+// GuestSignaller delivers a signal to the init of a running guest, the
+// supervisor of a generic container boot, from the host.
+type GuestSignaller func(unix.Signal) error
+
+// SignalWith sends signal to the container's init. For a generic container
+// boot, guest delivers it to the guest's init, which hands it to the
+// application. The application then exits, and the guest syncs its disks
+// and powers off, which ends the monitor. The monitor itself gets the signal
+// only for SIGKILL, for any other container, or when guest is nil or fails.
+func (u *Unikontainer) SignalWith(signal unix.Signal, guest GuestSignaller) error {
 	// A monitor that never started has no pid, and kill(2) reads a pid <= 0
 	// as a process group. There is nothing to signal.
 	if u.State.Pid <= 0 {
@@ -1090,8 +1103,18 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 		return err
 	}
 
-	if err = vmm.Signal(u.State.Pid, signal); err != nil {
-		return err
+	delivered := false
+	if guest != nil && signal != unix.SIGKILL && u.isContainerBoot() {
+		if err = guest(signal); err == nil {
+			delivered = true
+		} else {
+			uniklog.WithError(err).Warnf("could not hand signal %d to the guest init; signalling the monitor", signal)
+		}
+	}
+	if !delivered {
+		if err = vmm.Signal(u.State.Pid, signal); err != nil {
+			return err
+		}
 	}
 
 	// A stop calls kill with SIGTERM and never runs Delete, so the socket is
