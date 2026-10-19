@@ -41,6 +41,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/urunc-dev/urunc/pkg/agentproto"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 )
 
 // execCommand runs an additional process inside a running urunc guest by
@@ -139,23 +140,9 @@ func runExecSession(cmd *cli.Command, ready *execReady) error {
 	// side of the transport differs (qemu: host vhost-vsock; firecracker and
 	// cloud-hypervisor: a host unix socket with a CONNECT handshake; hvi: a
 	// host unix socket relayed to the agent port).
-	transport := unikontainer.AgentTransportInfo()
-	var conn io.ReadWriteCloser
-	if transport.Relay {
-		conn, err = dialAgentRelay(transport.VsockUDS, 15*time.Second)
-		if err != nil {
-			return fmt.Errorf("could not reach the in-guest exec agent over the relay socket %s: %w", transport.VsockUDS, err)
-		}
-	} else if transport.VsockUDS != "" {
-		conn, err = dialAgentHybridVsock(transport.VsockUDS, agentproto.DefaultVsockPort, 15*time.Second)
-		if err != nil {
-			return fmt.Errorf("could not reach the in-guest exec agent over hybrid vsock %s (port %d): %w", transport.VsockUDS, agentproto.DefaultVsockPort, err)
-		}
-	} else {
-		conn, err = dialAgent(transport.CID, agentproto.DefaultVsockPort, 15*time.Second)
-		if err != nil {
-			return fmt.Errorf("could not reach the in-guest exec agent at vsock(%d,%d): %w", transport.CID, agentproto.DefaultVsockPort, err)
-		}
+	conn, err := dialAgentTransport(unikontainer.AgentTransportInfo(), 15*time.Second)
+	if err != nil {
+		return err
 	}
 	defer conn.Close()
 
@@ -178,6 +165,30 @@ func runExecSession(cmd *cli.Command, ready *execReady) error {
 		return runTTYSession(cmd, conn, req, ready)
 	}
 	return runStreamSession(conn, req, ready)
+}
+
+// dialAgentTransport connects to the in-guest exec agent the way transport
+// says, retrying for up to timeout.
+func dialAgentTransport(transport unikontainers.AgentTransport, timeout time.Duration) (io.ReadWriteCloser, error) {
+	if transport.Relay {
+		conn, err := dialAgentRelay(transport.VsockUDS, timeout)
+		if err != nil {
+			return nil, fmt.Errorf("could not reach the in-guest exec agent over the relay socket %s: %w", transport.VsockUDS, err)
+		}
+		return conn, nil
+	}
+	if transport.VsockUDS != "" {
+		conn, err := dialAgentHybridVsock(transport.VsockUDS, agentproto.DefaultVsockPort, timeout)
+		if err != nil {
+			return nil, fmt.Errorf("could not reach the in-guest exec agent over hybrid vsock %s (port %d): %w", transport.VsockUDS, agentproto.DefaultVsockPort, err)
+		}
+		return conn, nil
+	}
+	conn, err := dialAgent(transport.CID, agentproto.DefaultVsockPort, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("could not reach the in-guest exec agent at vsock(%d,%d): %w", transport.CID, agentproto.DefaultVsockPort, err)
+	}
+	return conn, nil
 }
 
 // execReady is the detached proxy child's end of the handshake with its

@@ -77,7 +77,10 @@ signal to the init process of the "ubuntu01" container:
 			return err
 		}
 
-		return unikontainer.Signal(signal)
+		// A generic container boot gets the signal in the guest, where the
+		// application handles it and the guest syncs its disks before it
+		// powers off. SIGKILL, and any failure there, go to the monitor.
+		return unikontainer.SignalWith(signal, guestSignaller(unikontainer))
 	},
 }
 

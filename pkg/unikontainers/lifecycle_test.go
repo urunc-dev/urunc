@@ -17,13 +17,19 @@
 package unikontainers
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 // A container whose monitor never started keeps the initial Pid -1 in its
@@ -109,4 +115,80 @@ func TestDeleteKeepsStateWhenNetworkCleanupFails(t *testing.T) {
 	require.NoError(t, u.Delete(true))
 	_, err = os.Stat(u.BaseDir)
 	require.True(t, os.IsNotExist(err), "%s still exists after a forced delete", u.BaseDir)
+}
+
+// monitorStandIn starts a process that stands in for the monitor and returns
+// its pid and a function that reports, without blocking for long, whether it
+// was killed by a signal.
+func monitorStandIn(t *testing.T) (int, func() (unix.Signal, bool)) {
+	t.Helper()
+	cmd := exec.Command("sleep", "30")
+	require.NoError(t, cmd.Start())
+	exited := make(chan *os.ProcessState, 1)
+	go func() {
+		_ = cmd.Wait()
+		exited <- cmd.ProcessState
+	}()
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	return cmd.Process.Pid, func() (unix.Signal, bool) {
+		select {
+		case st := <-exited:
+			ws := st.Sys().(syscall.WaitStatus)
+			return unix.Signal(ws.Signal()), ws.Signaled()
+		case <-time.After(500 * time.Millisecond):
+			return 0, false
+		}
+	}
+}
+
+// A generic container boot hands a stop signal to the guest, and the monitor
+// gets it only for SIGKILL, for another container, or when the guest fails.
+func TestSignalWithGuest(t *testing.T) {
+	boot := map[string]string{
+		annotHypervisor: "cloud-hypervisor",
+		annotBootKernel: "/boot/bzImage",
+		annotBootInitrd: "/boot/container-initrd",
+	}
+	cases := []struct {
+		name     string
+		annot    map[string]string
+		sig      unix.Signal
+		guestErr error
+		guest    bool        // the guest is asked
+		monitor  unix.Signal // what the monitor dies of; 0 for nothing
+	}{
+		{"SIGTERM goes to the guest", boot, unix.SIGTERM, nil, true, 0},
+		{"SIGINT goes to the guest", boot, unix.SIGINT, nil, true, 0},
+		{"a failed guest leaves it to the monitor", boot, unix.SIGTERM, errors.New("no agent"), true, unix.SIGTERM},
+		{"SIGKILL goes to the monitor", boot, unix.SIGKILL, nil, false, unix.SIGKILL},
+		{"another container signals the monitor", map[string]string{annotHypervisor: "cloud-hypervisor"}, unix.SIGTERM, nil, false, unix.SIGTERM},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pid, died := monitorStandIn(t)
+			u := unikontainerWithoutMonitor(t, pid)
+			u.State.Annotations = tc.annot
+			u.UruncCfg = &UruncConfig{Monitors: map[string]types.MonitorConfig{
+				"cloud-hypervisor": {BinaryPath: "/bin/true"},
+			}}
+			var asked []unix.Signal
+			err := u.SignalWith(tc.sig, func(s unix.Signal) error {
+				asked = append(asked, s)
+				return tc.guestErr
+			})
+			require.NoError(t, err)
+			if tc.guest {
+				require.Equal(t, []unix.Signal{tc.sig}, asked)
+			} else {
+				require.Empty(t, asked)
+			}
+			sig, signaled := died()
+			if tc.monitor == 0 {
+				require.False(t, signaled, "the monitor was signalled")
+			} else {
+				require.True(t, signaled, "the monitor was not signalled")
+				require.Equal(t, tc.monitor, sig)
+			}
+		})
+	}
 }
