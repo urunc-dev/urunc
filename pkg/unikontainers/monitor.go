@@ -141,9 +141,11 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		}
 	}
 
-	err = spawnProcess(ms.PreStartCmd)
-	if err != nil {
-		return err
+	for _, cmd := range append([][]string{ms.PreStartCmd}, ms.PreStartCmds...) {
+		err = spawnProcess(cmd)
+		if err != nil {
+			return err
+		}
 	}
 
 	execCmd, err := vmm.BuildExecCmd(ms.ExecArgs, unikernel)

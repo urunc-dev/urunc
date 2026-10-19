@@ -32,6 +32,10 @@ import (
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
+// rootfsOverlayBlock is the rootfs type of an overlay root on two disks, a
+// read-only lower built from the image and a writable upper.
+const rootfsOverlayBlock = "overlay-block"
+
 // rootfsSelector encapsulates the context for rootfs selection
 type rootfsSelector struct {
 	bundle     string
@@ -103,6 +107,16 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 	// Priority 2: Explicit block annotation
 	result, ok = selector.tryExplicitBlock()
 	if ok {
+		return switchMonRootfs(result, bundleDir), nil
+	}
+
+	// An overlay-block root is asked for by name, so it is used or the
+	// container fails, with no fallback to another rootfs.
+	if annot[annotRootfsMode] == RootfsModeOverlayBlock {
+		result, err = selector.overlayBlock()
+		if err != nil {
+			return types.RootfsParams{}, err
+		}
 		return switchMonRootfs(result, bundleDir), nil
 	}
 
@@ -185,6 +199,23 @@ func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
 	// kernel command line for the boot initrd to mount /dev/vda.
 	result.FsType = rootFsDevice.FsType
 	return result, true
+}
+
+// overlayBlock selects the overlay-block root of a generic container boot.
+// Its disks are built from the container rootfs, the overlayfs snapshot
+// mounted at cntrRootfs, by the rootfs builder.
+func (rs *rootfsSelector) overlayBlock() (types.RootfsParams, error) {
+	if !rs.hasContainerBoot() || !rs.shouldMountContainerRootfs() {
+		return types.RootfsParams{}, fmt.Errorf("%s=%s needs a generic container boot that mounts the container rootfs",
+			annotRootfsMode, RootfsModeOverlayBlock)
+	}
+	if !rs.unikernel.SupportsBlock() || !rs.unikernel.SupportsFS("ext4") {
+		return types.RootfsParams{}, fmt.Errorf("%s=%s needs a guest that mounts an ext4 disk",
+			annotRootfsMode, RootfsModeOverlayBlock)
+	}
+	result := newRootfsResult(rootfsOverlayBlock, "", rs.cntrRootfs)
+	result.FsType = "ext4"
+	return result, nil
 }
 
 // tryVirtiofs checks if virtiofs can be used

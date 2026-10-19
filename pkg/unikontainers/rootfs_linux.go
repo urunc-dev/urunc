@@ -45,6 +45,13 @@ type rootfsBuilder interface {
 	preStartCmd() []string
 }
 
+// guestExtras is a rootfsBuilder that gives the guest more virtio-fs exports
+// than the rootfs one, and files in its initrd: the overlay-block root.
+type guestExtras interface {
+	virtiofsExports() ([]types.VirtiofsExport, [][]string)
+	initrdFiles() []types.InitrdFile
+}
+
 // tmpfsMount creates a mount for a tmpfs in the form of "/tmp" at target
 func tmpfsMount(target string, size string) specs.Mount {
 	return specs.Mount{

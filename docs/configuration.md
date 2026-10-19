@@ -63,6 +63,7 @@ The `[runtime]` section controls runtime-wide behavior.
 |--------|------|---------|-------------|
 | `libcontainer` | boolean | `false` | Use libcontainer to set up the monitor's execution environment |
 | `vAccel` | boolean | `false` | Enable the support of vAccel through the `com.urunc.unikernel.vAccel` and `com.urunc.unikernel.RPCAddress` annotations |
+| `rootfs_cache` | string | (empty) | The directory of the read-only rootfs images that the `overlay-block` root mode (`com.urunc.unikernel.rootfsMode`) builds, one per image. Empty puts it next to the overlayfs snapshotter's `snapshots` directory, as `urunc-rootfs-cache` |
 
 **Notes**:
 - the use of libcontainer to prepare the monitor execution environment is
@@ -221,6 +222,7 @@ extra binary is configured as a subsection with its own default values.
 #### Supported extra binaries
 
 - `virtiofsd` - vhost-user virtio-fs device backend written in Rust
+- `mke2fs` - builds the ext4 images of the `overlay-block` root mode
 
 #### Extra binaries Options
 
@@ -235,6 +237,10 @@ Specifically for `virtiofsd` the default values are the following:
 
 - `path`: `/usr/libexec/virtiofsd`
 - `options`: `--cache always --sandbox none`
+
+and for `mke2fs`:
+
+- `path`: `/usr/sbin/mke2fs`
 
 > **NOTE**: Currently, in the case of libcontainer the option `--sandbox` should be set to none, due to missing capabilities inside the monitor's execution environment.
 

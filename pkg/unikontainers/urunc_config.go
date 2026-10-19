@@ -58,12 +58,17 @@ type UruncRuntime struct {
 	Libcontainer bool `toml:"libcontainer"`
 	// VAccel is required to accept vAccel related annotations.
 	VAccel bool `toml:"vAccel"`
+	// RootfsCache is the directory of the read-only rootfs images an
+	// overlay-block boot builds once per image. Empty puts it next to the
+	// overlayfs snapshotter's snapshots, on the disk that holds the images.
+	RootfsCache string `toml:"rootfs_cache"`
 }
 
 // state.json annotation keys with the runtime settings.
 const (
 	libcontainerKey = "urunc_config.runtime.libcontainer"
 	vaccelKey       = "urunc_config.runtime.vAccel"
+	rootfsCacheKey  = "urunc_config.runtime.rootfs_cache"
 )
 
 type UruncConfig struct {
@@ -94,6 +99,7 @@ func runtimeFromMap(cfgMap map[string]string) UruncRuntime {
 			rt.VAccel = choice
 		}
 	}
+	rt.RootfsCache = cfgMap[rootfsCacheKey]
 	return rt
 }
 
@@ -161,6 +167,7 @@ func defaultMonitorsConfig() map[string]types.MonitorConfig {
 func defaultExtraBinConfig() map[string]types.ExtraBinConfig {
 	return map[string]types.ExtraBinConfig{
 		"virtiofsd": {Path: "/usr/libexec/virtiofsd", Options: "--cache always --sandbox none"},
+		"mke2fs":    {Path: "/usr/sbin/mke2fs"},
 	}
 }
 
@@ -195,16 +202,19 @@ func LoadUruncConfig(path string) (*UruncConfig, error) {
 		}
 		cfg.Monitors[name] = mon
 	}
-	// Same issue for [extra_binaries.virtiofsd], the only supported extra binary today.
-	if bin, ok := cfg.ExtraBins["virtiofsd"]; ok {
-		def := defaultExtraBinConfig()["virtiofsd"]
+	// Same issue for [extra_binaries.<name>] of the binaries urunc knows.
+	for name, def := range defaultExtraBinConfig() {
+		bin, ok := cfg.ExtraBins[name]
+		if !ok {
+			continue
+		}
 		if bin.Path == "" {
 			bin.Path = def.Path
 		}
 		if bin.Options == "" {
 			bin.Options = def.Options
 		}
-		cfg.ExtraBins["virtiofsd"] = bin
+		cfg.ExtraBins[name] = bin
 	}
 
 	return cfg, nil
@@ -217,6 +227,9 @@ func (p *UruncConfig) Map() map[string]string {
 
 	cfgMap[libcontainerKey] = strconv.FormatBool(p.Runtime.Libcontainer)
 	cfgMap[vaccelKey] = strconv.FormatBool(p.Runtime.VAccel)
+	if p.Runtime.RootfsCache != "" {
+		cfgMap[rootfsCacheKey] = p.Runtime.RootfsCache
+	}
 	for hv, hvCfg := range p.Monitors {
 		prefix := "urunc_config.monitors." + hv + "."
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)

@@ -49,6 +49,11 @@ type monitorResources struct {
 	BlockArgs   []types.BlockDevParams `json:"blockArgs"`
 	Sharedfs    types.SharedfsParams   `json:"sharedfs"`
 	PreStartCmd []string               `json:"preStartCmd,omitempty"`
+	// PreStartCmds are more daemons to start before the monitor, one per
+	// entry in VirtiofsExports.
+	PreStartCmds    [][]string             `json:"preStartCmds,omitempty"`
+	VirtiofsExports []types.VirtiofsExport `json:"virtiofsExports,omitempty"`
+	InitrdFiles     []types.InitrdFile     `json:"initrdFiles,omitempty"`
 }
 
 // saveMonitorResources stores the monitorResources passed as an argument in a JSON

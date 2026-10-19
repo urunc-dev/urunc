@@ -515,11 +515,12 @@ func TestDefaultConfigs(t *testing.T) {
 		t.Parallel()
 		config := defaultExtraBinConfig()
 
-		assert.Len(t, config, 1)
+		assert.Len(t, config, 2)
 		assert.Contains(t, config, "virtiofsd")
 
 		assert.Equal(t, "/usr/libexec/virtiofsd", config["virtiofsd"].Path)
 		assert.Equal(t, testVirtiofsdDefOpts, config["virtiofsd"].Options)
+		assert.Equal(t, "/usr/sbin/mke2fs", config["mke2fs"].Path)
 	})
 
 	t.Run("defaultUruncConfig", func(t *testing.T) {
@@ -534,7 +535,7 @@ func TestDefaultConfigs(t *testing.T) {
 		assert.False(t, config.Runtime.Libcontainer)
 		assert.False(t, config.Runtime.VAccel)
 		assert.Len(t, config.Monitors, 7)
-		assert.Len(t, config.ExtraBins, 1)
+		assert.Len(t, config.ExtraBins, 2)
 	})
 
 	t.Run("defaultLogMetricsConfig", func(t *testing.T) {
@@ -740,4 +741,19 @@ libcontainer = true
 
 		assert.False(t, UruncConfigFromMap(cfgMap).Runtime.Libcontainer)
 	})
+}
+
+// The rootfs cache of an overlay-block boot is read at create and again at
+// start, from the state.
+func TestRootfsCacheRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cfg := defaultUruncConfig()
+	assert.NotContains(t, cfg.Map(), rootfsCacheKey, "unset stays unset")
+	assert.Empty(t, UruncConfigFromMap(cfg.Map()).Runtime.RootfsCache)
+
+	cfg.Runtime.RootfsCache = "/srv/urunc/rootfs-cache"
+	back := UruncConfigFromMap(cfg.Map())
+	assert.Equal(t, "/srv/urunc/rootfs-cache", back.Runtime.RootfsCache)
+	assert.Equal(t, "/usr/sbin/mke2fs", back.ExtraBins["mke2fs"].Path)
 }
