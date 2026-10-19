@@ -68,6 +68,8 @@ type Linux struct {
 	// monitor rootfs, through a private copy carrying the urunit configuration.
 	ContainerBoot bool
 	BootInitrd    string
+	// InitrdFiles go into that private copy too, next to /urunit.conf.
+	InitrdFiles []types.InitrdFile
 }
 
 type LinuxNet struct {
@@ -145,6 +147,9 @@ func (l *Linux) CommandString() (string, error) {
 	case "virtiofs":
 		rootParams := "root=fs0 rw rootfstype=virtiofs"
 		bootParams += " " + rootParams
+	case "overlay-block":
+		// The initrd's /urunc-rootfs-lower and /urunc-rootfs-upper name the
+		// root, and /init refuses a root= next to them.
 	}
 	if l.Net.Address != "" {
 		netParams := fmt.Sprintf("ip=%s::%s:%s:urunc:eth0:off",
@@ -313,6 +318,7 @@ func (l *Linux) urunitConfAsInitrd() bool {
 func (l *Linux) Init(data types.UnikernelParams) error {
 	l.ContainerBoot = data.ContainerBoot
 	l.BootInitrd = data.InitrdPath
+	l.InitrdFiles = data.InitrdFiles
 
 	var err error
 	if l.ContainerBoot {
@@ -449,7 +455,28 @@ func (l *Linux) setupContainerBootInitrd(urunitConfig string) error {
 		return fmt.Errorf("could not copy the boot initrd: %w", err)
 	}
 
-	return initrd.AddFileToInitrd(constants.ContainerBootGuestInitrdPath, urunitConfig, urunitConfPath)
+	err = initrd.AddFileToInitrd(constants.ContainerBootGuestInitrdPath, urunitConfig, urunitConfPath)
+	if err != nil {
+		return err
+	}
+	for _, f := range l.InitrdFiles {
+		if !initrdFileNameOK(f.Name) {
+			return fmt.Errorf("refusing to add %q to the initrd", f.Name)
+		}
+		err = initrd.AddFileToInitrd(constants.ContainerBootGuestInitrdPath, f.Data, f.Name)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// initrdFileNameOK reports whether name may be added to the guest initrd. The
+// guest init reads only /urunc-* files at the top of the initrd, so nothing
+// else, and in particular no /init, may be written there.
+func initrdFileNameOK(name string) bool {
+	rest, ok := strings.CutPrefix(name, "/urunc-")
+	return ok && rest != "" && !strings.ContainsAny(rest, "/\x00")
 }
 
 // buildUrunitConfig creates the configuration content for urunit from the
@@ -514,7 +541,9 @@ func (c *urunitConfig) envs(env []string) {
 func (c *urunitConfig) blocks(blk []types.BlockDevParams, monitor string) {
 	c.record(blkStartMarker)
 	for _, b := range blk {
-		if b.ID == "rootfs" {
+		// The rootfs disk, and the disks of an overlay-block root, are
+		// mounted by the guest init, not by urunit.
+		if b.ID == "rootfs" || b.MountPoint == "" {
 			continue
 		}
 		id := b.ID

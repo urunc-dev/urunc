@@ -111,7 +111,23 @@ Apart from the above, `urunc` accepts the following optional annotations:
   named `/urunc-*`: the host time (hvi has no RTC), an overlay request for the
   read-only image root, the extra virtio-fs exports, the network files, the
   command and a Rosetta marker. `/init` handles each when present and ignores
-  it otherwise, which is the case on Linux hosts.
+  it otherwise. On Linux hosts urunc appends some of them only for the
+  `overlay-block` root below.
+- `com.urunc.unikernel.rootfsMode`: How a generic container boot gets its
+  root. The only value is `overlay-block`, on hvi, cloud-hypervisor or qemu,
+  with the overlayfs snapshotter. urunc builds a read-only ext4 image of the
+  container image with `mke2fs -d` and caches it per image, in
+  `runtime.rootfs_cache`. It also creates a sparse 16 GiB ext4 upper in the
+  container's snapshot directory, so the upper lives as long as the container
+  and survives a restart. The guest gets the two as disks with the serials
+  `disk0` (read-only) and `disk1`, and `/init` mounts them as an overlay. It
+  learns this from the `/urunc-rootfs-lower` and `/urunc-rootfs-upper` files
+  urunc appends to the initrd, and the kernel command line has no `root=`.
+  Each directory volume becomes its own virtio-fs export, with one virtiofsd
+  each and a read-only bind for a read-only volume. `/etc/resolv.conf`,
+  `/etc/hosts` and `/etc/hostname` go in as initrd files. Any other file
+  volume is left out with a warning. A failure to build or attach either
+  disk fails the container. There is no fallback to another rootfs.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container

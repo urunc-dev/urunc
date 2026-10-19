@@ -424,6 +424,10 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 	}
 
 	res.PreStartCmd = rfs.preStartCmd()
+	if extras, ok := rfs.(guestExtras); ok {
+		res.VirtiofsExports, res.PreStartCmds = extras.virtiofsExports()
+		res.InitrdFiles = extras.initrdFiles()
+	}
 
 	return res, nil
 }
@@ -447,7 +451,7 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 	}
 	var mounts []specs.Mount
 	switch rootfsParams.Type {
-	case "block", "initrd", "virtiofs", "9pfs":
+	case "block", "initrd", "virtiofs", "9pfs", rootfsOverlayBlock:
 		var err error
 		mounts, err = onlyBindMounts(u.Spec.Mounts)
 		if err != nil {
@@ -471,6 +475,19 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			containerBoot:   u.isContainerBoot(),
 			bootKernelHost:  u.State.Annotations[annotBootKernel],
 			bootInitrdHost:  u.State.Annotations[annotBootInitrd],
+		}, nil
+	case rootfsOverlayBlock:
+		return &overlayBlockRootfs{
+			mounts:         mounts,
+			mountedPath:    rootfsParams.MountedPath,
+			cacheDir:       u.UruncCfg.Runtime.RootfsCache,
+			mke2fs:         u.UruncCfg.ExtraBins["mke2fs"].Path,
+			vfsdConfig:     u.UruncCfg.ExtraBins["virtiofsd"],
+			memory:         memory,
+			bootKernelHost: u.State.Annotations[annotBootKernel],
+			bootInitrdHost: u.State.Annotations[annotBootInitrd],
+			containerUID:   user.UID,
+			containerGID:   user.GID,
 		}, nil
 	case "initrd":
 		return initrdRootfs{
@@ -633,6 +650,8 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	}
 
 	vmmArgs.Sharedfs = monRes.Sharedfs
+	vmmArgs.VirtiofsExports = monRes.VirtiofsExports
+	guest.InitrdFiles = monRes.InitrdFiles
 
 	if u.isContainerBoot() {
 		// Generic container boot: the image ships no kernel, so the monitor
@@ -666,6 +685,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
 	mSpec.PreStartCmd = monRes.PreStartCmd
+	mSpec.PreStartCmds = monRes.PreStartCmds
 	// A monitor without a tap hands the container's resolv.conf, mounted in
 	// its rootfs, to the guest. The others get the nameserver out of it,
 	// resolved once here in the builder shared by both the libcontainer and
@@ -858,13 +878,15 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// socket it creates is then root-owned; while still root, wait for it and
 	// relax its mode so the monitor can connect after dropping to the container
 	// user.
-	err = spawnProcess(monRes.PreStartCmd)
-	if err != nil {
-		return err
-	}
-	if sock := vhostSocketPath(monRes.PreStartCmd); sock != "" {
-		if err = waitAndChmodSocket(sock, 0o666, 5*time.Second); err != nil {
+	for _, cmd := range append([][]string{monRes.PreStartCmd}, monRes.PreStartCmds...) {
+		err = spawnProcess(cmd)
+		if err != nil {
 			return err
+		}
+		if sock := vhostSocketPath(cmd); sock != "" {
+			if err = waitAndChmodSocket(sock, 0o666, 5*time.Second); err != nil {
+				return err
+			}
 		}
 	}
 

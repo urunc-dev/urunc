@@ -46,6 +46,7 @@ type monitorSpec struct {
 	DNSServer     string                `json:"dnsServer,omitempty"`
 	User          specs.User            `json:"user"`
 	PreStartCmd   []string              `json:"preStartCmd,omitempty"`
+	PreStartCmds  [][]string            `json:"preStartCmds,omitempty"`
 }
 
 // writeMonitorSpec builds the monitor spec and writes it into the monitor rootfs.

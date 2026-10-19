@@ -144,6 +144,17 @@ type UnikernelParams struct {
 	// boots quietly by default and only logs the full kernel messages when this
 	// is set.
 	Verbose bool
+	// InitrdFiles go into the guest's private copy of the boot initrd next
+	// to the urunit configuration, such as the /urunc-* files of an
+	// overlay-block root. Read by a generic container boot only.
+	InitrdFiles []InitrdFile
+}
+
+// InitrdFile is one file appended to the guest initrd, with the absolute
+// path it gets in the guest and its contents.
+type InitrdFile struct {
+	Name string
+	Data string
 }
 
 // BlockDevSpec describes one disk image attached to the guest as virtio-blk.

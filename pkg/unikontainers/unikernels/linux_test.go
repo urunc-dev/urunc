@@ -81,3 +81,51 @@ func TestLinuxMonitorBlockCliSerials(t *testing.T) {
 		"-drive", "format=raw,if=none,id=disk0,file=/disks/lower.ext4,readonly=on",
 	}}}, l.MonitorBlockCli())
 }
+
+// An overlay-block root is named by the initrd files, so the command line
+// has no root=, which /init would refuse next to them.
+func TestLinuxCommandStringOverlayBlock(t *testing.T) {
+	t.Parallel()
+
+	l := &Linux{
+		App:           containerBootInit,
+		Command:       "/bin/sh",
+		Monitor:       "hvi",
+		RootFsType:    "overlay-block",
+		RootFsFsType:  "ext4",
+		InitrdConf:    true,
+		ContainerBoot: true,
+	}
+	cmd, err := l.CommandString()
+	assert.NoError(t, err)
+	assert.NotContains(t, cmd, "root=")
+	assert.NotContains(t, cmd, "rootfstype=")
+	assert.Contains(t, cmd, "rdinit=/init -- /bin/sh")
+}
+
+// urunit mounts the block volumes the configuration lists. The disks of an
+// overlay-block root have no mount point and are the guest init's.
+func TestLinuxBuildUrunitConfigSkipsLayerDisks(t *testing.T) {
+	t.Parallel()
+
+	conf := BuildUrunitConfig(nil, types.ProcessConfig{}, []types.BlockDevParams{
+		{ID: "disk0", Source: "/urunc-disks/rootfs-lower.ext4", ReadOnly: true},
+		{ID: "disk1", Source: "/urunc-disks/rootfs-upper.ext4"},
+		{ID: "data", Source: "/dev/dm-4", MountPoint: "/data"},
+	}, "hvi")
+	assert.NotContains(t, conf, "disk0")
+	assert.NotContains(t, conf, "disk1")
+	assert.Contains(t, conf, "ID:data\x00MP:/data\x00")
+}
+
+func TestInitrdFileNameOK(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"/urunc-rootfs-lower", "/urunc-mounts", "/urunc-resolv.conf"} {
+		assert.True(t, initrdFileNameOK(name), name)
+	}
+	for _, name := range []string{"/init", "/urunit", "/urunit.conf", "/urunc-", "urunc-mounts",
+		"/urunc-x/../init", "/run/urunc-x", "/urunc-a\x00b"} {
+		assert.False(t, initrdFileNameOK(name), "%q", name)
+	}
+}
