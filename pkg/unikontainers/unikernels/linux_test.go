@@ -54,3 +54,30 @@ func TestLinuxBuildUrunitConfigEmpty(t *testing.T) {
 	expected := "URUNIT1\x00UES\x00UEE\x00UCS\x00UID:0\x00GID:0\x00WD:/\x00UCE\x00UBS\x00UBE\x00"
 	assert.Equal(t, expected, l.buildUrunitConfig())
 }
+
+// urunit finds a block volume by the serial its ID names, so hvi and Cloud
+// Hypervisor get the ID as the serial. The rootfs disk is /dev/vda and gets
+// none, which keeps hvi's plain --disk form for it.
+func TestLinuxMonitorBlockCliSerials(t *testing.T) {
+	t.Parallel()
+
+	blk := []types.BlockDevParams{
+		{ID: "rootfs", Source: "/dev/dm-3"},
+		{ID: "data", Source: "/dev/dm-4"},
+		{ID: "disk0", Source: "/disks/lower.ext4", ReadOnly: true},
+	}
+	for _, monitor := range []string{"hvi", "cloud-hypervisor"} {
+		l := &Linux{Monitor: monitor, Blk: blk}
+		assert.Equal(t, []types.MonitorBlockArgs{
+			{ID: "rootfs", Path: "/dev/dm-3"},
+			{ID: "data", Path: "/dev/dm-4", Serial: "data"},
+			{ID: "disk0", Path: "/disks/lower.ext4", Serial: "disk0", ReadOnly: true},
+		}, l.MonitorBlockCli(), monitor)
+	}
+
+	l := &Linux{Monitor: "qemu", Blk: blk[2:]}
+	assert.Equal(t, []types.MonitorBlockArgs{{ExactArgs: []string{
+		"-device", "virtio-blk-pci,serial=disk0,drive=disk0",
+		"-drive", "format=raw,if=none,id=disk0,file=/disks/lower.ext4,readonly=on",
+	}}}, l.MonitorBlockCli())
+}

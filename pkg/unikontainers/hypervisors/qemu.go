@@ -197,38 +197,17 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 
 	exArgs = append(exArgs, q.netCli(args, ukernel)...)
 
-	blockArgs := ukernel.MonitorBlockCli()
-	for _, blockArg := range blockArgs {
-		if blockArg.ID != "" && blockArg.Path != "" {
-			devArg := fmt.Sprintf("virtio-blk-pci,serial=%s,drive=%s,scsi=off", blockArg.ID, blockArg.ID)
-			drvArg := fmt.Sprintf("format=raw,if=none,id=%s,file=%s", blockArg.ID, blockArg.Path)
-			exArgs = append(exArgs, "-device", devArg, "-drive", drvArg)
-		} else if len(blockArg.ExactArgs) > 0 {
-			exArgs = append(exArgs, blockArg.ExactArgs...)
-		}
-	}
+	exArgs = append(exArgs, qemuBlockArgs(ukernel.MonitorBlockCli())...)
 
 	if args.InitrdPath != "" {
 		exArgs = append(exArgs, "-initrd", args.InitrdPath)
 	}
 
-	switch args.Sharedfs.Type {
-	case "9pfs":
-		// The 9p transport depends on the guest, so let the guest supply
-		// the cli options; nil means no support for 9pfs
-		sharedFSOption := ukernel.MonitorSharedfsCli(args.Sharedfs.Type, args.Sharedfs.Path)
-		exArgs = append(exArgs, sharedFSOption...)
-	case "virtiofs":
-		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
-		exArgs = append(exArgs,
-			"-object", objArg,
-			"-numa", "node,memdev=mem",
-			"-chardev", "socket,id=char0,path=/tmp/vhostqemu",
-			"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0",
-		)
-	default:
-		// Nothing to add
+	fsArgs, err := q.sharedfsArgs(args, ukernel, qemuMem)
+	if err != nil {
+		return nil, err
 	}
+	exArgs = append(exArgs, fsArgs...)
 
 	// On darwin QEMU also realizes the container rootfs, as a raw disk, a
 	// 9p share (directory) or an initrd (file), plus any extra tagged
@@ -281,6 +260,67 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		exArgs = append(exArgs, "-append", args.Command)
 	}
 	return exArgs, nil
+}
+
+// qemuBlockArgs returns the arguments of the guest's block devices: a
+// virtio-blk device with the block ID as its serial, read-only when asked,
+// or the exact arguments the guest supplies.
+func qemuBlockArgs(blockArgs []types.MonitorBlockArgs) []string {
+	var args []string
+	for _, blockArg := range blockArgs {
+		if blockArg.ID != "" && blockArg.Path != "" {
+			devArg := fmt.Sprintf("virtio-blk-pci,serial=%s,drive=%s,scsi=off", blockArg.ID, blockArg.ID)
+			drvArg := fmt.Sprintf("format=raw,if=none,id=%s,file=%s", blockArg.ID, blockArg.Path)
+			if blockArg.ReadOnly {
+				drvArg += ",readonly=on"
+			}
+			args = append(args, "-device", devArg, "-drive", drvArg)
+		} else if len(blockArg.ExactArgs) > 0 {
+			args = append(args, blockArg.ExactArgs...)
+		}
+	}
+	return args
+}
+
+// sharedfsArgs returns the arguments of the rootfs share and of the
+// vhost-user virtio-fs exports. A vhost-user daemon maps the guest memory, so
+// any virtio-fs export needs it in a shared file. The darwin path has no
+// vhost-user exports.
+func (q *Qemu) sharedfsArgs(args types.ExecArgs, ukernel types.Unikernel, qemuMem string) ([]string, error) {
+	var fsArgs []string
+	var exports []types.VirtiofsExport
+	if !q.darwin {
+		exports = args.VirtiofsExports
+	}
+	if args.Sharedfs.Type == "virtiofs" || len(exports) > 0 {
+		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
+		fsArgs = append(fsArgs, "-object", objArg, "-numa", "node,memdev=mem")
+	}
+	switch args.Sharedfs.Type {
+	case "9pfs":
+		// The 9p transport depends on the guest, so let the guest supply
+		// the cli options; nil means no support for 9pfs
+		sharedFSOption := ukernel.MonitorSharedfsCli(args.Sharedfs.Type, args.Sharedfs.Path)
+		fsArgs = append(fsArgs, sharedFSOption...)
+	case "virtiofs":
+		fsArgs = append(fsArgs,
+			"-chardev", "socket,id=char0,path=/tmp/vhostqemu",
+			"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0",
+		)
+	default:
+		// Nothing to add
+	}
+	for i, e := range exports {
+		if e.Tag == "" || e.Socket == "" || strings.ContainsAny(e.Tag+e.Socket, ",=") {
+			return nil, fmt.Errorf("qemu: virtio-fs export %+v needs a tag and a socket with no comma or =", e)
+		}
+		chardev := "charfs" + strconv.Itoa(i)
+		fsArgs = append(fsArgs,
+			"-chardev", "socket,id="+chardev+",path="+e.Socket,
+			"-device", "vhost-user-fs-pci,queue-size=1024,chardev="+chardev+",tag="+e.Tag,
+		)
+	}
+	return fsArgs, nil
 }
 
 // netCli returns the network arguments. On Linux that is a tap device, with

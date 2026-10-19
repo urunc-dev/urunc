@@ -104,6 +104,42 @@ func TestCloudHypervisorBuildExecCmd(t *testing.T) {
 			mustContain:    []string{"--disk path=/tmp/custom.img,readonly=on"},
 			mustNotContain: []string{"image_type"},
 		},
+		{
+			name: "a read-only disk and a serial reach the --disk spec",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+			},
+			unikernel: &fakeUnikernel{
+				blockCli: []types.MonitorBlockArgs{
+					{ID: "disk0", Path: "/disks/lower.ext4", Serial: "disk0", ReadOnly: true},
+					{ID: "disk1", Path: "/disks/upper.ext4", Serial: "disk1"},
+				},
+			},
+			mustContain: []string{
+				"--disk path=/disks/lower.ext4,id=disk0,readonly=on,serial=disk0,image_type=raw",
+				"--disk path=/disks/upper.ext4,id=disk1,serial=disk1,image_type=raw",
+			},
+		},
+		{
+			name: "virtio-fs exports share the guest memory and get one --fs each",
+			args: types.ExecArgs{
+				UnikernelPath: testKernelPath,
+				Command:       testCommand,
+				MemSizeB:      512 * 1000 * 1000,
+				VirtiofsExports: []types.VirtiofsExport{
+					{Tag: "share0", Socket: "/tmp/vfs-share0.sock"},
+					{Tag: "share1", Socket: "/tmp/vfs-share1.sock"},
+				},
+			},
+			unikernel: &fakeUnikernel{},
+			mustContain: []string{
+				"--memory size=512M,shared=on",
+				"--fs tag=share0,socket=/tmp/vfs-share0.sock",
+				"--fs tag=share1,socket=/tmp/vfs-share1.sock",
+			},
+			mustNotContain: []string{"tag=fs0"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -126,4 +162,19 @@ func TestCloudHypervisorBuildExecCmd(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCloudHypervisorBuildExecCmdRefuses(t *testing.T) {
+	t.Parallel()
+
+	ch := &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: testCHBinary}
+	_, err := ch.BuildExecCmd(types.ExecArgs{UnikernelPath: testKernelPath},
+		&fakeUnikernel{blockCli: []types.MonitorBlockArgs{{Path: "/disks/a,b.img"}}})
+	assert.ErrorContains(t, err, "comma")
+
+	_, err = ch.BuildExecCmd(types.ExecArgs{
+		UnikernelPath:   testKernelPath,
+		VirtiofsExports: []types.VirtiofsExport{{Tag: "share0", Socket: "/tmp/s.sock,cache=always"}},
+	}, &fakeUnikernel{})
+	assert.Error(t, err)
 }

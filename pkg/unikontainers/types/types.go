@@ -84,6 +84,8 @@ type BlockDevParams struct {
 	// IsExplicit marks a Source that is a path inside the container's image
 	// rootfs (an explicit block image)
 	IsExplicit bool
+	// ReadOnly attaches the disk read-only
+	ReadOnly bool
 }
 
 type SharedfsParams struct {
@@ -172,6 +174,9 @@ type ExecArgs struct {
 	SocketPath    string   // The path of the monitor's control socket (empty means no control socket)
 	Net           NetDevParams
 	Sharedfs      SharedfsParams
+	// VirtiofsExports are virtio-fs exports next to the Sharedfs one, each
+	// served by its own vhost-user daemon. Read by the Linux builders.
+	VirtiofsExports []VirtiofsExport
 
 	// hull fills the fields below and the darwin backends read them. The
 	// Linux backends ignore them, so their zero values change nothing there.
@@ -217,6 +222,19 @@ type MonitorBlockArgs struct {
 	ID        string
 	Path      string
 	ExactArgs []string
+	// Serial is the virtio-blk serial the guest finds the disk by. Empty
+	// leaves the monitor's default.
+	Serial string
+	// ReadOnly attaches the disk read-only
+	ReadOnly bool
+}
+
+// VirtiofsExport is a virtio-fs export a vhost-user daemon (virtiofsd)
+// serves on a Linux host. The monitor connects to Socket, a path in the
+// monitor rootfs, and the guest mounts the export by Tag.
+type VirtiofsExport struct {
+	Tag    string
+	Socket string
 }
 
 // ExtraBinConfig struct is used to hold specific configuration for extra binaries

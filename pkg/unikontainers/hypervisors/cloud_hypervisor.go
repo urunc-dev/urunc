@@ -88,8 +88,9 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 		exArgs = append(exArgs, "--api-socket", "path="+args.SocketPath)
 	}
 
-	// Memory configuration
-	if args.Sharedfs.Type == "virtiofs" {
+	// Memory configuration. A vhost-user daemon maps the guest memory, so
+	// any virtio-fs export needs it shared.
+	if args.Sharedfs.Type == "virtiofs" || len(args.VirtiofsExports) > 0 {
 		memArg := "size=" + chMem + "M,shared=on"
 		exArgs = append(exArgs, "--memory", memArg)
 	} else {
@@ -139,9 +140,19 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 		if len(blockArg.ExactArgs) > 0 {
 			exArgs = append(exArgs, blockArg.ExactArgs...)
 		} else if blockArg.Path != "" {
+			// The option string is split on commas, with no escape.
+			if strings.ContainsRune(blockArg.Path, ',') {
+				return nil, fmt.Errorf("cloud-hypervisor: block device %q: a comma cannot be passed in --disk", blockArg.Path)
+			}
 			diskArg := "path=" + blockArg.Path
 			if blockArg.ID != "" {
 				diskArg += ",id=" + blockArg.ID
+			}
+			if blockArg.ReadOnly {
+				diskArg += ",readonly=on"
+			}
+			if blockArg.Serial != "" {
+				diskArg += ",serial=" + blockArg.Serial
 			}
 			// cloud-hypervisor v54.0 removed image type autodetection and
 			// refuses a --disk that does not name one. What urunc hands it
@@ -169,6 +180,13 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 		exArgs = append(exArgs, "--fs", "tag=fs0,socket=/tmp/vhostqemu")
 	default:
 		// No shared filesystem
+	}
+	for _, e := range args.VirtiofsExports {
+		spec, err := virtiofsExportSpec("cloud-hypervisor", e)
+		if err != nil {
+			return nil, err
+		}
+		exArgs = append(exArgs, "--fs", spec)
 	}
 
 	// Cloud Hypervisor allows a single vsock device, a host unix socket that
