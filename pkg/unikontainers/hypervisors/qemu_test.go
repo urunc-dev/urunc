@@ -476,6 +476,41 @@ func TestQemuBuildExecCmdLinuxGolden(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+// Each extra virtio-fs export gets its own vhost-user-fs device on its own
+// daemon's socket, and the guest memory is shared once for all of them.
+func TestQemuBuildExecCmdVirtiofsExports(t *testing.T) {
+	t.Parallel()
+
+	q := &Qemu{binary: QemuBinary, binaryPath: testQemuBinary}
+	got, err := q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: testKernelPath,
+		Command:       testCommand,
+		MemSizeB:      512 * 1000 * 1000,
+		VirtiofsExports: []types.VirtiofsExport{
+			{Tag: "share0", Socket: "/tmp/vfs-share0.sock"},
+			{Tag: "share1", Socket: "/tmp/vfs-share1.sock"},
+		},
+	}, &fakeUnikernel{blockCli: []types.MonitorBlockArgs{
+		{ID: "disk0", Path: "/disks/lower.ext4", ReadOnly: true},
+	}})
+	assert.NoError(t, err)
+	joined := strings.Join(got, " ")
+	assert.Contains(t, joined, "-drive format=raw,if=none,id=disk0,file=/disks/lower.ext4,readonly=on")
+	assert.Contains(t, joined, "-object memory-backend-file,id=mem,size=512M,mem-path=/tmp,share=on -numa node,memdev=mem")
+	assert.Contains(t, joined, "-chardev socket,id=charfs0,path=/tmp/vfs-share0.sock "+
+		"-device vhost-user-fs-pci,queue-size=1024,chardev=charfs0,tag=share0")
+	assert.Contains(t, joined, "-chardev socket,id=charfs1,path=/tmp/vfs-share1.sock "+
+		"-device vhost-user-fs-pci,queue-size=1024,chardev=charfs1,tag=share1")
+	assert.Equal(t, 1, strings.Count(joined, "memory-backend-file"))
+	assert.NotContains(t, joined, "tag=fs0")
+
+	_, err = q.BuildExecCmd(types.ExecArgs{
+		UnikernelPath:   testKernelPath,
+		VirtiofsExports: []types.VirtiofsExport{{Tag: "share0"}},
+	}, &fakeUnikernel{})
+	assert.Error(t, err)
+}
+
 // qmpOptions returns the value of every -qmp option in argv.
 func qmpOptions(argv []string) []string {
 	var opts []string

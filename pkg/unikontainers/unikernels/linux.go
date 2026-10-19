@@ -224,10 +224,14 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 	switch l.Monitor {
 	case "qemu":
 		for _, aBlock := range l.Blk {
+			drive := fmt.Sprintf("format=raw,if=none,id=%s,file=%s", aBlock.ID, aBlock.Source)
+			if aBlock.ReadOnly {
+				drive += ",readonly=on"
+			}
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
 				ExactArgs: []string{
 					"-device", fmt.Sprintf("virtio-blk-pci,serial=%s,drive=%s", aBlock.ID, aBlock.ID),
-					"-drive", fmt.Sprintf("format=raw,if=none,id=%s,file=%s", aBlock.ID, aBlock.Source),
+					"-drive", drive,
 				},
 			})
 		}
@@ -243,10 +247,18 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 			})
 		}
 	case "cloud-hypervisor", "hvi":
+		// urunit finds a block volume by the serial its ID names, as on
+		// qemu. The rootfs disk is /dev/vda and needs none.
 		for _, aBlock := range l.Blk {
+			serial := aBlock.ID
+			if serial == "rootfs" {
+				serial = ""
+			}
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
-				ID:   aBlock.ID,
-				Path: aBlock.Source,
+				ID:       aBlock.ID,
+				Path:     aBlock.Source,
+				Serial:   serial,
+				ReadOnly: aBlock.ReadOnly,
 			})
 		}
 	default:

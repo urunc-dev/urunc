@@ -34,7 +34,7 @@ const (
 
 // Hvi runs a Linux guest with the hvi monitor on KVM.
 //
-// The rootfs arrives as an initrd, as the single block device, or as a
+// The rootfs arrives as an initrd, as a block device, or as a
 // virtio-fs export. For virtio-fs, urunc starts virtiofsd before the monitor
 // and hvi connects to the daemon's vhost-user socket, as Cloud Hypervisor
 // does. The exec agent is reached through hvi's agent socket, a host unix
@@ -129,34 +129,30 @@ func (h *Hvi) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]stri
 		cmd = append(cmd, "--initramfs", initrd)
 	}
 
-	// hvi has one --disk slot, which becomes the guest's /dev/vda: the device
-	// the Linux boot line names as root= for a block rootfs. A container that
-	// asks for more is refused. Booting it without a volume it asked for would
-	// be worse.
 	var blocks []types.MonitorBlockArgs
 	for _, b := range ukernel.MonitorBlockCli() {
 		if b.Path != "" {
 			blocks = append(blocks, b)
 		}
 	}
-	switch len(blocks) {
-	case 0:
-	case 1:
-		cmd = append(cmd, "--disk", blocks[0].Path)
-	default:
-		ids := make([]string, 0, len(blocks))
-		for _, b := range blocks {
-			ids = append(ids, b.ID)
-		}
-		return nil, fmt.Errorf("hvi supports a single block device, but %d were requested: %s",
-			len(blocks), strings.Join(ids, ", "))
+	disks, err := hviLinuxDiskArgs(blocks)
+	if err != nil {
+		return nil, err
 	}
+	cmd = append(cmd, disks...)
 
 	// The export is the daemon's. Its directory, write permission and cache
 	// policy are virtiofsd options, set in preStartCmd. hvi needs only the
 	// socket, and waits up to 60 s for it, so the two may start together.
 	if args.Sharedfs.Type == "virtiofs" {
 		cmd = append(cmd, "--fs", "tag="+hviVirtiofsTag+",socket="+hviVirtiofsSocket)
+	}
+	for _, e := range args.VirtiofsExports {
+		spec, err := virtiofsExportSpec("hvi", e)
+		if err != nil {
+			return nil, err
+		}
+		cmd = append(cmd, "--fs", spec)
 	}
 
 	// The guest attaches to the tap urunc created in the container's network
@@ -188,6 +184,46 @@ func (h *Hvi) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]stri
 
 	vmmLog.WithField("hvi command", cmd).Debug("Ready to execve hvi")
 	return cmd, nil
+}
+
+// hviLinuxDiskArgs returns the --disk flags for blocks, in order.
+//
+// A single writable disk with no serial is the block rootfs, the guest's
+// /dev/vda, and goes out as a plain path, which every hvi takes. Anything
+// else needs the keyed form of hvi-vmm main (590c45d and later): a read-only
+// disk, a serial, or more than one disk.
+func hviLinuxDiskArgs(blocks []types.MonitorBlockArgs) ([]string, error) {
+	if len(blocks) == 1 && !blocks[0].ReadOnly && blocks[0].Serial == "" {
+		return []string{"--disk", blocks[0].Path}, nil
+	}
+	var out []string
+	for _, b := range blocks {
+		// The option string is split on commas, with no escape.
+		if strings.ContainsRune(b.Path, ',') {
+			return nil, fmt.Errorf("hvi: block device %q: a comma cannot be passed in --disk", b.Path)
+		}
+		spec := "path=" + b.Path
+		if b.ReadOnly {
+			spec += ",readonly=on"
+		}
+		if b.Serial != "" {
+			spec += ",serial=" + b.Serial
+		}
+		out = append(out, "--disk", spec)
+	}
+	return out, nil
+}
+
+// virtiofsExportSpec returns the --fs value of e, which hvi and Cloud
+// Hypervisor spell the same way.
+func virtiofsExportSpec(monitor string, e types.VirtiofsExport) (string, error) {
+	if e.Tag == "" || e.Socket == "" {
+		return "", fmt.Errorf("%s: a virtio-fs export needs a tag and a socket, got %+v", monitor, e)
+	}
+	if strings.ContainsAny(e.Tag+e.Socket, ",=") {
+		return "", fmt.Errorf("%s: virtio-fs export %q: a comma or = cannot be passed in --fs", monitor, e.Tag)
+	}
+	return "tag=" + e.Tag + ",socket=" + e.Socket, nil
 }
 
 // PreExec is a no-op: hvi installs its own seccomp filters.

@@ -202,6 +202,9 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		if blockArg.ID != "" && blockArg.Path != "" {
 			devArg := fmt.Sprintf("virtio-blk-pci,serial=%s,drive=%s,scsi=off", blockArg.ID, blockArg.ID)
 			drvArg := fmt.Sprintf("format=raw,if=none,id=%s,file=%s", blockArg.ID, blockArg.Path)
+			if blockArg.ReadOnly {
+				drvArg += ",readonly=on"
+			}
 			exArgs = append(exArgs, "-device", devArg, "-drive", drvArg)
 		} else if len(blockArg.ExactArgs) > 0 {
 			exArgs = append(exArgs, blockArg.ExactArgs...)
@@ -212,6 +215,16 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		exArgs = append(exArgs, "-initrd", args.InitrdPath)
 	}
 
+	// A vhost-user daemon maps the guest memory, so any virtio-fs export
+	// needs it in a shared file. The darwin path has no vhost-user exports.
+	var exports []types.VirtiofsExport
+	if !q.darwin {
+		exports = args.VirtiofsExports
+	}
+	if args.Sharedfs.Type == "virtiofs" || len(exports) > 0 {
+		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
+		exArgs = append(exArgs, "-object", objArg, "-numa", "node,memdev=mem")
+	}
 	switch args.Sharedfs.Type {
 	case "9pfs":
 		// The 9p transport depends on the guest, so let the guest supply
@@ -219,15 +232,22 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 		sharedFSOption := ukernel.MonitorSharedfsCli(args.Sharedfs.Type, args.Sharedfs.Path)
 		exArgs = append(exArgs, sharedFSOption...)
 	case "virtiofs":
-		objArg := fmt.Sprintf("memory-backend-file,id=mem,size=%sM,mem-path=/tmp,share=on", qemuMem)
 		exArgs = append(exArgs,
-			"-object", objArg,
-			"-numa", "node,memdev=mem",
 			"-chardev", "socket,id=char0,path=/tmp/vhostqemu",
 			"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs0",
 		)
 	default:
 		// Nothing to add
+	}
+	for i, e := range exports {
+		if e.Tag == "" || e.Socket == "" || strings.ContainsAny(e.Tag+e.Socket, ",=") {
+			return nil, fmt.Errorf("qemu: virtio-fs export %+v needs a tag and a socket with no comma or =", e)
+		}
+		chardev := "charfs" + strconv.Itoa(i)
+		exArgs = append(exArgs,
+			"-chardev", "socket,id="+chardev+",path="+e.Socket,
+			"-device", "vhost-user-fs-pci,queue-size=1024,chardev="+chardev+",tag="+e.Tag,
+		)
 	}
 
 	// On darwin QEMU also realizes the container rootfs, as a raw disk, a

@@ -84,8 +84,8 @@ func TestHviBuildExecCmdBase(t *testing.T) {
 	assert.Equal(t, 1, countFlag(argv, "--no-sandbox"), "seccomp off maps to --no-sandbox: %v", argv)
 }
 
-// hvi has one --disk slot. A container that asks for more is refused, since
-// booting it without a volume it asked for would be worse.
+// A lone writable disk with no serial is the block rootfs and keeps the plain
+// --disk <path> every hvi takes. Anything else uses the keyed form.
 func TestHviBuildExecCmdDisk(t *testing.T) {
 	t.Parallel()
 
@@ -96,13 +96,48 @@ func TestHviBuildExecCmdDisk(t *testing.T) {
 	assert.True(t, ok, "expected --disk in %v", argv)
 	assert.Equal(t, "/dev/dm-3", got)
 
-	_, err = newTestHvi().BuildExecCmd(types.ExecArgs{UnikernelPath: testKernelPath},
+	argv, err = newTestHvi().BuildExecCmd(types.ExecArgs{UnikernelPath: testKernelPath},
 		&fakeUnikernel{blockCli: []types.MonitorBlockArgs{
 			{ID: "rootfs", Path: "/dev/dm-3"},
-			{ID: "data", Path: "/dev/dm-4"},
+			{ID: "data", Path: "/dev/dm-4", Serial: "data"},
 		}})
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "rootfs, data")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"--disk", "path=/dev/dm-3", "--disk", "path=/dev/dm-4,serial=data"},
+		flagPairs(argv, "--disk"))
+
+	argv, err = newTestHvi().BuildExecCmd(types.ExecArgs{UnikernelPath: testKernelPath},
+		&fakeUnikernel{blockCli: []types.MonitorBlockArgs{
+			{ID: "disk0", Path: "/disks/lower.ext4", Serial: "disk0", ReadOnly: true},
+			{ID: "disk1", Path: "/disks/upper.ext4", Serial: "disk1"},
+		}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"--disk", "path=/disks/lower.ext4,readonly=on,serial=disk0",
+		"--disk", "path=/disks/upper.ext4,serial=disk1",
+	}, flagPairs(argv, "--disk"))
+
+	// A single read-only disk is not the plain rootfs form.
+	argv, err = newTestHvi().BuildExecCmd(types.ExecArgs{UnikernelPath: testKernelPath},
+		&fakeUnikernel{blockCli: []types.MonitorBlockArgs{{Path: "/disks/lower.ext4", ReadOnly: true}}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"--disk", "path=/disks/lower.ext4,readonly=on"}, flagPairs(argv, "--disk"))
+
+	_, err = newTestHvi().BuildExecCmd(types.ExecArgs{UnikernelPath: testKernelPath},
+		&fakeUnikernel{blockCli: []types.MonitorBlockArgs{
+			{Path: "/disks/a,b.ext4", ReadOnly: true},
+		}})
+	assert.ErrorContains(t, err, "comma")
+}
+
+// flagPairs returns every occurrence of flag in argv with its value, in order.
+func flagPairs(argv []string, flag string) []string {
+	var out []string
+	for i, a := range argv {
+		if a == flag && i+1 < len(argv) {
+			out = append(out, a, argv[i+1])
+		}
+	}
+	return out
 }
 
 // A virtiofs rootfs is served by the virtiofsd that preStartCmd starts. hvi
@@ -123,6 +158,38 @@ func TestHviBuildExecCmdVirtiofs(t *testing.T) {
 	assert.True(t, ok, "expected --fs in %v", argv)
 	assert.Equal(t, "tag=fs0,socket=/tmp/vhostqemu", got)
 	assert.Equal(t, 1, countFlag(argv, "--fs"), "argv: %v", argv)
+}
+
+// Each extra virtio-fs export gets its own --fs on its own daemon's socket,
+// after the rootfs one.
+func TestHviBuildExecCmdVirtiofsExports(t *testing.T) {
+	t.Parallel()
+
+	argv, err := newTestHvi().BuildExecCmd(types.ExecArgs{
+		UnikernelPath: testKernelPath,
+		VirtiofsExports: []types.VirtiofsExport{
+			{Tag: "share0", Socket: "/tmp/vfs-share0.sock"},
+			{Tag: "share1", Socket: "/tmp/vfs-share1.sock"},
+		},
+	}, &fakeUnikernel{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"--fs", "tag=share0,socket=/tmp/vfs-share0.sock",
+		"--fs", "tag=share1,socket=/tmp/vfs-share1.sock",
+	}, flagPairs(argv, "--fs"))
+
+	for _, bad := range []types.VirtiofsExport{
+		{Tag: "", Socket: "/tmp/s.sock"},
+		{Tag: "share0", Socket: ""},
+		{Tag: "a,b", Socket: "/tmp/s.sock"},
+		{Tag: "share0", Socket: "/tmp/s.sock,readonly=on"},
+	} {
+		_, err = newTestHvi().BuildExecCmd(types.ExecArgs{
+			UnikernelPath:   testKernelPath,
+			VirtiofsExports: []types.VirtiofsExport{bad},
+		}, &fakeUnikernel{})
+		assert.Error(t, err, "%+v", bad)
+	}
 }
 
 // hvi's built-in stack (--net-stub, once --net) forwards no traffic, so a
