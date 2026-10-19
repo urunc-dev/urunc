@@ -1,4 +1,4 @@
 # The urunit commit that build-urunit.sh builds for the container boot initrd.
 # build-urunit.sh sources the file, so it holds plain NAME=value lines.
 URUNIT_REPO=https://github.com/NOFireAI/urunit.git
-URUNIT_REF=10d04cc0d8e371f2de79e6e195aa80fb094fd979
+URUNIT_REF=3bc8ff740bc13b24ff3a6235561af88cc6532483
