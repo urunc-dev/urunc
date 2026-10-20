@@ -1,0 +1,10 @@
+go test fuzz v1
+string("spt")
+string("")
+uint32(1)
+uint32(1)
+bool(false)
+bool(true)
+bool(true)
+string("vfsd")
+string("")

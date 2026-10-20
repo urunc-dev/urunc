@@ -1,0 +1,9 @@
+go test fuzz v1
+string("X=1\nUEE\nUCS\nUID:0\nGID:0\nWD:/\nUCE")
+string("B=2")
+string("/tmp")
+uint32(1000)
+uint32(1000)
+string("")
+string("")
+string("qemu")

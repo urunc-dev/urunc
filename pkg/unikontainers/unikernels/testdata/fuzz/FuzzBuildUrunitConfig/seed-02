@@ -1,0 +1,9 @@
+go test fuzz v1
+string("A=1")
+string("B=2")
+string("/")
+uint32(1000)
+uint32(1000)
+string("id")
+string("/mnt")
+string("firecracker")

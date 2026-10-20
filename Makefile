@@ -284,13 +284,15 @@ test_unikernels:
 
 ## fuzz Run every Go fuzz target for FUZZTIME
 .PHONY: fuzz
-fuzz: fuzz_unikontainers_GetUnikernelConfig
+fuzz: fuzz_hypervisors_BuildExecCmdMemoryAgreement fuzz_hypervisors_BytesToStringMB fuzz_initrd_MergeFileMountsIntoInitrdPreservesOriginalOnError fuzz_unikernels_BuildFreeBSDUrunitConfig fuzz_unikernels_BuildUrunitConfig fuzz_unikernels_LinuxCmdlineEnvEncoding fuzz_unikernels_ParseCmdLine fuzz_unikernels_UnikernelInit fuzz_unikontainers_AnnotationSources fuzz_unikontainers_Create fuzz_unikontainers_CreateTyped fuzz_unikontainers_GetMountInfoMatcher fuzz_unikontainers_GetUnikernelConfig fuzz_unikontainers_Hooks fuzz_unikontainers_InitrdStress fuzz_unikontainers_SplitMountOptions fuzz_unikontainers_StatePersistenceRoundTrip fuzz_unikontainers_UnikernelConfigSpecRoundTrip fuzz_unikontainers_UruncConfigFromMap fuzz_unikontainers_UruncConfigRoundTrip
 
-## fuzz_unikontainers_[name] Run the fuzz target Fuzz[name] of the unikontainers package
-.PHONY: fuzz_unikontainers_%
-fuzz_unikontainers_%:
-	@echo "Fuzzing Fuzz$* in unikontainers"
-	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers -run='^$$' -fuzz='^Fuzz$*$$' -fuzztime=$(FUZZTIME) -v
+## fuzz_[package]_[name] Run the fuzz target Fuzz[name] of pkg/unikontainers[/package], e.g. fuzz_unikontainers_Create
+.PHONY: fuzz_%
+fuzz_pkg  = $(word 1,$(subst _, ,$*))
+fuzz_name = $(word 2,$(subst _, ,$*))
+fuzz_%:
+	@echo "Fuzzing Fuzz$(fuzz_name) in $(fuzz_pkg)"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers$(if $(filter-out unikontainers,$(fuzz_pkg)),/$(fuzz_pkg)) -run='^$$' -fuzz='^Fuzz$(fuzz_name)$$' -fuzztime=$(FUZZTIME) -v
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl

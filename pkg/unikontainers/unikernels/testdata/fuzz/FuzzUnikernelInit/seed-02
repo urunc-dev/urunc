@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("linux-seed-input-padding-00000000000")

@@ -1,0 +1,4 @@
+go test fuzz v1
+string("/var/lib/containers/storage/overlay/abc123/merged")
+string("overlay")
+string("overlay")

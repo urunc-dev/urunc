@@ -1,0 +1,4 @@
+go test fuzz v1
+string("/bin/sh")
+string("-c")
+string("echo hi")

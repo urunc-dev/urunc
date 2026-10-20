@@ -221,7 +221,7 @@ func (u *Unikontainer) InitialSetup() error {
 		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
-	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath)
+	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, "/dev")
 	if err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, plus the block parameters passed to the guest.
-func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string) (monitorResources, error) {
+func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath, devDir string) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -401,7 +401,7 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 	}
 	res.Mounts = append(res.Mounts, rootfsMounts...)
 
-	res.Devices, err = getMonitorDevices(vmm.UsesKVM())
+	res.Devices, err = getMonitorDevices(devDir, vmm.UsesKVM())
 	if err != nil {
 		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}

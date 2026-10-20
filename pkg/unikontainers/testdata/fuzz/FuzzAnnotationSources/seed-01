@@ -1,0 +1,11 @@
+go test fuzz v1
+string("linux")
+string("qemu")
+string("/.boot/kernel")
+string("")
+string("/.boot/initrd")
+string("")
+string("")
+string("true")
+string("")
+string("")

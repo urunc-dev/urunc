@@ -1,0 +1,10 @@
+go test fuzz v1
+string("qemu")
+string("/opt/urunc/bin/qemu-system-x86_64")
+uint32(256)
+uint32(2)
+bool(false)
+bool(true)
+bool(false)
+string("virtiofsd")
+string("/opt/urunc/bin/virtiofsd")

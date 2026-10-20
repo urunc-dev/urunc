@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ociVersion\":\"1.2.1\",\"root\":{\"path\":\"rootfs\"},\"linux\":{},\"process\":{\"args\":[\"/app\"],\"env\":[\"PATH=/usr/bin\"],\"cwd\":\"/\"},\"mounts\":[{\"destination\":\"/etc/resolv.conf\",\"type\":\"bind\",\"source\":\"@BUNDLE@/resolv.conf\",\"options\":[\"rbind\"]}],\"annotations\":{\"com.urunc.unikernel.unikernelType\":\"unikraft\",\"com.urunc.unikernel.hypervisor\":\"qemu\",\"com.urunc.unikernel.binary\":\"/unikernel/app\",\"com.urunc.unikernel.initrd\":\"/unikernel/initrd\"}}")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ociVersion\":\"1.2.1\",\"process\":{\"user\":{\"uid\":0,\"gid\":0},\"args\":[\"/bin/queue-proxy\"],\"env\":[\"PORT=8012\",\"SERVING_READINESS_PROBE={\\\"tcpSocket\\\":{\\\"port\\\":8012},\\\"host\\\":\\\"127.0.0.1\\\"}\"],\"cwd\":\"/\"},\"root\":{\"path\":\"rootfs\"},\"annotations\":{\"com.urunc.unikernel.binary\":\"/.boot/kernel\",\"com.urunc.unikernel.hypervisor\":\"qemu\",\"com.urunc.unikernel.unikernelType\":\"linux\",\"io.kubernetes.cri.container-name\":\"queue-proxy\"},\"linux\":{}}")

@@ -16,6 +16,8 @@ package unikontainers
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -184,6 +186,55 @@ func TestMonitorDeviceMode(t *testing.T) {
 		// bits may reach mknod.
 		assert.Equal(t, os.FileMode(0o666), monitorDeviceMode(unix.S_IFCHR|0o660))
 	})
+}
+
+func TestGetMonitorDevices(t *testing.T) {
+	tests := []struct {
+		name        string
+		hostDevices []string
+		needsKVM    bool
+		expected    []string
+		expectedErr string
+	}{
+		{
+			name:        "all devices present",
+			hostDevices: []string{"null", "urandom", "net/tun", "kvm"},
+			needsKVM:    true,
+			expected:    []string{"null", "urandom", "net/tun", "kvm"},
+		},
+		{
+			name:        "kvm needed but missing",
+			hostDevices: []string{"null", "urandom", "net/tun"},
+			needsKVM:    true,
+			expectedErr: "/dev/kvm",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// Links to /dev/null stand in for the host devices.
+			devDir := t.TempDir()
+			for _, name := range tt.hostDevices {
+				path := filepath.Join(devDir, name)
+				require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+				require.NoError(t, os.Symlink("/dev/null", path))
+			}
+
+			got, err := getMonitorDevices(devDir, tt.needsKVM)
+
+			if tt.expectedErr != "" {
+				assert.ErrorContains(t, err, tt.expectedErr, "getMonitorDevices() error mismatch")
+				return
+			}
+			require.NoError(t, err)
+			var paths []string
+			for _, dev := range got {
+				paths = append(paths, strings.TrimPrefix(dev.Path, devDir+"/"))
+			}
+			assert.Equal(t, tt.expected, paths, "getMonitorDevices() devices mismatch")
+		})
+	}
 }
 
 func TestNoRootfsGetMounts(t *testing.T) {

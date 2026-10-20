@@ -1,0 +1,11 @@
+go test fuzz v1
+string("rumprun")
+string("hvt")
+string("/unikernel/redis.hvt")
+string("")
+string("")
+string("/data.img")
+string("/data")
+string("")
+string("tap")
+string("storage")

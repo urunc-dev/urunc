@@ -1,0 +1,10 @@
+go test fuzz v1
+string("my.mon")
+string("/x")
+uint32(512)
+uint32(4)
+bool(true)
+bool(false)
+bool(true)
+string("virtiofsd")
+string("/y")

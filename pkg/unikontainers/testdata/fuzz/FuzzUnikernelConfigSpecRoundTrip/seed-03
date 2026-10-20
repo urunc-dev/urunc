@@ -1,0 +1,11 @@
+go test fuzz v1
+string("rumprun")
+string("")
+string("bin")
+string("spt")
+string("")
+string("")
+string("")
+string("false")
+string("")
+string("")

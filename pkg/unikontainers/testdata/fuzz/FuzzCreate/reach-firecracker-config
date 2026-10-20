@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ociVersion\":\"1.2.1\",\"process\":{\"user\":{\"uid\":19,\"gid\":0},\"args\":[\"000000000000000000000000000\"],\"env\":[\"000\\ufffd\\ufffd\\ufffd\\ufffd=00\"],\"cwd\":\"0\"},\"root\":{\"path\":\"rootfs\"},\"linux\":{}}\x00{\"com.urunc.unikernel.unikernelType\":\"bGludXg=\",\"com.urunc.unikernel.unikernelVersion\":\"\",\"com.urunc.unikernel.binary\":\"MA==\",\"com.urunc.unikernel.hypervisor\":\"ZmlyZWNyYWNrZXI=\",\"com.urunc.unikernel.block\":\"MA==\",\"com.urunc.unikernel.blkMntPoint\":\"Lw==\",\"com.urunc.unikernel.mountRootfs\":\"\"}\x00\x02")

@@ -1,0 +1,7 @@
+go test fuzz v1
+string("/probe")
+string("a b")
+string("A=1")
+string("/tmp")
+uint32(1000)
+uint32(1000)

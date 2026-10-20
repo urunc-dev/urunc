@@ -1,0 +1,4 @@
+go test fuzz v1
+string("/run/containerd/io.containerd.runtime.v2.task/default/id/rootfs")
+string("ext4")
+string("/dev/sda1")

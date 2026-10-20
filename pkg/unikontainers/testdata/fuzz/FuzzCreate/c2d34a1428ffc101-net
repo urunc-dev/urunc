@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ociVersion\":\"1.2.1\",\"process\":{\"user\":{\"uid\":70,\"gid\":61},\"args\":[\"0\"],\"cwd\":\"0\"},\"root\":{\"path\":\"rootfs\"},\"annotations\":{\"com.urunc.unikernel.RPCAddress\":\"vsock://2:1234\",\"com.urunc.unikernel.binary\":\"0\",\"com.urunc.unikernel.hypervisor\":\"qemu\",\"com.urunc.unikernel.unikernelType\":\"unikraft\",\"com.urunc.unikernel.unikernelVersion\":\"0+0.0.0.0\",\"com.urunc.unikernel.vAccel\":\"vsock\"},\"linux\":{\"resources\":{\"memory\":{\"limit\":536870838}}}}\x00\x00\x01")

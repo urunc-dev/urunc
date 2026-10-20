@@ -1,0 +1,10 @@
+go test fuzz v1
+string("customhv")
+string("/c")
+uint32(128)
+uint32(1)
+bool(false)
+bool(false)
+bool(false)
+string("eb.dot")
+string("/z")

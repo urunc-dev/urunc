@@ -109,14 +109,31 @@ func (fc *Firecracker) Path() string {
 	return fc.binaryPath
 }
 
+// firecrackerConfigFile is where BuildExecCmd writes the config that BuildConfig builds.
+var firecrackerConfigFile = filepath.Join("/tmp/", FCJsonFilename)
+
 func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
+	exArgs, config, err := fc.BuildConfig(args, ukernel)
+	if err != nil {
+		return nil, err
+	}
+	if err = os.WriteFile(firecrackerConfigFile, config, 0o644); err != nil { //nolint: gosec
+		return nil, fmt.Errorf("failed to save Firecracker json config: %w", err)
+	}
+	vmmLog.WithField("Json", string(config)).Debug("Firecracker json config")
+
+	return exArgs, nil
+}
+
+// BuildConfig builds Firecracker's command line and the JSON config the command line points to,
+// without writing the config anywhere.
+func (fc *Firecracker) BuildConfig(args types.ExecArgs, ukernel types.Unikernel) ([]string, []byte, error) {
 	// FIXME: Note for getting unikernel specific options.
 	// Due to the way FC operates, we have not encountered any guest specific
 	// options yet. However, we need to revisit how we can use guest specific
 	// options in FC, since the string return value of the Monitor related
 	// functions in the unikernel interface do not integrate well with FC's
 	// json configuration.
-	JSONConfigFile := filepath.Join("/tmp/", FCJsonFilename)
 	exArgs := []string{fc.Path()}
 	// Enable the API socket when a socket_path is configured, otherwise keep the
 	// upstream --no-api. Either way the guest boots from the config file.
@@ -125,7 +142,7 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	} else {
 		exArgs = append(exArgs, "--no-api")
 	}
-	exArgs = append(exArgs, "--config-file", JSONConfigFile)
+	exArgs = append(exArgs, "--config-file", firecrackerConfigFile)
 	if !args.Seccomp {
 		exArgs = append(exArgs, "--no-seccomp")
 	}
@@ -208,14 +225,10 @@ func (fc *Firecracker) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel
 	}
 	FCConfigJSON, err := json.Marshal(FCConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal Firecracker config: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal Firecracker config: %w", err)
 	}
-	if err = os.WriteFile(JSONConfigFile, FCConfigJSON, 0o644); err != nil { //nolint: gosec
-		return nil, fmt.Errorf("failed to save Firecracker json config: %w", err)
-	}
-	vmmLog.WithField("Json", string(FCConfigJSON)).Debug("Firecracker json config")
 
-	return exArgs, nil
+	return exArgs, FCConfigJSON, nil
 }
 
 // PreExec performs pre-execution setup. Firecracker has no special pre-exec requirements.

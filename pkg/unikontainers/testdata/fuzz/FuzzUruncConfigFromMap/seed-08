@@ -1,0 +1,2 @@
+go test fuzz v1
+string("urunc_config.extra_binaries.virtiofsd.path=/a\nurunc_config.extra_binaries.virtiofsd.options=--cache always")

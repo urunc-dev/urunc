@@ -1,0 +1,2 @@
+go test fuzz v1
+string("urunc_config.monitors.qemu.default_memory_mb=-1")

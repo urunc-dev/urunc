@@ -1,0 +1,11 @@
+go test fuzz v1
+string("qemu")
+string("1.0")
+string("/unikernel/app")
+string("hvt")
+string("/initrd")
+string("/.boot/disk")
+string("/data")
+string("true")
+string("tap0")
+string("blk0")

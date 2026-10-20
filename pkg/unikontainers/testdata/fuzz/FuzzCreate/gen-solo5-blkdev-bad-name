@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ociVersion\": \"1.2.1\", \"process\": {\"user\": {\"uid\": 0, \"gid\": 0}, \"args\": [\"/app\", \"--flag\"], \"env\": [\"PATH=/usr/bin\"], \"cwd\": \"/\"}, \"root\": {\"path\": \"rootfs\"}, \"annotations\": {\"com.urunc.unikernel.unikernelType\": \"rumprun\", \"com.urunc.unikernel.hypervisor\": \"hvt\", \"com.urunc.unikernel.binary\": \"/unikernel/app.hvt\", \"com.urunc.unikernel.solo5BlkDev\": \"not a name!\"}, \"linux\": {\"resources\": {\"memory\": {\"limit\": 268435456}}, \"seccomp\": {\"defaultAction\": \"SCMP_ACT_ALLOW\"}}}")

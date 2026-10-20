@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("mirage-seed-input-padding-0000000000")

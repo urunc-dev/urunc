@@ -1,0 +1,2 @@
+go test fuzz v1
+string("urunc_config.monitors.qemu.vhost=not-a-bool")

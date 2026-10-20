@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ociVersion\":\"1.2.1\",\"process\":{\"user\":{\"uid\":0,\"gid\":0},\"args\":[\"/bin/sh\"],\"cwd\":\"/\"},\"root\":{\"path\":\"rootfs\"},\"annotations\":{\"com.urunc.unikernel.binary\":\"/.boot/kernel\",\"com.urunc.unikernel.hypervisor\":\"firecracker\",\"com.urunc.unikernel.unikernelType\":\"linux\"},\"linux\":{}}\x00\x00 ")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"proCess\":{},\"root\":{\"pAth\":\"rootfs\"},\"linuX\":{}}\x00{}0")

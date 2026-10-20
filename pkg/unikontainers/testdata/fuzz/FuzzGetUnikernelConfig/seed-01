@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"com.urunc.unikernel.unikernelType\":\"bGludXg=\",\"com.urunc.unikernel.hypervisor\":\"cWVtdQ==\",\"com.urunc.unikernel.binary\":\"L2FwcA==\"}")

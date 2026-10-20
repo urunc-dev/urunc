@@ -1,0 +1,5 @@
+go test fuzz v1
+string("ro")
+string("nosuid")
+string("rprivate")
+bool(true)

@@ -33,7 +33,8 @@
     "**/*.eot",
     "**/third_party/**",
     "**/go.mod",
-    "**/go.sum"
+    "**/go.sum",
+    "**/testdata/fuzz/**"
   ],
   "files": [
     "**/**/*",

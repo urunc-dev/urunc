@@ -1,0 +1,2 @@
+go test fuzz v1
+string("urunc_config.monitors.qemu.default_vcpus=2\nurunc_config.monitors.qemu.binary_path=/usr/bin/qemu")

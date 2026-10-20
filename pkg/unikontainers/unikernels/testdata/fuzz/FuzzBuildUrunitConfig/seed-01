@@ -1,0 +1,9 @@
+go test fuzz v1
+string("PATH=/usr/bin")
+string("HOME=/root")
+string("/work")
+uint32(0)
+uint32(0)
+string("blk0")
+string("/data")
+string("qemu")
