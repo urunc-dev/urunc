@@ -428,12 +428,15 @@ Focusing on the single-application notion of using the
 directly and uses virtio-net for networking and virtio-block or 9p for storage.
 The rootfs can be block-based or 9pfs-based.  For a block-based rootfs the
 block device is a block image inside the container image
-(`com.urunc.unikernel.block` with `com.urunc.unikernel.blkMntPoint=/`; UFS), or
+(`com.urunc.unikernel.block` with `com.urunc.unikernel.blkMntPoint=/`), or
 the container snapshot through the devmapper snapshotter with `ext2` as the
 filesystem (`com.urunc.unikernel.mountRootfs=true`). For a 9pfs-based rootfs,
 only with QEMU, the container rootfs is shared over 9p
-(`com.urunc.unikernel.mountRootfs=true` without devmapper). `urunc` assumes that
-a block image inside the container image is based on a UFS filesystem.
+(`com.urunc.unikernel.mountRootfs=true` without devmapper).
+`urunc` detects whether a block rootfs image uses UFS or ext2 by reading
+the filesystem magic from its superblock when the rootfs is selected at
+create time. If the filesystem cannot be recognized or is unsupported,
+`urunc` reports an error.
 
 For the guest configuration, `urunc` relies on
 [urunit](https://github.com/nubificus/urunit), which also runs on FreeBSD. Since
