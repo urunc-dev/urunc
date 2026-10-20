@@ -432,21 +432,23 @@ block device is a block image inside the container image
 the container snapshot through the devmapper snapshotter with `ext2` as the
 filesystem (`com.urunc.unikernel.mountRootfs=true`). For a 9pfs-based rootfs,
 only with QEMU, the container rootfs is shared over 9p
-(`com.urunc.unikernel.mountRootfs=true` without devmapper) `urunc` assumes that
+(`com.urunc.unikernel.mountRootfs=true` without devmapper). `urunc` assumes that
 a block image inside the container image is based on a UFS filesystem.
 
-For the guest configuration `urunc` relies on
+For the guest configuration, `urunc` relies on
 [urunit](https://github.com/nubificus/urunit), which also runs on FreeBSD. Since
 the FreeBSD kernel accepts neither arbitrary boot parameters nor a network
 configuration on its command line, and starts init without arguments, `urunc`
 writes the whole `urunit` configuration (environment, uid/gid, working
 directory, the application command, block volumes and IP/gateway/mask) in a
 file and attaches it as an extra raw virtio-block device. The kernel gets
-`init_path=/urunit:/sbin/urunit:/sbin/init` and `URUNIT_CONFIG=/dev/vtbdN` as
-kernel environment variables. `urunit` reads the device, configures `vtnet0`
+`URUNIT_CONFIG=/dev/vtbdN` as a kernel environment variable. `init_path` is the
+first token of the container command, and `URUNIT_CONFIG` is passed only when
+that command is `urunit`. `urunit` reads the device, configures `vtnet0`
 and the default route, sets up the process environment and executes the
 application; when the application exits, the VM reboots and the container
-terminates. Images without `urunit` fall back to their own `/sbin/init`.
+terminates. For images without `urunit`, see the
+[FreeBSD tutorial](../tutorials/freebsd-workloads#running-without-urunit).
 
 For more information take a look at the
 [FreeBSD tutorial](../tutorials/freebsd-workloads). Setting up devmapper

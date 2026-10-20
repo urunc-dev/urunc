@@ -46,9 +46,6 @@ the application to execute, the working directory, uid/gid, etc.
 5. Reaps children and reboots the VM when the application exits, which
    terminates the microVM.
 
-If the image does not contain `urunit`, the kernel falls back to `/sbin/init`
-of the image and the configuration is ignored.
-
 The configuration format is the one described in the
 [Linux tutorial](./existing-container-linux#init-process) with two additions:
 
@@ -67,6 +64,19 @@ GW:<gateway>
 MSK:<netmask>
 UNE
 ```
+
+### Running without `urunit`
+
+When the container command is non-empty, its first token is executed as init
+exactly as written, with no `PATH` lookup. The path must not contain `:`,
+because the FreeBSD kernel splits `init_path` on colons. The kernel's default
+init search list (`/sbin/init:/sbin/oinit:/sbin/init.bak:/rescue/init`) applies
+only when the command is empty.
+
+Without `urunit`, the guest receives no command-line arguments, environment,
+uid/gid, working directory, or network configuration from `urunc`. The NIC
+and volumes are still attached, but `urunc` does not configure the network
+interface or mount the volumes.
 
 ## Preparing the image
 
