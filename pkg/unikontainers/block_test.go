@@ -15,11 +15,14 @@
 package unikontainers
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/moby/sys/mountinfo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -67,6 +70,80 @@ func TestFindMountInfoEscapedPath(t *testing.T) {
 			assert.Equal(t, "/dev/sdb1", blockDev.Source)
 			assert.Equal(t, "ext4", blockDev.FsType)
 			assert.Equal(t, tt.path, blockDev.MountPoint)
+		})
+	}
+}
+
+func TestDetectBlockFsType(t *testing.T) {
+	tests := []struct {
+		name    string
+		size    int
+		offset  int
+		magic   []byte
+		want    string
+		wantErr bool
+		noFile  bool
+	}{
+		{
+			name:   "UFS2",
+			size:   70000,
+			offset: 66908,
+			magic:  []byte{0x19, 0x01, 0x54, 0x19},
+			want:   "ufs",
+		},
+		{
+			name:   "UFS1",
+			size:   10000,
+			offset: 9564,
+			magic:  []byte{0x54, 0x19, 0x01, 0x00},
+			want:   "ufs",
+		},
+		{
+			name:   "UFS2 at 8192 (makefs layout)",
+			size:   10000,
+			offset: 9564,
+			magic:  []byte{0x19, 0x01, 0x54, 0x19},
+			want:   "ufs",
+		},
+		{
+			name:   "ext2",
+			size:   2048,
+			offset: 1080,
+			magic:  []byte{0x53, 0xEF},
+			want:   "ext2",
+		},
+		{
+			name: "zeros",
+			size: 70000,
+		},
+		{
+			name: "short",
+			size: 100,
+		},
+		{
+			name:    "missing path",
+			wantErr: true,
+			noFile:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "rootfs.img")
+
+			if !tt.noFile {
+				data := make([]byte, tt.size)
+				copy(data[tt.offset:], tt.magic)
+				require.NoError(t, os.WriteFile(path, data, 0o600))
+			}
+
+			got, err := detectBlockFsType(path)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

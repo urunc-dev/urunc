@@ -15,8 +15,10 @@
 package unikontainers
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,6 +119,45 @@ func findMountInfo(mountInfo []*mountinfo.Info, path string) (types.BlockDevPara
 	}
 
 	return blockDev, nil
+}
+
+// detectBlockFsType detects the filesystem type from a block image's
+// filesystem signature. Unknown filesystems return an empty string.
+func detectBlockFsType(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	superblockLocations := []int64{8192, 65536, 262144, 0}
+
+	for _, location := range superblockLocations {
+		for _, magic := range [][]byte{
+			{0x19, 0x01, 0x54, 0x19}, // UFS2
+			{0x54, 0x19, 0x01, 0x00}, // UFS1
+		} {
+			buf := make([]byte, len(magic))
+			n, err := f.ReadAt(buf, location+1372)
+			if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+				return "", err
+			}
+			if n == len(magic) && bytes.Equal(buf, magic) {
+				return "ufs", nil
+			}
+		}
+	}
+
+	buf := make([]byte, 2)
+	n, err := f.ReadAt(buf, 1080)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", err
+	}
+	if n == 2 && bytes.Equal(buf, []byte{0x53, 0xEF}) {
+		return "ext2", nil
+	}
+
+	return "", nil
 }
 
 // extractUnikernelFromBlock moves unikernel binary, initrd and urunc.json

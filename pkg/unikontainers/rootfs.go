@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	securejoin "github.com/cyphar/filepath-securejoin"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
 
@@ -220,7 +221,23 @@ func (rs *rootfsSelector) tryExplicitBlock() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("block", blockPath, ""), true
+	result := newRootfsResult("block", blockPath, "")
+
+	resolvedPath, err := securejoin.SecureJoin(rs.cntrRootfs, blockPath)
+	if err != nil {
+		uniklog.Warnf("failed to resolve explicit block path %q: %v", blockPath, err)
+		return result, true
+	}
+
+	fsType, err := detectBlockFsType(resolvedPath)
+	if err != nil {
+		uniklog.Warnf("failed to detect filesystem type for explicit block %q: %v",
+			resolvedPath, err)
+		return result, true
+	}
+
+	result.FsType = fsType
+	return result, true
 }
 
 // shouldMountContainerRootfs checks if container rootfs should be mounted
@@ -257,7 +274,9 @@ func (rs *rootfsSelector) tryContainerBlockRootfs() (types.RootfsParams, bool) {
 		return types.RootfsParams{}, false
 	}
 
-	return newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs), true
+	result := newRootfsResult("block", rootFsDevice.Source, rs.cntrRootfs)
+	result.FsType = rootFsDevice.FsType
+	return result, true
 }
 
 // tryVirtiofs checks if virtiofs can be used

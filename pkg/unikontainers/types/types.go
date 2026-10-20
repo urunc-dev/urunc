@@ -79,6 +79,7 @@ type RootfsParams struct {
 	Path        string // The path in the host where rootfs resides
 	MountedPath string // The mountpoint in the host where the rootfs is mounted
 	MonRootfs   string // The rootfs for the monitor process
+	FsType      string // The filesystem of a block-based rootfs (e.g. ufs, ext2), empty if unknown
 }
 
 // Specific to Linux

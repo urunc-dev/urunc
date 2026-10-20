@@ -16,6 +16,7 @@ package unikontainers
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,6 +24,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 func TestNewRootfsResult(t *testing.T) {
@@ -215,4 +217,73 @@ func TestNoRootfsGetMounts(t *testing.T) {
 		assert.Equal(t, containerRootfsMountPath, mounts[0].Destination)
 		assert.NotContains(t, mounts[0].Options, "ro")
 	})
+}
+
+func TestRootfsSelector_TryExplicitBlock(t *testing.T) {
+	tests := []struct {
+		name           string
+		mntPoint       string
+		writeImage     bool
+		expectedFound  bool
+		expectedFsType string
+	}{
+		{
+			name:           "ext2 image",
+			mntPoint:       "/",
+			writeImage:     true,
+			expectedFound:  true,
+			expectedFsType: "ext2",
+		},
+		{
+			name:           "missing image",
+			mntPoint:       "/",
+			expectedFound:  true,
+			expectedFsType: "",
+		},
+		{
+			name:          "not mounted at root",
+			mntPoint:      "/data",
+			writeImage:    true,
+			expectedFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+
+			if tt.writeImage {
+				data := make([]byte, 2048)
+				data[1080] = 0x53
+				data[1081] = 0xEF
+				require.NoError(t, os.WriteFile(
+					filepath.Join(dir, "rootfs.img"),
+					data,
+					0o600,
+				))
+			}
+
+			fb, err := unikernels.New("freebsd")
+			require.NoError(t, err)
+
+			rs := &rootfsSelector{
+				annot: map[string]string{
+					annotBlock:         "/rootfs.img",
+					annotBlockMntPoint: tt.mntPoint,
+				},
+				cntrRootfs: dir,
+				unikernel:  fb,
+			}
+
+			got, found := rs.tryExplicitBlock()
+			assert.Equal(t, tt.expectedFound, found)
+
+			if found {
+				assert.Equal(t, "block", got.Type)
+				assert.Equal(t, tt.expectedFsType, got.FsType)
+			}
+		})
+	}
 }
