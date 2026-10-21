@@ -215,9 +215,17 @@ func (f *FreeBSD) Init(data types.UnikernelParams) error {
 	f.RootFsType = data.Rootfs.Type
 	switch f.RootFsType {
 	case "block":
-		f.BlockFsType = freeBSDufs
-		if data.Rootfs.MountedPath != "" {
+		switch data.Rootfs.FsType {
+		case "ufs":
+			f.BlockFsType = freeBSDufs
+		case "ext2":
 			f.BlockFsType = freeBSDext2fs
+		default:
+			return fmt.Errorf(
+				"freebsd: could not detect a supported filesystem "+
+					"for the block rootfs (got %q): only ufs and ext2 are supported",
+				data.Rootfs.FsType,
+			)
 		}
 	case "9pfs":
 		// The rootfs is served over 9p; nothing extra to configure here.

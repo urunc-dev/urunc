@@ -266,7 +266,7 @@ func TestFreeBSDPlainInit(t *testing.T) {
 		Monitor: "qemu",
 		Net:     types.NetDevParams{IP: "172.17.0.2", Mask: "255.255.0.0", Gateway: "172.17.0.1"},
 		Block:   []types.BlockDevParams{{ID: "rootfs", Source: "/rootfs.ufs", MountPoint: "/"}},
-		Rootfs:  types.RootfsParams{Type: "block", Path: "/rootfs.ufs", MonRootfs: dir},
+		Rootfs:  types.RootfsParams{Type: "block", FsType: "ufs", Path: "/rootfs.ufs", MonRootfs: dir},
 	})
 	require.NoError(t, err)
 	assert.False(t, f.WithUrunit)
@@ -304,10 +304,71 @@ func TestFreeBSDInitRootfsType(t *testing.T) {
 	// block and 9pfs are accepted.
 	for _, rootfs := range []string{"block", "9pfs"} {
 		f := newFreeBSD()
-		err := f.Init(types.UnikernelParams{
+		params := types.UnikernelParams{
 			CmdLine: []string{"/bin/sh"},
 			Rootfs:  types.RootfsParams{Type: rootfs},
-		})
+		}
+		if rootfs == "block" {
+			params.Rootfs.FsType = "ufs"
+		}
+
+		err := f.Init(params)
 		assert.NoError(t, err, "rootfs type %q must be accepted", rootfs)
+	}
+}
+
+func TestFreeBSDInitBlockFsType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		fsType   string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "ext2",
+			fsType:   "ext2",
+			expected: freeBSDext2fs,
+		},
+		{
+			name:     "ufs",
+			fsType:   "ufs",
+			expected: freeBSDufs,
+		},
+		{
+			name:    "empty filesystem type is an error",
+			fsType:  "",
+			wantErr: true,
+		},
+		{
+			name:    "unsupported filesystem is an error",
+			fsType:  "xfs",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newFreeBSD()
+			err := f.Init(types.UnikernelParams{
+				CmdLine: []string{"/bin/sh"},
+				Rootfs: types.RootfsParams{
+					Type:   "block",
+					FsType: tt.fsType,
+				},
+			})
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, f.BlockFsType)
+			assert.False(t, f.WithUrunit)
+		})
 	}
 }
