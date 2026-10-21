@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -1084,11 +1085,55 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 // supervisor of a generic container boot, from the host.
 type GuestSignaller func(unix.Signal) error
 
+// ErrGuestSignalUnconfirmed is what a GuestSignaller returns when the guest's
+// agent took the signal request but ended the session before answering. The
+// guest init stops the agent as soon as the application exits, and syncs its
+// disks and powers off after that, so a stop that worked often ends this way.
+var ErrGuestSignalUnconfirmed = errors.New("the guest agent ended the session before answering")
+
+// guestShutdownGrace bounds how long SignalWith waits for the monitor to exit
+// after ErrGuestSignalUnconfirmed, before it signals the monitor itself.
+var guestShutdownGrace = 5 * time.Second
+
+// monitorGone reports whether the process pid has exited: it no longer
+// exists, or it is a zombie that its parent has not reaped yet.
+func monitorGone(pid int) bool {
+	if err := unix.Kill(pid, 0); errors.Is(err, unix.ESRCH) {
+		return true
+	}
+	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return errors.Is(err, os.ErrNotExist)
+	}
+	// The state follows the command name, which is in parentheses and may
+	// itself contain ") ", so the last one ends it.
+	end := bytes.LastIndex(stat, []byte(") "))
+	return end >= 0 && end+2 < len(stat) && stat[end+2] == 'Z'
+}
+
+// waitMonitorGone waits up to timeout for the process pid to exit and
+// reports whether it did.
+func waitMonitorGone(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if monitorGone(pid) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // SignalWith sends signal to the container's init. For a generic container
 // boot, guest delivers it to the guest's init, which hands it to the
 // application. The application then exits, and the guest syncs its disks
 // and powers off, which ends the monitor. The monitor itself gets the signal
 // only for SIGKILL, for any other container, or when guest is nil or fails.
+// When guest returns ErrGuestSignalUnconfirmed, the monitor gets the signal
+// only if it is still running after guestShutdownGrace. Signalling it at once
+// would end the guest before it synced its disks.
 func (u *Unikontainer) SignalWith(signal unix.Signal, guest GuestSignaller) error {
 	// A monitor that never started has no pid, and kill(2) reads a pid <= 0
 	// as a process group. There is nothing to signal.
@@ -1105,9 +1150,14 @@ func (u *Unikontainer) SignalWith(signal unix.Signal, guest GuestSignaller) erro
 
 	delivered := false
 	if guest != nil && signal != unix.SIGKILL && u.isContainerBoot() {
-		if err = guest(signal); err == nil {
+		err = guest(signal)
+		switch {
+		case err == nil:
 			delivered = true
-		} else {
+		case errors.Is(err, ErrGuestSignalUnconfirmed) && waitMonitorGone(u.State.Pid, guestShutdownGrace):
+			uniklog.WithError(err).Debugf("the guest powered off after signal %d", signal)
+			delivered = true
+		default:
 			uniklog.WithError(err).Warnf("could not hand signal %d to the guest init; signalling the monitor", signal)
 		}
 	}
