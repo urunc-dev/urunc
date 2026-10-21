@@ -42,8 +42,7 @@ const (
 	lpcEndMarker      string = "UCE" // Linux process config end marker
 	blkStartMarker    string = "UBS" // Block-based mounts start marker
 	blkEndMarker      string = "UBE" // Block-based mounts end marker
-	// urunitConfMagic starts a urunit configuration of NUL-terminated records
-	urunitConfMagic string = "URUNIT1"
+	padMarker         string = "PAD" // Ends the configuration; padding follows
 )
 
 type Linux struct {
@@ -487,8 +486,8 @@ func (l *Linux) buildUrunitConfig() string {
 
 // BuildUrunitConfig renders a urunit configuration from the container's
 // environment, process identity and auxiliary block mounts, in urunit's
-// NUL-terminated record format (URUNIT1, then the UES/UEE environment, UCS/UCE
-// process config and UBS/UBE block mounts). monitor is the monitor family:
+// NUL-terminated record format (the UES/UEE environment, UCS/UCE process
+// config and UBS/UBE block mounts). monitor is the monitor family:
 // firecracker names its block devices with an FC prefix.
 //
 // It is exported so that runners outside this package, which stage the guest
@@ -506,18 +505,17 @@ func BuildUrunitConfig(env []string, proc types.ProcessConfig, blk []types.Block
 	return c.String()
 }
 
-// urunitConfig builds a urunit configuration. It begins with the
-// urunitConfMagic record and every record ends with a NUL character, which
-// can not appear in an environment variable or an argument. Hence, values are
-// written verbatim, even if they contain new lines.
+// urunitConfig builds a urunit configuration. Every record, section markers
+// included, ends with a NUL character, which can not appear in an environment
+// variable or an argument. Hence, values are written verbatim, even if they
+// contain new lines. This is the format of urunc-dev/urunc#1111 and
+// nubificus/urunit#17, so both urunit readers take it.
 type urunitConfig struct {
 	sb strings.Builder
 }
 
 func newUrunitConfig() *urunitConfig {
-	c := &urunitConfig{}
-	c.record(urunitConfMagic)
-	return c
+	return &urunitConfig{}
 }
 
 // record writes the concatenation of parts as a single record.
@@ -556,11 +554,12 @@ func (c *urunitConfig) blocks(blk []types.BlockDevParams, monitor string) {
 	c.record(blkEndMarker)
 }
 
-// padTo pads the configuration with NUL characters, which urunit skips, to a
-// multiple of size bytes.
+// padTo ends the configuration with a PAD record and pads it with new lines
+// to a multiple of size bytes. urunit ignores everything after PAD.
 func (c *urunitConfig) padTo(size int) {
+	c.record(padMarker)
 	for c.sb.Len()%size != 0 {
-		c.sb.WriteByte(0)
+		c.sb.WriteByte('\n')
 	}
 }
 

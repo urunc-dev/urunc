@@ -30,9 +30,10 @@
 #   URUNIT        path to a static urunit binary for the target arch. Default
 #                 layout: built by build-urunit.sh from the commit urunit.pin
 #                 names when unset. Legacy: required,
-#                 and it has to read the NUL-terminated URUNIT1 records urunc
-#                 writes (NOFireAI/urunit da5e62f or later); an older urunit
-#                 runs the command without its environment, user and cwd
+#                 and it has to read the NUL-terminated records urunc writes
+#                 (NOFireAI/urunit de324cf or later); an older urunit splits
+#                 values at new lines or runs the command without its
+#                 environment, user and cwd
 #   INITRD_LAYOUT unset (single binary) or "legacy"
 #   TARGET_ARCH   x86_64|amd64 or aarch64|arm64 (default: the host arch)
 #   URUNIT_SRC    a local urunit checkout for build-urunit.sh to build
