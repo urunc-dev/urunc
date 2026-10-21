@@ -21,7 +21,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ github.sha }}
-      go_version: "1.27.2"
+      go_version: "1.27.3"
 
   release:
     name: Rolling release

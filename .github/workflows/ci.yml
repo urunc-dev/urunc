@@ -16,7 +16,7 @@ on:
       go_version:
         required: false
         type: string
-        default: "1.27.2"
+        default: "1.27.3"
       # Optional overrides of the e2e runners and environment versions. An
       # empty value selects the default in vm_test.yml.
       runners:

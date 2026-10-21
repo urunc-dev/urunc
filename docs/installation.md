@@ -513,7 +513,7 @@ To install `urunc`, there are three options:
 
 #### Option 1: Building from source
 
-In order to build `urunc` from source, any version of Go 1.20.6 or later should
+In order to build `urunc` from source, recent version of Go should
 be sufficient. Let's download Go [[versions.go ]]
 
 ```bash
