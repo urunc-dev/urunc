@@ -39,8 +39,7 @@ func TestLinuxBuildUrunitConfig(t *testing.T) {
 		ProcConfig: types.ProcessConfig{UID: 0, GID: 0, WorkDir: "/"},
 	}
 
-	expected := "URUNIT1\x00" +
-		"UES\x00PATH=/bin\x00CERT=-----BEGIN CERTIFICATE-----\nUEE\n-----END CERTIFICATE-----\x00UEE_MODE=1\x00UEE\x00" +
+	expected := "UES\x00PATH=/bin\x00CERT=-----BEGIN CERTIFICATE-----\nUEE\n-----END CERTIFICATE-----\x00UEE_MODE=1\x00UEE\x00" +
 		"UCS\x00UID:0\x00GID:0\x00WD:/\x00UCE\x00" +
 		"UBS\x00ID:vol0\x00MP:/data\x00UBE\x00"
 	assert.Equal(t, expected, l.buildUrunitConfig())
@@ -51,7 +50,7 @@ func TestLinuxBuildUrunitConfigEmpty(t *testing.T) {
 
 	l := &Linux{Monitor: "firecracker", ProcConfig: types.ProcessConfig{WorkDir: "/"}}
 
-	expected := "URUNIT1\x00UES\x00UEE\x00UCS\x00UID:0\x00GID:0\x00WD:/\x00UCE\x00UBS\x00UBE\x00"
+	expected := "UES\x00UEE\x00UCS\x00UID:0\x00GID:0\x00WD:/\x00UCE\x00UBS\x00UBE\x00"
 	assert.Equal(t, expected, l.buildUrunitConfig())
 }
 

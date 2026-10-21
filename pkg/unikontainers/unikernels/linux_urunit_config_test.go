@@ -43,12 +43,12 @@ func TestBuildUrunitConfig(t *testing.T) {
 		{
 			name:    "firecracker prefixes the block ids",
 			monitor: "firecracker",
-			want:    "URUNIT1\x00UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:100\x00WD:/work\x00UCE\x00UBS\x00ID:FCvol0\x00MP:/data\x00UBE\x00",
+			want:    "UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:100\x00WD:/work\x00UCE\x00UBS\x00ID:FCvol0\x00MP:/data\x00UBE\x00",
 		},
 		{
 			name:    "other monitors keep the block ids",
 			monitor: "qemu",
-			want:    "URUNIT1\x00UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:100\x00WD:/work\x00UCE\x00UBS\x00ID:vol0\x00MP:/data\x00UBE\x00",
+			want:    "UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:100\x00WD:/work\x00UCE\x00UBS\x00ID:vol0\x00MP:/data\x00UBE\x00",
 		},
 	}
 	for _, tc := range tests {
@@ -64,7 +64,7 @@ func TestBuildUrunitConfig(t *testing.T) {
 	t.Run("empty environment and no block mounts", func(t *testing.T) {
 		t.Parallel()
 
-		want := "URUNIT1\x00UES\x00UEE\x00UCS\x00UID:0\x00GID:0\x00WD:\x00UCE\x00UBS\x00UBE\x00"
+		want := "UES\x00UEE\x00UCS\x00UID:0\x00GID:0\x00WD:\x00UCE\x00UBS\x00UBE\x00"
 		assert.Equal(t, want, BuildUrunitConfig(nil, types.ProcessConfig{}, nil, "firecracker"))
 		assert.Equal(t, want, (&Linux{Monitor: "firecracker"}).buildUrunitConfig())
 	})

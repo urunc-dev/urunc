@@ -129,8 +129,10 @@ The two repositories share two formats: the agentproto frames and the
 `urunit.conf` records. urunc owns both. `pkg/agentproto` and
 `BuildUrunitConfig` are the host side, and `tests/urunit` checks the pinned
 binary against them. A change to either format needs a urunit commit and a
-bump of the pin in the same urunc PR. `urunit.conf` starts with the
-`URUNIT1` record; agentproto has no version yet.
+bump of the pin in the same urunc PR. `urunit.conf` is a list of
+NUL-terminated records, the format of urunc-dev/urunc#1111 and
+nubificus/urunit#17. urunit tells it from the legacy lines by its first
+record. agentproto has no version yet.
 
 ## What the binary does
 
@@ -325,7 +327,7 @@ The initrd was booted on these hosts:
 - Linux (x86_64, KVM), urunc with qemu and with cloud-hypervisor, alpine and
   ubuntu images, through `rdinit=/init`: the same exec checks, `/tmp`, and an
   environment value with a new line, a variable named like the `UEE` marker
-  and the working directory, all through the `URUNIT1` records.
+  and the working directory, all through the NUL-terminated records.
 
 Rosetta (x86_64 images on macOS) and hull's `rdinit=/init` path are not
 tested yet.
@@ -336,15 +338,18 @@ tested yet.
 `/busybox`, `/urunit` and `/urunit-agent`. The scripts and `cmd/urunit-agent`
 stay in the tree until the new layout is validated everywhere. Rolling back
 needs no change on the host side. `URUNIT` has to name a urunit that reads
-the `URUNIT1` records (NOFireAI/urunit `da5e62f` or later). An older one runs
-the command without its environment, user and working directory.
+NUL-terminated records with nothing before them (NOFireAI/urunit `de324cf` or
+later). One from `da5e62f` on reads them as lines, so a value with a new line
+breaks. An older one runs the command without its environment, user and
+working directory.
 
 ## Provenance
 
 The guest code is a stack of branches in NOFireAI/urunit, on top of
 urunit's `main`:
 
-1. `stack/1-nul-records`: the `URUNIT1` configuration records.
+1. `stack/1-nul-records`: the NUL-terminated configuration records, then
+   behind a `URUNIT1` record.
 2. `stack/2-tty-reap`: the glibc build fix, the controlling tty and the
    reaping fixes.
 3. `stack/3-poweroff`: `URUNIT_POWEROFF` for cloud-hypervisor.
@@ -352,8 +357,17 @@ urunit's `main`:
    early init, the exec agent and the CI.
 5. `stack/5-overlay-block`: the `vz-init` root from a read-only and a
    writable disk, for hull's overlay-block mode.
+6. `stack/6-init-markers`: the `/init` root from the same markers.
+7. `stack/7-stop-signals`: stop signals forwarded to the application, and
+   `URUNIT_MODE=signal`.
+8. `stack/8-sync-before-agent`: the supervisor syncs before it stops the
+   agent.
+9. `stack/9-nul-without-magic`: NUL-terminated records without the `URUNIT1`
+   record.
 
 `urunit.pin` names the tip of the last one. One change affects the agent:
-`reap()` returns as soon as the application is reaped. It sends `SIGTERM` to
-the agent and does not wait for it, and the reboot that follows ends the
-agent.
+`reap()` returns as soon as the application is reaped. It syncs, sends
+`SIGTERM` to the agent and does not wait for it, and the reboot that follows
+ends the agent. The sync comes first because the agent's sessions end with
+it: urunc reads the end of the stop signal's session as the guest going
+down.
