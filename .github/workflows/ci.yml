@@ -13,10 +13,6 @@ on:
         required: false
         type: string
         default: "no"
-      go_version:
-        required: false
-        type: string
-        default: "1.27.3"
       # Optional overrides of the e2e runners and environment versions. An
       # empty value selects the default in vm_test.yml.
       runners:
@@ -72,7 +68,6 @@ jobs:
     uses: ./.github/workflows/lint.yml
     with:
       ref: ${{ inputs.ref }}
-      go_version: ${{ inputs.go_version }}
     secrets: inherit
 
   build:
@@ -81,7 +76,6 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ inputs.ref }}
-      go_version: ${{ inputs.go_version }}
     secrets: inherit
 
   unit_test:
@@ -90,7 +84,6 @@ jobs:
     uses: ./.github/workflows/unit_test.yml
     with:
       ref: ${{ inputs.ref }}
-      go_version: ${{ inputs.go_version }}
     secrets: inherit
 
   vm_test:

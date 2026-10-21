@@ -2,6 +2,8 @@ module github.com/urunc-dev/urunc
 
 go 1.26.8
 
+toolchain go1.27.3
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
