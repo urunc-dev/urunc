@@ -31,7 +31,9 @@ Therefore, the users have the following options:
    snapshotter or shared-fs to pass the container's rootfs to the unikernel.
 3. Let [bunny](https://github.com/nubificus/bunny) and [bunix](https://github.com/nubificus/bunix) create the rootfs file.
 
-> **NOTE**: For the time being, [bunny](https://github.com/nubificus/bunny) supports the creation of initrd files and [bunix](https://github.com/nubificus/bunix) does not provide any support for creating the rootfs.
+> **NOTE**: [bunny](https://github.com/nubificus/bunny) can create `initrd`,
+> `block`, and `raw` rootfs types. [bunix](https://github.com/nubificus/bunix)
+> does not provide support for creating rootfs files.
 
 ## Creating an initrd file
 
@@ -63,7 +65,7 @@ kernel:
   from: local
   path: redis-qemu-x86_64-initrd_qemu-x86_64
 
-cmdline: "redis-server /conf/redis.conf"
+cmd: ["redis-server", "/conf/redis.conf"]
 ```
 
 In the above file we specify the following:
@@ -137,7 +139,7 @@ kernel:
   from: local
   path: redis.hvt
 
-cmdline: "redis-server /data/conf/redis.conf"
+cmd: ["redis-server", "/data/conf/redis.conf"]
 ```
 
 In the above file we specify the following:
@@ -282,7 +284,7 @@ kernel:
   from: local
   path: app-elfloader-qemu-x86_64-initrd_qemu-x86_64
 
-cmdline: "/chttp"
+cmd: ["/chttp"]
 ```
 
 In the above file we specify the following:
