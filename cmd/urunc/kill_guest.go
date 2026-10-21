@@ -69,7 +69,7 @@ func signalGuestInit(conn io.ReadWriteCloser, sig unix.Signal, timeout time.Dura
 		for {
 			f, err := agentproto.ReadFrame(conn)
 			if err != nil {
-				done <- fmt.Errorf("read from the agent: %w", err)
+				done <- fmt.Errorf("%w: %w", unikontainers.ErrGuestSignalUnconfirmed, err)
 				return
 			}
 			switch f.Type {

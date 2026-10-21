@@ -27,7 +27,12 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/urunc-dev/urunc/pkg/agentproto"
+	"github.com/urunc-dev/urunc/pkg/unikontainers"
 )
+
+// closeSession is a frame type no agent sends. fakeSignalAgent closes the
+// connection instead of answering, as an agent that the guest init stopped.
+const closeSession byte = 0xff
 
 // fakeSignalAgent reads the open request from conn, checks it, and answers
 // with typ and payload.
@@ -44,7 +49,11 @@ func fakeSignalAgent(t *testing.T, conn net.Conn, typ byte, payload any) {
 		assert.Equal(t, []string{"/run/urunc/urunit", "15"}, req.Argv)
 		assert.Equal(t, []string{"URUNIT_MODE=signal"}, req.Env)
 		assert.Empty(t, req.User, "the signal role runs as root")
-		if typ != 0 {
+		switch typ {
+		case 0:
+		case closeSession:
+			_ = conn.Close()
+		default:
 			_ = agentproto.WriteJSON(conn, typ, f.Stream, payload)
 		}
 	}()
@@ -63,6 +72,7 @@ func TestSignalGuestInit(t *testing.T) {
 		{"a failed urunit is an error", agentproto.TypeExit, agentproto.Exit{Code: 2}, "exited with 2"},
 		{"an agent error is an error", agentproto.TypeError, agentproto.Error{Message: "no such file"}, "no such file"},
 		{"no answer times out", 0, nil, "no answer"},
+		{"a closed session is unconfirmed", closeSession, nil, unikontainers.ErrGuestSignalUnconfirmed.Error()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

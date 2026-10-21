@@ -144,6 +144,8 @@ func monitorStandIn(t *testing.T) (int, func() (unix.Signal, bool)) {
 // A generic container boot hands a stop signal to the guest, and the monitor
 // gets it only for SIGKILL, for another container, or when the guest fails.
 func TestSignalWithGuest(t *testing.T) {
+	defer func(g time.Duration) { guestShutdownGrace = g }(guestShutdownGrace)
+	guestShutdownGrace = 200 * time.Millisecond
 	boot := map[string]string{
 		annotHypervisor: "cloud-hypervisor",
 		annotBootKernel: "/boot/bzImage",
@@ -160,6 +162,7 @@ func TestSignalWithGuest(t *testing.T) {
 		{"SIGTERM goes to the guest", boot, unix.SIGTERM, nil, true, 0},
 		{"SIGINT goes to the guest", boot, unix.SIGINT, nil, true, 0},
 		{"a failed guest leaves it to the monitor", boot, unix.SIGTERM, errors.New("no agent"), true, unix.SIGTERM},
+		{"an unconfirmed guest that stays up leaves it to the monitor", boot, unix.SIGTERM, ErrGuestSignalUnconfirmed, true, unix.SIGTERM},
 		{"SIGKILL goes to the monitor", boot, unix.SIGKILL, nil, false, unix.SIGKILL},
 		{"another container signals the monitor", map[string]string{annotHypervisor: "cloud-hypervisor"}, unix.SIGTERM, nil, false, unix.SIGTERM},
 	}
@@ -191,4 +194,47 @@ func TestSignalWithGuest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The guest init stops the agent before it syncs and powers off, so an
+// unconfirmed signal must leave the monitor alone while it shuts down.
+func TestSignalWithUnconfirmedGuestPoweringOff(t *testing.T) {
+	defer func(g time.Duration) { guestShutdownGrace = g }(guestShutdownGrace)
+	guestShutdownGrace = 2 * time.Second
+	pid, died := monitorStandIn(t)
+	u := unikontainerWithoutMonitor(t, pid)
+	u.State.Annotations = map[string]string{
+		annotHypervisor: "cloud-hypervisor",
+		annotBootKernel: "/boot/bzImage",
+		annotBootInitrd: "/boot/container-initrd",
+	}
+	u.UruncCfg = &UruncConfig{Monitors: map[string]types.MonitorConfig{
+		"cloud-hypervisor": {BinaryPath: "/bin/true"},
+	}}
+	err := u.SignalWith(unix.SIGTERM, func(unix.Signal) error {
+		// The guest powers off a moment after the session ends.
+		time.AfterFunc(100*time.Millisecond, func() { _ = unix.Kill(pid, unix.SIGKILL) })
+		return ErrGuestSignalUnconfirmed
+	})
+	require.NoError(t, err)
+	sig, signaled := died()
+	require.True(t, signaled)
+	require.Equal(t, unix.SIGKILL, sig, "the monitor got urunc's signal, not the power off")
+}
+
+func TestMonitorGone(t *testing.T) {
+	running := exec.Command("sleep", "30")
+	require.NoError(t, running.Start())
+	t.Cleanup(func() { _ = running.Process.Kill(); _ = running.Wait() })
+	require.False(t, monitorGone(running.Process.Pid), "a running process")
+
+	// Killed and not yet waited for, the process stays a zombie.
+	zombie := exec.Command("sleep", "30")
+	require.NoError(t, zombie.Start())
+	require.NoError(t, zombie.Process.Kill())
+	require.Eventually(t, func() bool { return monitorGone(zombie.Process.Pid) },
+		2*time.Second, 10*time.Millisecond, "a zombie")
+	require.NoError(t, unix.Kill(zombie.Process.Pid, 0), "the zombie is still there")
+	_ = zombie.Wait()
+	require.True(t, monitorGone(zombie.Process.Pid), "a reaped process")
 }
