@@ -40,20 +40,21 @@ import (
 // Urunc specific annotations
 // Always keep it in sync with the struct UnikernelConfig struct
 const (
-	annotUruncPrefix   = "com.urunc.unikernel."
-	annotType          = "com.urunc.unikernel.unikernelType"
-	annotVersion       = "com.urunc.unikernel.unikernelVersion"
-	annotBinary        = "com.urunc.unikernel.binary"
-	annotHypervisor    = "com.urunc.unikernel.hypervisor"
-	annotInitrd        = "com.urunc.unikernel.initrd"
-	annotSnapshot      = "com.urunc.unikernel.snapshot"
-	annotBlock         = "com.urunc.unikernel.block"
-	annotBlockMntPoint = "com.urunc.unikernel.blkMntPoint"
-	annotMountRootfs   = "com.urunc.unikernel.mountRootfs"
-	annotNetDev        = "com.urunc.unikernel.solo5NetDev"
-	annotBlkDev        = "com.urunc.unikernel.solo5BlkDev"
-	annotVAccel        = "com.urunc.unikernel.vAccel"
-	annotRPCAddress    = "com.urunc.unikernel.RPCAddress"
+	annotUruncPrefix     = "com.urunc.unikernel."
+	annotType            = "com.urunc.unikernel.unikernelType"
+	annotVersion         = "com.urunc.unikernel.unikernelVersion"
+	annotBinary          = "com.urunc.unikernel.binary"
+	annotHypervisor      = "com.urunc.unikernel.hypervisor"
+	annotInitrd          = "com.urunc.unikernel.initrd"
+	annotSnapshot        = "com.urunc.unikernel.snapshot"
+	annotBlock           = "com.urunc.unikernel.block"
+	annotBlockMntPoint   = "com.urunc.unikernel.blkMntPoint"
+	annotMountRootfs     = "com.urunc.unikernel.mountRootfs"
+	annotNetDev          = "com.urunc.unikernel.solo5NetDev"
+	annotBlkDev          = "com.urunc.unikernel.solo5BlkDev"
+	annotVAccel          = "com.urunc.unikernel.vAccel"
+	annotRPCAddress      = "com.urunc.unikernel.RPCAddress"
+	annotHyperlightPorts = "com.urunc.unikernel.hyperlightPorts"
 )
 
 // Annotations that other runtimes set and urunc only reads.
@@ -105,6 +106,7 @@ type UnikernelConfig struct {
 	MountRootfs      string `json:"com.urunc.unikernel.mountRootfs"`
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
 	BlkDev           string `json:"com.urunc.unikernel.solo5BlkDev,omitempty"`
+	HyperlightPorts  string `json:"com.urunc.unikernel.hyperlightPorts,omitempty"`
 	// The vAccel annotations are deliberately not part of urunc.json, since their
 	// values are runtime specific and therefore we should only reach them
 	// through the annotations of the spec.
@@ -115,6 +117,10 @@ type UnikernelConfig struct {
 // solo5DevNameRe constrains the valid values of a network or block device
 // identifier for Solo5 guests when received from the annotations.
 var solo5DevNameRe = regexp.MustCompile(`^[A-Za-z0-9]{1,67}$`)
+
+// hyperlightPortsRe constrains the ports a hyperlight-unikraft guest may serve
+// on to a comma-separated list of ports and LOW-HIGH ranges.
+var hyperlightPortsRe = regexp.MustCompile(`^[0-9]{1,5}(-[0-9]{1,5})?(,[0-9]{1,5}(-[0-9]{1,5})?)*$`)
 
 var ErrNotUnikernel = errors.New("this is not a unikernel container")
 
@@ -181,6 +187,13 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 	// configured through urunc.json can still use vAccel
 	jsonConf.VAccel = spec.Annotations[annotVAccel]
 	jsonConf.RPCAddress = spec.Annotations[annotRPCAddress]
+	// The ports a hyperlight-unikraft guest may serve on are a choice of the
+	// deployment first, and of the image second: an annotation of the spec
+	// replaces whatever urunc.json says, and validateValues() checks it as it
+	// does for an image configured through the spec.
+	if ports := spec.Annotations[annotHyperlightPorts]; ports != "" {
+		jsonConf.HyperlightPorts = ports
+	}
 
 	return jsonConf, nil
 }
@@ -198,6 +211,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	MountRootfs := spec.Annotations[annotMountRootfs]
 	netDev := spec.Annotations[annotNetDev]
 	blkDev := spec.Annotations[annotBlkDev]
+	hyperlightPorts := spec.Annotations[annotHyperlightPorts]
 	vAccel := spec.Annotations[annotVAccel]
 	rpcAddress := spec.Annotations[annotRPCAddress]
 	uniklog.WithFields(logrus.Fields{
@@ -212,6 +226,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"mountRootfs":      MountRootfs,
 		"netDev":           netDev,
 		"blkDev":           blkDev,
+		"hyperlightPorts":  hyperlightPorts,
 		"vAccel":           vAccel,
 		"rpcAddress":       rpcAddress,
 	}).WithField("source", "spec").Debug("urunc annotations")
@@ -228,6 +243,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		MountRootfs:      MountRootfs,
 		NetDev:           netDev,
 		BlkDev:           blkDev,
+		HyperlightPorts:  hyperlightPorts,
 		VAccel:           vAccel,
 		RPCAddress:       rpcAddress,
 	}
@@ -271,6 +287,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"mountRootfs":      tryDecode(conf.MountRootfs),
 		"netDev":           tryDecode(conf.NetDev),
 		"blkDev":           tryDecode(conf.BlkDev),
+		"hyperlightPorts":  tryDecode(conf.HyperlightPorts),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -352,6 +369,12 @@ func (c *UnikernelConfig) decode() error {
 	}
 	c.BlkDev = string(decoded)
 
+	decoded, err = base64.StdEncoding.DecodeString(c.HyperlightPorts)
+	if err != nil {
+		return fmt.Errorf("failed to decode hyperlightPorts: %v", err)
+	}
+	c.HyperlightPorts = string(decoded)
+
 	return nil
 }
 
@@ -390,6 +413,9 @@ func (c *UnikernelConfig) Map() map[string]string {
 	}
 	if c.BlkDev != "" {
 		myMap[annotBlkDev] = c.BlkDev
+	}
+	if c.HyperlightPorts != "" {
+		myMap[annotHyperlightPorts] = c.HyperlightPorts
 	}
 	if c.VAccel != "" {
 		myMap[annotVAccel] = c.VAccel
@@ -471,6 +497,11 @@ func (c *UnikernelConfig) validateValues() error {
 		return err
 	}
 
+	err = validateHyperlightPorts(monitor, c.HyperlightPorts)
+	if err != nil {
+		return err
+	}
+
 	if c.VAccel == "" {
 		if c.RPCAddress != "" {
 			return fmt.Errorf("%s is set, but %s is not", annotRPCAddress, annotVAccel)
@@ -512,6 +543,44 @@ func validateSolo5DevName(key string, val string) error {
 
 	if !solo5DevNameRe.MatchString(val) {
 		return fmt.Errorf("%s must match %s, got %q", key, solo5DevNameRe.String(), val)
+	}
+
+	return nil
+}
+
+// validateHyperlightPorts verifies that val lists the ports a
+// hyperlight-unikraft guest may serve on: ports and LOW-HIGH ranges within
+// 1-65535, separated by commas.
+// An empty value is accepted, since the guest then serves on any port, as a
+// container does. No other monitor can limit the ports of a guest.
+func validateHyperlightPorts(monitor hypervisors.VmmType, val string) error {
+	if val == "" {
+		return nil
+	}
+
+	if monitor != hypervisors.HyperlightVmm {
+		return fmt.Errorf("%s is only supported by %s", annotHyperlightPorts, hypervisors.HyperlightVmm)
+	}
+
+	if len(val) > maxAnnotationValueLen {
+		return fmt.Errorf("%s value is longer than %d bytes", annotHyperlightPorts, maxAnnotationValueLen)
+	}
+
+	if !hyperlightPortsRe.MatchString(val) {
+		return fmt.Errorf("%s must match %s, got %q", annotHyperlightPorts, hyperlightPortsRe.String(), val)
+	}
+
+	for _, item := range strings.Split(val, ",") {
+		lowStr, highStr, isRange := strings.Cut(item, "-")
+		if !isRange {
+			highStr = lowStr
+		}
+		// The regexp already limited both to digits.
+		low, _ := strconv.Atoi(lowStr)
+		high, _ := strconv.Atoi(highStr)
+		if low < 1 || high > 65535 || low > high {
+			return fmt.Errorf("%s must list ports within 1-65535 and ranges from low to high, got %q", annotHyperlightPorts, item)
+		}
 	}
 
 	return nil

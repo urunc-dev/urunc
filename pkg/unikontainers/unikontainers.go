@@ -586,6 +586,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		VCPUs:         uint(defaultVCPUs),
 		SocketPath:    socketPath,
 		Environment:   os.Environ(),
+		Ports:         u.State.Annotations[annotHyperlightPorts],
 	}
 
 	// Check if container is set to unconfined -- disable seccomp

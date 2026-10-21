@@ -126,6 +126,7 @@ type ExecArgs struct {
 	Seccomp       bool     // Enable or disable seccomp filters for the VMM
 	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
 	ResolvConf    bool     // The container's resolv.conf is mounted at ResolvConfPath in the monitor rootfs, for a monitor that installs it in the guest
+	Ports         string   // The ports the guest may serve on, as the annotation of the monitor lists them; "" for any
 	VCPUs         uint     // The number of vCPUs to allocate
 	UnikernelPath string   // The path of the unikernel inside rootfs
 	InitrdPath    string   // The path to the initrd of the unikernel

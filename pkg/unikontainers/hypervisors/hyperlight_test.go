@@ -128,6 +128,27 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--net", "--port=all", "--resolv-conf=/etc/resolv.conf"},
 		},
 		{
+			name: "the ports annotation limits what a booted guest serves on",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				Net:        types.NetDevParams{IP: "10.244.1.7"},
+				Ports:      "8080,9000-9100",
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--net", "--port=8080", "--port=9000-9100"},
+		},
+		{
+			name: "the ports annotation limits what a resumed guest serves on",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+				Net:          types.NetDevParams{IP: "10.244.1.7"},
+				Ports:        "8080",
+				ResolvConf:   true,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--net", "--port=8080", "--resolv-conf=/etc/resolv.conf"},
+		},
+		{
 			name: "a container without a network leaves the guest to hluk's default of none",
 			args: types.ExecArgs{
 				InitrdPath: "/unikernel/initrd.cpio",

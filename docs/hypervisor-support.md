@@ -346,7 +346,10 @@ and it starts `hluk` with networking enabled, both
 outbound (`--net`) and inbound (`--port=all`). The network namespace remains the
 boundary, as for any other container. A container started with no network has
 no interface in its namespace, and `urunc` then leaves the guest to the default
-of `hluk`, which is no network at all. The `resolv.conf` of the container is
+of `hluk`, which is no network at all. A deployment can also limit the ports
+the guest may serve on, as a second boundary inside the namespace, with the
+`com.urunc.unikernel.hyperlightPorts` annotation; without it the guest serves
+on any port, as a container does. The `resolv.conf` of the container is
 mounted into the monitor and installed in the guest as well (`--resolv-conf`),
 both when it boots and when it resumes from a snapshot, so that cluster names
 resolve inside the guest. The guest binds ports as the user of the container:

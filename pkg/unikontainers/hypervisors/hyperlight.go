@@ -17,6 +17,7 @@ package hypervisors
 import (
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -70,16 +71,31 @@ func (h *Hyperlight) UsesTUNTAP() bool {
 // NetworkPolicy applies to it stay the boundary, as they are for any other
 // container. A container started with no network has no interface in its
 // namespace, and the guest is then left to hluk's default, as a second
-// boundary. The guest also gets the container's resolver configuration: the
-// rootfs, or a snapshot of a guest booted elsewhere, carries its own, which
-// knows nothing of the cluster's DNS.
+// boundary. A deployment can ask for another one, inside the namespace, by
+// listing the ports the guest may serve on. The guest also gets the
+// container's resolver configuration: the rootfs, or a snapshot of a guest
+// booted elsewhere, carries its own, which knows nothing of the cluster's DNS.
 func netArgs(args types.ExecArgs) []string {
 	if args.Net.IP == "" {
 		return nil
 	}
-	cmdArgs := []string{"--net", "--port=all"}
+	cmdArgs := append([]string{"--net"}, portArgs(args.Ports)...)
 	if args.ResolvConf {
 		cmdArgs = append(cmdArgs, "--resolv-conf="+types.ResolvConfPath)
+	}
+	return cmdArgs
+}
+
+// portArgs limits the ports the guest may serve on, as the ports annotation
+// asks: any port without it, and otherwise each port or LOW-HIGH range
+// listed, which urunc has already validated, as a --port of its own.
+func portArgs(ports string) []string {
+	if ports == "" {
+		return []string{"--port=all"}
+	}
+	var cmdArgs []string
+	for _, port := range strings.Split(ports, ",") {
+		cmdArgs = append(cmdArgs, "--port="+port)
 	}
 	return cmdArgs
 }

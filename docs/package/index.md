@@ -74,6 +74,10 @@ Apart from the above, `urunc` accepts the following optional annotations:
 - `com.urunc.unikernel.mountRootfs`: A boolean value that if it is `true`,
   requests from `urunc` to mount the container's image rootfs in the unikernel
   (either as a block device or through shared-fs).
+- `com.urunc.unikernel.hyperlightPorts`: The ports a `hyperlight-unikraft`
+  guest may serve on, as a comma-separated list of ports and `LOW-HIGH` ranges
+  (e.g. `8080,9000-9100`). Without it the guest serves on any port, as a
+  container does. Only supported by `hyperlight-unikraft`.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container
