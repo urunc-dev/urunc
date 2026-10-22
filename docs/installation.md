@@ -201,6 +201,7 @@ At last, update the containerd configuration for devmapper:
 
 Also, the transfer service needs to get updated accordingly:
 
+[% raw %]
 ```toml
 # Setting unpack_config replaces the default entry, so overlayfs must be listed too.
 [[plugins.'io.containerd.transfer.v1.local'.unpack_config]]
@@ -211,6 +212,7 @@ Also, the transfer service needs to get updated accordingly:
   platform = "linux/amd64"
   snapshotter = "devmapper"
 ```
+[% endraw %]
 
 - In containerd v1.x find and change or append the following lines:
 
@@ -265,6 +267,7 @@ for the blockfile snapshotter:
 
 Also, the transfer service needs to get updated accordingly:
 
+[% raw %]
 ```toml
 # Setting unpack_config replaces the default entry, so overlayfs must be listed too.
 [[plugins.'io.containerd.transfer.v1.local'.unpack_config]]
@@ -275,6 +278,7 @@ Also, the transfer service needs to get updated accordingly:
   platform = "linux/amd64"
   snapshotter = "blockfile"
 ```
+[% endraw %]
 
 - In containerd v1.x find and change or append the following lines:
 

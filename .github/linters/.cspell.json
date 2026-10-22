@@ -9,7 +9,9 @@
   "dictionaries": [
     "project-dict"
   ],
-  "words": [],
+  "words": [
+    "endraw"
+  ],
   "ignorePaths": [
     "node_modules",
     "vendor",
