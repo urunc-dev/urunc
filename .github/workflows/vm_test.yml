@@ -5,42 +5,59 @@ on:
       ref:
         type: string
         default: ''
-      go_version:
-        required: true
+      # Optional overrides of the runners and of the versions below, e.g. from a
+      # manual dispatch. An empty value selects the default.
+      runners:
         type: string
-      runner-archs:
-        type: string
-        default: '["amd64"]'
+        default: ''
       runc_version:
-        required: true
         type: string
+        default: ''
       containerd_version:
-        required: true
         type: string
+        default: ''
       cni_version:
-        required: true
         type: string
+        default: ''
       nerdctl_version:
-        required: true
         type: string
+        default: ''
       crictl_version:
-        required: true
         type: string
+        default: ''
       firecracker_version:
-        required: true
         type: string
+        default: ''
       cloud_hypervisor_version:
-        required: true
         type: string
+        default: ''
       solo5_version:
-        required: true
         type: string
-      hyperlight_unikraft_version:
-        required: true
+        default: ''
+      hluk_version:
         type: string
+        default: ''
 
 permissions:
   contents: read
+
+# The default versions of the e2e environment are kept here, next to the steps
+# that install them, and the callers only pass overrides. On pull_request
+# events, the callers' inputs come from the PR merged into main, so they would
+# not match a copy of this workflow loaded from another ref. Callers forward
+# unset inputs as empty strings, which skip an input's default, hence the
+# fallbacks.
+env:
+  GO_VERSION: '1.27.2'
+  RUNC_VERSION: ${{ inputs.runc_version || '1.3.0' }}
+  CONTAINERD_VERSION: ${{ inputs.containerd_version || '2.3.7' }}
+  CNI_VERSION: ${{ inputs.cni_version || '1.7.1' }}
+  NERDCTL_VERSION: ${{ inputs.nerdctl_version || '2.1.3' }}
+  CRICTL_VERSION: ${{ inputs.crictl_version || 'v1.30.0' }}
+  FIRECRACKER_VERSION: ${{ inputs.firecracker_version || 'v1.7.0' }}
+  CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version || 'v50.0' }}
+  SOLO5_VERSION: ${{ inputs.solo5_version || 'v0.9.3' }}
+  HLUK_VERSION: ${{ inputs.hluk_version || 'v0.18.0' }}
 
 jobs:
   prepare:
@@ -48,32 +65,23 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        arch: ${{ fromJSON(inputs.runner-archs) }}
+        runner: ${{ fromJSON(inputs.runners || '["ubuntu-22.04", "ubuntu-22.04-arm"]') }}
         test: ["test_ctr","test_nerdctl","test_crictl","test_docker"]
-        include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
 
     steps:
     - name: Validate inputs (prevent command injection)
       shell: bash
-      env:
-        GO_VERSION: ${{ inputs.go_version }}
-        RUNC_VERSION: ${{ inputs.runc_version }}
-        CONTAINERD_VERSION: ${{ inputs.containerd_version }}
-        CNI_VERSION: ${{ inputs.cni_version }}
-        NERDCTL_VERSION: ${{ inputs.nerdctl_version }}
-        CRICTL_VERSION: ${{ inputs.crictl_version }}
-        FIRECRACKER_VERSION: ${{ inputs.firecracker_version }}
-        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
-        SOLO5_VERSION: ${{ inputs.solo5_version }}
-        HYPERLIGHT_UNIKRAFT_VERSION: ${{ inputs.hyperlight_unikraft_version }}
       run: |
+        # The runner determines the architecture of the binaries and tests.
+        ARCH="$(dpkg --print-architecture)"
+        if [[ "$ARCH" != "amd64" && "$ARCH" != "arm64" ]]; then
+          echo "Unsupported architecture: $ARCH"
+          exit 1
+        fi
+        echo "ARCH=${ARCH}" >> "$GITHUB_ENV"
         for var in GO_VERSION RUNC_VERSION CONTAINERD_VERSION CNI_VERSION \
                    NERDCTL_VERSION CRICTL_VERSION FIRECRACKER_VERSION \
-                   CLOUD_HYPERVISOR_VERSION SOLO5_VERSION HYPERLIGHT_UNIKRAFT_VERSION; do
+                   CLOUD_HYPERVISOR_VERSION SOLO5_VERSION HLUK_VERSION; do
           value="${!var}"
           if ! [[ "$value" =~ ^v?[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo "Invalid format for $var: $value"
@@ -93,7 +101,7 @@ jobs:
 
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version: ${{ inputs.go_version }}
+        go-version: ${{ env.GO_VERSION }}
         cache: false
 
     - name: Install base dependencies
@@ -105,8 +113,6 @@ jobs:
         sudo mv virtiofsd /usr/libexec/virtiofsd
 
     - name: Install runc
-      env:
-        RUNC_VERSION: ${{ inputs.runc_version }}
       run: |
         SAFE_RUNC="${RUNC_VERSION}"
         wget -q "https://github.com/opencontainers/runc/releases/download/v${SAFE_RUNC}/runc.$(dpkg --print-architecture)"
@@ -114,8 +120,6 @@ jobs:
         rm -f ./runc.$(dpkg --print-architecture)
 
     - name: Install containerd
-      env:
-        CONTAINERD_VERSION: ${{ inputs.containerd_version }}
       run: |
         SAFE_CONTAINERD="${CONTAINERD_VERSION}"
         wget -q "https://github.com/containerd/containerd/releases/download/v${SAFE_CONTAINERD}/containerd-${SAFE_CONTAINERD}-linux-$(dpkg --print-architecture).tar.gz"
@@ -123,8 +127,6 @@ jobs:
         rm -f "containerd-${SAFE_CONTAINERD}-linux-$(dpkg --print-architecture).tar.gz"
 
     - name: Set up containerd service
-      env:
-        CONTAINERD_VERSION: ${{ inputs.containerd_version }}
       run: |
         SAFE_CONTAINERD="$CONTAINERD_VERSION"
         wget -q "https://raw.githubusercontent.com/containerd/containerd/v${SAFE_CONTAINERD}/containerd.service"
@@ -182,8 +184,6 @@ jobs:
         sudo mount /tmp/fake_block /tmp/test_mountpoint
 
     - name: Install CNI plugins
-      env:
-        CNI_VERSION: ${{ inputs.cni_version }}
       run: |
         SAFE_CNI="${CNI_VERSION}"
         wget -q "https://github.com/containernetworking/plugins/releases/download/v${SAFE_CNI}/cni-plugins-linux-$(dpkg --print-architecture)-v${SAFE_CNI}.tgz"
@@ -228,8 +228,6 @@ jobs:
         sudo systemctl restart containerd
 
     - name: Install nerdctl
-      env:
-        NERDCTL_VERSION: ${{ inputs.nerdctl_version }}
       run: |
         SAFE_NERDCTL="${NERDCTL_VERSION}"
         wget -q "https://github.com/containerd/nerdctl/releases/download/v${SAFE_NERDCTL}/nerdctl-${SAFE_NERDCTL}-linux-$(dpkg --print-architecture).tar.gz"
@@ -237,13 +235,11 @@ jobs:
         rm -f "nerdctl-${SAFE_NERDCTL}-linux-$(dpkg --print-architecture).tar.gz"
 
     - name: Install crictl
-      env:
-        CRICTL_VERSION: ${{ inputs.crictl_version }}
       run: |
         SAFE_CRI="${CRICTL_VERSION}"
-        wget "https://github.com/kubernetes-sigs/cri-tools/releases/download/${SAFE_CRI}/crictl-${SAFE_CRI}-linux-${{ matrix.arch }}.tar.gz"
-        sudo tar zxvf "crictl-${SAFE_CRI}-linux-${{ matrix.arch }}.tar.gz" -C /usr/local/bin
-        rm -f "crictl-${SAFE_CRI}-linux-${{ matrix.arch }}.tar.gz"
+        wget "https://github.com/kubernetes-sigs/cri-tools/releases/download/${SAFE_CRI}/crictl-${SAFE_CRI}-linux-${ARCH}.tar.gz"
+        sudo tar zxvf "crictl-${SAFE_CRI}-linux-${ARCH}.tar.gz" -C /usr/local/bin
+        rm -f "crictl-${SAFE_CRI}-linux-${ARCH}.tar.gz"
         sudo tee -a /etc/crictl.yaml > /dev/null <<'EOT'
         runtime-endpoint: unix:///run/containerd/containerd.sock
         image-endpoint: unix:///run/containerd/containerd.sock
@@ -251,10 +247,8 @@ jobs:
         EOT
 
     - name: Install Firecracker
-      env:
-        FC_VERSION: ${{ inputs.firecracker_version }}
       run: |
-        SAFE_FC="${FC_VERSION}"
+        SAFE_FC="${FIRECRACKER_VERSION}"
         ARCH="$(uname -m)"
         release_url="https://github.com/firecracker-microvm/firecracker/releases"
         curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
@@ -276,8 +270,6 @@ jobs:
         rm -fr "release-${SAFE_FC}-${ARCH}"
 
     - name: Install Cloud Hypervisor
-      env:
-        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
       run: |
         SAFE_CLOUD_HYPERVISOR="${CLOUD_HYPERVISOR_VERSION}"
         curl -sL "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${SAFE_CLOUD_HYPERVISOR}/cloud-hypervisor-static" -o cloud-hypervisor
@@ -285,8 +277,6 @@ jobs:
         sudo mv cloud-hypervisor /usr/local/bin/cloud-hypervisor
 
     - name: Install solo5
-      env:
-        SOLO5_VERSION: ${{ inputs.solo5_version }}
       run: |
         SAFE_SOLO5="${SOLO5_VERSION}"
         git clone -b "${SAFE_SOLO5}" https://github.com/Solo5/solo5.git
@@ -296,37 +286,35 @@ jobs:
         sudo cp tenders/spt/solo5-spt /usr/local/bin
 
     - name: Install hyperlight-unikraft
-      if: ${{ matrix.arch == 'amd64' }}
-      env:
-        HYPERLIGHT_UNIKRAFT_VERSION: ${{ inputs.hyperlight_unikraft_version }}
+      if: ${{ env.ARCH == 'amd64' }}
       run: |
-        SAFE_HYPERLIGHT_UNIKRAFT="${HYPERLIGHT_UNIKRAFT_VERSION}"
+        SAFE_HLUK="${HLUK_VERSION}"
         # The Linux release binaries are static (musl), so the runner's glibc
         # does not matter.
         release_url="https://github.com/hyperlight-dev/hyperlight-unikraft/releases"
-        curl -fsSL "${release_url}/download/${SAFE_HYPERLIGHT_UNIKRAFT}/hluk-${SAFE_HYPERLIGHT_UNIKRAFT}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+        curl -fsSL "${release_url}/download/${SAFE_HLUK}/hluk-${SAFE_HLUK}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
         sudo install -m0755 hluk /usr/local/bin/hluk
         rm -f hluk
 
     - name: Download urunc artifact
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: urunc_static_${{ matrix.arch }}-${{ github.run_id }}
+        name: urunc_static_${{ env.ARCH }}-${{ github.run_id }}
         path: ./
 
     - name: Download containerd-shim-urunc-v2 artifact
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
-        name: containerd-shim-urunc-v2_static_${{ matrix.arch }}-${{ github.run_id }}
+        name: containerd-shim-urunc-v2_static_${{ env.ARCH }}-${{ github.run_id }}
         path: ./
 
     - name: Install urunc
       id: install-urunc
       run: |
-        chmod +x urunc_static_${{ matrix.arch }}
-        chmod +x containerd-shim-urunc-v2_static_${{ matrix.arch }}
-        sudo mv urunc_static_${{ matrix.arch }} /usr/local/bin/urunc
-        sudo mv containerd-shim-urunc-v2_static_${{ matrix.arch }} /usr/local/bin/containerd-shim-urunc-v2
+        chmod +x urunc_static_${ARCH}
+        chmod +x containerd-shim-urunc-v2_static_${ARCH}
+        sudo mv urunc_static_${ARCH} /usr/local/bin/urunc
+        sudo mv containerd-shim-urunc-v2_static_${ARCH} /usr/local/bin/containerd-shim-urunc-v2
         urunc --version
 
     - name: Configure urunc with debug logging
@@ -358,7 +346,7 @@ jobs:
         sudo chmod +x /usr/local/bin/containerd-shim-urunc-fc-v2
 
     - name: Grant access to /dev/kvm
-      if: ${{ matrix.arch == 'amd64' }}
+      if: ${{ env.ARCH == 'amd64' }}
       id: kvm-setup
       run: |
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -397,7 +385,7 @@ jobs:
         export PATH="$GOROOT/bin:$PATH"
         go version
         go env GOROOT
-        if [ "${{ matrix.arch }}" = "arm64" ]; then
+        if [ "${ARCH}" = "arm64" ]; then
           sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}_Spt
         else
           sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}
@@ -415,7 +403,7 @@ jobs:
         EOF
         export GOROOT=$(go env GOROOT)
         export PATH="$GOROOT/bin:$PATH"
-        if [ "${{ matrix.arch }}" = "arm64" ]; then
+        if [ "${ARCH}" = "arm64" ]; then
           sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }}_Spt
         else
           sudo -E env "PATH=$PATH" "GOROOT=$GOROOT" make ${{ matrix.test }} SKIP="Firecracker-unikraft-httpreply-static-net"

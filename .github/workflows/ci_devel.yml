@@ -12,6 +12,58 @@ on:
         required: false
         default: "no"
         type: string
+      # The e2e runners and environment versions. Leave a field empty to use
+      # the default in vm_test.yml.
+      runners:
+        description: 'Runners for the e2e tests, as a JSON list (e.g. ["ubuntu-22.04"])'
+        required: false
+        default: ''
+        type: string
+      runc_version:
+        description: 'runc version for the e2e tests (e.g. 1.3.0)'
+        required: false
+        default: ''
+        type: string
+      containerd_version:
+        description: 'containerd version for the e2e tests (e.g. 2.3.7)'
+        required: false
+        default: ''
+        type: string
+      cni_version:
+        description: 'CNI plugins version for the e2e tests (e.g. 1.7.1)'
+        required: false
+        default: ''
+        type: string
+      nerdctl_version:
+        description: 'nerdctl version for the e2e tests (e.g. 2.1.3)'
+        required: false
+        default: ''
+        type: string
+      crictl_version:
+        description: 'crictl version for the e2e tests (e.g. v1.30.0)'
+        required: false
+        default: ''
+        type: string
+      firecracker_version:
+        description: 'Firecracker version for the e2e tests (e.g. v1.7.0)'
+        required: false
+        default: ''
+        type: string
+      cloud_hypervisor_version:
+        description: 'Cloud Hypervisor version for the e2e tests (e.g. v50.0)'
+        required: false
+        default: ''
+        type: string
+      solo5_version:
+        description: 'Solo5 version for the e2e tests (e.g. v0.9.3)'
+        required: false
+        default: ''
+        type: string
+      hluk_version:
+        description: 'hyperlight-unikraft version for the e2e tests (e.g. v0.18.0)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -29,4 +81,14 @@ jobs:
       ref: ${{ github.sha }}
       skip-build: ${{ inputs.skip_build }}
       skip-lint: ${{ inputs.skip_lint }}
+      runners: ${{ inputs.runners }}
+      runc_version: ${{ inputs.runc_version }}
+      containerd_version: ${{ inputs.containerd_version }}
+      cni_version: ${{ inputs.cni_version }}
+      nerdctl_version: ${{ inputs.nerdctl_version }}
+      crictl_version: ${{ inputs.crictl_version }}
+      firecracker_version: ${{ inputs.firecracker_version }}
+      cloud_hypervisor_version: ${{ inputs.cloud_hypervisor_version }}
+      solo5_version: ${{ inputs.solo5_version }}
+      hluk_version: ${{ inputs.hluk_version }}
     secrets: inherit
