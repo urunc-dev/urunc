@@ -16,6 +16,7 @@ package hypervisors
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -42,6 +43,14 @@ func (ch *CloudHypervisor) Stop(pid int) error {
 
 func (ch *CloudHypervisor) Ok() error {
 	return nil
+}
+
+func (ch *CloudHypervisor) SupportsGuestShutdown() bool {
+	return true
+}
+
+func (ch *CloudHypervisor) RequestGuestShutdown(socketPath string) error {
+	return unixSocketRequest(socketPath, http.MethodPut, "/api/v1/vm.power-button", nil)
 }
 
 // UsesKVM returns true as Cloud Hypervisor is a KVM-based VMM

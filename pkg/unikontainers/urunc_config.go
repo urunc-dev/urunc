@@ -221,6 +221,7 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
 		cfgMap[prefix+"data_path"] = hvCfg.DataPath
 		cfgMap[prefix+"vhost"] = strconv.FormatBool(hvCfg.Vhost)
+		cfgMap[prefix+"graceful_shutdown"] = strconv.FormatBool(hvCfg.GracefulShutdown)
 		cfgMap[prefix+"socket_path"] = hvCfg.SocketPath
 	}
 	for eb, ebCfg := range p.ExtraBins {
@@ -277,6 +278,13 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 				uniklog.Warnf("Invalid vhost value '%s' for monitor '%s': %v. Using default (false).", val, hv, err)
 			} else {
 				hvCfg.Vhost = boolVal
+			}
+		case "graceful_shutdown":
+			boolVal, err := strconv.ParseBool(val)
+			if err != nil {
+				uniklog.Warnf("Invalid graceful_shutdown value '%s' for monitor '%s': %v. Using default (false).", val, hv, err)
+			} else {
+				hvCfg.GracefulShutdown = boolVal
 			}
 		}
 		cfg.Monitors[hv] = hvCfg

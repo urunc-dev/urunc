@@ -42,6 +42,14 @@ func (h *Hedge) Stop(_ int) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 
+func (h *Hedge) SupportsGuestShutdown() bool {
+	return false
+}
+
+func (h *Hedge) RequestGuestShutdown(_ string) error {
+	return fmt.Errorf("hedge not implemented yet")
+}
+
 func (h *Hedge) UsesKVM() bool {
 	return true
 }

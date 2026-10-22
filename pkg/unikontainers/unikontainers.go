@@ -936,6 +936,24 @@ func (u *Unikontainer) removeControlSocket(socketPath string) error {
 	return os.Remove(sockRealPath)
 }
 
+// shutdownFailureReason maps a graceful-shutdown error to a short reason for the log.
+func shutdownFailureReason(err error) string {
+	switch {
+	case errors.Is(err, hypervisors.ErrShutdownConnect):
+		return "could not reach the control socket"
+	case errors.Is(err, hypervisors.ErrShutdownGreeting):
+		return "the monitor did not greet us; it is busy or stuck"
+	case errors.Is(err, hypervisors.ErrShutdownHandshake):
+		return "the monitor did not finish the handshake; it is busy or stuck"
+	case errors.Is(err, hypervisors.ErrShutdownCommand):
+		return "the monitor did not answer the command; it is busy or stuck"
+	case errors.Is(err, hypervisors.ErrShutdownRefused):
+		return "the monitor refused the request"
+	default:
+		return "unknown failure"
+	}
+}
+
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
 	// A monitor that never started has no pid, and kill(2) reads a pid <= 0
@@ -951,13 +969,36 @@ func (u *Unikontainer) Signal(signal unix.Signal) error {
 		return err
 	}
 
-	if err = vmm.Signal(u.State.Pid, signal); err != nil {
-		return err
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+
+	// The socket lives inside the monitor's rootfs, so it is reached through
+	// /proc/<pid>/root.
+	requested := false
+	if signal == unix.SIGTERM &&
+		u.UruncCfg.Monitors[vmmType].GracefulShutdown &&
+		socketPath != "" &&
+		vmm.SupportsGuestShutdown() {
+		hostPath := fmt.Sprintf("/proc/%d/root%s", u.State.Pid, socketPath)
+		if shutErr := vmm.RequestGuestShutdown(hostPath); shutErr != nil {
+			uniklog.WithError(shutErr).
+				WithField("reason", shutdownFailureReason(shutErr)).
+				Warn("graceful shutdown failed, forwarding signal")
+		} else {
+			uniklog.Debug("graceful shutdown requested via control socket")
+			requested = true
+		}
+	} else if signal == unix.SIGTERM && u.UruncCfg.Monitors[vmmType].GracefulShutdown {
+		uniklog.Debug("graceful shutdown enabled but not supported by this monitor, forwarding signal")
+	}
+
+	if !requested {
+		if err = vmm.Signal(u.State.Pid, signal); err != nil {
+			return err
+		}
 	}
 
 	// A stop calls kill with SIGTERM and never runs Delete, so the socket is
 	// removed here too. Best-effort: a failure must not fail the signal.
-	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
 	if (signal == unix.SIGKILL || signal == unix.SIGTERM) && socketPath != "" && vmm.SupportsControlSocket() {
 		if rmErr := u.removeControlSocket(socketPath); rmErr != nil {
 			uniklog.Warnf("failed to remove control socket: %v", rmErr)

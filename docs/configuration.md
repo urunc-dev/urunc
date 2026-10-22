@@ -168,6 +168,7 @@ Each monitor subsection supports the following options:
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
 | `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
+| `graceful_shutdown` | boolean | `false` | Optional. When `true`, on SIGTERM urunc asks the monitor to shut the guest down gracefully over its control socket (QEMU and Cloud Hypervisor on all architectures, Firecracker on x86 only) instead of killing it; the container manager still escalates to SIGKILL after its grace period. Defaults to `false` |
 
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
