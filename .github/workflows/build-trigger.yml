@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   get-changed-files:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.check.outputs.version_changed }}
     steps:

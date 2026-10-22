@@ -16,7 +16,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
       fail-fast: false
     defaults:
       run:
@@ -52,7 +52,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
       fail-fast: false
 
     steps:
@@ -83,7 +83,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
       fail-fast: false
 
     steps:

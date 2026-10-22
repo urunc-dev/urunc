@@ -13,7 +13,7 @@ env:
 jobs:
   parse-version-manifest:
     name: Parse Version Manifest
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs: 
       version: ${{ steps.parse_manifest.outputs.version }}
 
@@ -41,7 +41,7 @@ jobs:
        
   tag-parent: 
     name: Tag Parent Repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [parse-version-manifest]
     if: needs.parse-version-manifest.outputs.version != ''
     steps:
@@ -96,7 +96,7 @@ jobs:
 
   release:
     name: Create Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ci,parse-version-manifest]
     if: needs.parse-version-manifest.outputs.version != ''
     steps:

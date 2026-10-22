@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
 
     steps:
       - name: Harden the runner (Audit all outbound calls)

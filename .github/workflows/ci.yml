@@ -138,7 +138,7 @@ jobs:
   detect-test-changes:
     if: ${{ github.event_name == 'pull_request' && inputs.skip-build != 'yes' }}
     name: Detect test changes
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read

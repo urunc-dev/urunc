@@ -65,7 +65,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        runner: ${{ fromJSON(inputs.runners || '["ubuntu-22.04", "ubuntu-22.04-arm"]') }}
+        runner: ${{ fromJSON(inputs.runners || '["ubuntu-24.04", "ubuntu-24.04-arm"]') }}
         test: ["test_ctr","test_nerdctl","test_crictl","test_docker"]
 
     steps:
@@ -344,6 +344,12 @@ jobs:
         URUNC_CONFIG_FILE=/etc/urunc/config-freebsd.toml exec /usr/local/bin/containerd-shim-urunc-v2 "$@"
         EOF
         sudo chmod +x /usr/local/bin/containerd-shim-urunc-fc-v2
+
+    - name: Allow unprivileged ICMP sockets
+      run: |
+        # The ping tests use unprivileged ICMP sockets, which Ubuntu 24.04
+        # does not allow by default (ping_group_range is "1 0").
+        sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"
 
     - name: Grant access to /dev/kvm
       if: ${{ env.ARCH == 'amd64' }}

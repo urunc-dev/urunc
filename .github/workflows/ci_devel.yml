@@ -15,7 +15,7 @@ on:
       # The e2e runners and environment versions. Leave a field empty to use
       # the default in vm_test.yml.
       runners:
-        description: 'Runners for the e2e tests, as a JSON list (e.g. ["ubuntu-22.04"])'
+        description: 'Runners for the e2e tests, as a JSON list (e.g. ["ubuntu-24.04"])'
         required: false
         default: ''
         type: string
