@@ -487,3 +487,4 @@ bootapi
 anypb
 memfd
 errgrpc
+clusterfuzzlite
