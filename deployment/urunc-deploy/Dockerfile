@@ -39,13 +39,15 @@ RUN cp /app/tenders/hvt/solo5-hvt /artifacts/ && \
     cp /app/tenders/spt/solo5-spt /artifacts/
 
 FROM golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS urunc-builder
+# COMMIT is passed from CI (first 7 chars of GITHUB_SHA) so that
+# `git describe --dirty` is not used inside the build context,
+# preventing a -dirty suffix in the embedded version string.
+ARG COMMIT
 RUN apk update && \
     apk add --no-cache git make build-base linux-headers
 WORKDIR /app
-ARG REPO=urunc-dev/urunc
-ARG BRANCH=main
-RUN git clone --depth 1 --branch ${BRANCH} https://github.com/${REPO} . && \
-    make
+COPY . .
+RUN make COMMIT=${COMMIT}
 WORKDIR /artifacts
 RUN cp -r /app/dist .
 
@@ -107,8 +109,8 @@ FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac
 COPY --from=intermediate /urunc-artifacts /urunc-artifacts
 COPY --from=intermediate /usr/bin/jq /usr/bin/jq
 COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
-COPY scripts/install.sh /urunc-artifacts/scripts/install.sh
-COPY config.toml /deployment/config.toml
+COPY deployment/urunc-deploy/scripts/install.sh /urunc-artifacts/scripts/install.sh
+COPY deployment/urunc-deploy/config.toml /deployment/config.toml
 RUN apk update && \
     apk add --no-cache bash curl py3-pip && \
     pip install --no-cache-dir --break-system-packages yq==3.2.3 && \
