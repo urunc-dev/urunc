@@ -487,3 +487,7 @@ bootapi
 anypb
 memfd
 errgrpc
+powerdown
+Alives
+senc
+sdec

@@ -15,6 +15,7 @@
 package hypervisors
 
 import (
+	"fmt"
 	"os/exec"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -43,6 +44,14 @@ func (s *SPT) Stop(pid int) error {
 // UsesKVM returns a bool value depending on if the monitor uses KVM
 func (s *SPT) UsesKVM() bool {
 	return false
+}
+
+func (s *SPT) SupportsGuestShutdown() bool {
+	return false
+}
+
+func (s *SPT) RequestGuestShutdown(_ string) error {
+	return fmt.Errorf("guest shutdown not supported for spt")
 }
 
 // SupportsSharedfs returns a bool value depending on the monitor support for shared-fs
