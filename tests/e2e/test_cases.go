@@ -521,6 +521,22 @@ func nerdctlTestCases() []containerTestArgs {
 			Skippable:      false,
 			TestFunc:       pingTest,
 		},
+		{
+			Image:          "docker.io/urunc/hello-hyperlight-unikraft:v0.18.0",
+			Name:           "Hyperlight-unikraft-http",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "/usr/local/lib/python3.12/http/server.py 8000",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       httpGetTest,
+		},
 	}
 }
 
@@ -1321,6 +1337,22 @@ func dockerTestCases() []containerTestArgs {
 			SideContainers: []string{},
 			Skippable:      false,
 			TestFunc:       pingTest,
+		},
+		{
+			Image:          "docker.io/urunc/hello-hyperlight-unikraft:v0.18.0",
+			Name:           "Hyperlight-unikraft-http",
+			Devmapper:      false,
+			Seccomp:        true,
+			UID:            0,
+			GID:            0,
+			Groups:         []int64{},
+			Memory:         "",
+			Cli:            "/usr/local/lib/python3.12/http/server.py 8000",
+			Volumes:        []containerVolume{},
+			StaticNet:      false,
+			SideContainers: []string{},
+			Skippable:      false,
+			TestFunc:       httpGetTest,
 		},
 	}
 }

@@ -17,6 +17,10 @@ package types
 
 import "golang.org/x/sys/unix"
 
+// ResolvConfPath is where the resolv.conf of the container is mounted in the
+// monitor rootfs, for a monitor that installs it in the guest.
+const ResolvConfPath = "/etc/resolv.conf"
+
 type Unikernel interface {
 	Init(UnikernelParams) error
 	CommandString() (string, error)
@@ -41,11 +45,21 @@ type VMM interface {
 	Signal(int, unix.Signal) error
 	Path() string
 	UsesKVM() bool
+	// UsesTUNTAP reports whether the guest gets its network through a tap
+	// device, which urunc creates in the container's network namespace and
+	// redirects the traffic of the container's interface to. A monitor that
+	// opens the guest's sockets itself, in that namespace, reports false, and
+	// urunc leaves the interface untouched: redirecting its traffic to a tap
+	// would take it away from those sockets.
+	UsesTUNTAP() bool
 	SupportsSharedfs(string) bool
 	SupportsControlSocket() bool
 	Ok() error
 }
 
+// NetDevParams describes the network of the container: its interface, and
+// the tap device that the traffic of the interface is redirected to when the
+// monitor uses one. A container started with no network leaves it empty.
 type NetDevParams struct {
 	IP        string // The veth device IP
 	Mask      string // The veth device mask
@@ -111,6 +125,8 @@ type ExecArgs struct {
 	Command       string   // The unikernel's command line
 	Seccomp       bool     // Enable or disable seccomp filters for the VMM
 	MemSizeB      uint64   // The size of the memory provided to the VM in bytes
+	ResolvConf    bool     // The container's resolv.conf is mounted at ResolvConfPath in the monitor rootfs, for a monitor that installs it in the guest
+	Ports         string   // The ports the guest may serve on, as the annotation of the monitor lists them; "" for any
 	VCPUs         uint     // The number of vCPUs to allocate
 	UnikernelPath string   // The path of the unikernel inside rootfs
 	InitrdPath    string   // The path to the initrd of the unikernel

@@ -263,7 +263,7 @@ func TestMonitorCapabilities(t *testing.T) {
 		t.Parallel()
 		spec := testSpec()
 
-		caps := MonitorCapabilities(spec)
+		caps := monitorCapabilities(spec, true)
 
 		require.NotNil(t, caps)
 		for name, set := range map[string][]string{
@@ -286,7 +286,7 @@ func TestMonitorCapabilities(t *testing.T) {
 		spec := testSpec()
 		spec.Process.Capabilities.Bounding = []string{monCaps[0]}
 
-		caps := MonitorCapabilities(spec)
+		caps := monitorCapabilities(spec, true)
 
 		require.NotNil(t, caps)
 		assert.Equal(t, []string{monCaps[0]}, caps.Bounding)
@@ -297,6 +297,18 @@ func TestMonitorCapabilities(t *testing.T) {
 		spec := testSpec()
 		spec.Process.Capabilities = nil
 
-		assert.Nil(t, MonitorCapabilities(spec))
+		assert.Nil(t, monitorCapabilities(spec, true))
+	})
+
+	t.Run("a monitor without a tap keeps the container's own set", func(t *testing.T) {
+		t.Parallel()
+		spec := testSpec()
+
+		caps := monitorCapabilities(spec, false)
+
+		require.NotNil(t, caps)
+		assert.NotContains(t, caps.Bounding, monCaps[0])
+		assert.NotContains(t, caps.Ambient, monCaps[0])
+		assert.Contains(t, caps.Bounding, "CAP_CHOWN")
 	})
 }

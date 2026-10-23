@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -221,7 +222,7 @@ func (u *Unikontainer) InitialSetup() error {
 		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
-	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath)
+	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
 	if err != nil {
 		return err
 	}
@@ -281,11 +282,65 @@ func (u *Unikontainer) SetRunningState() error {
 	return u.saveContainerState()
 }
 
-// SetupNet creates the sandbox's network device (tap) in the current network
-// namespace and returns its parameters; uid and gid own the tap device.
-func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
-	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
+// monitorResolvConfMount returns the container's own resolv.conf mount, to
+// apply in the monitor rootfs as well, for a monitor that serves the guest's
+// sockets itself: it installs the whole file in the guest, search domains
+// included, so that cluster names resolve as they do in a container, and the
+// guest follows the engine's file as a container does. The monitor only
+// reads it, so it gets it read-only. The other monitors get none, and neither
+// does a container without a resolv.conf.
+func monitorResolvConfMount(vmm types.VMM, cntrMounts []specs.Mount) (specs.Mount, bool) {
+	if vmm.UsesTUNTAP() {
+		return specs.Mount{}, false
+	}
+	m, ok := resolvConfMount(cntrMounts)
+	if !ok {
+		return specs.Mount{}, false
+	}
+	m.Destination = types.ResolvConfPath
+	if !slices.Contains(m.Options, "ro") {
+		m.Options = append(slices.Clone(m.Options), "ro")
+	}
+	return m, true
+}
+
+// hasResolvConfMount reports whether the container's resolv.conf is among
+// the mounts of the monitor rootfs.
+func hasResolvConfMount(monMounts []specs.Mount) bool {
+	for _, m := range monMounts {
+		if m.Destination == types.ResolvConfPath {
+			return true
+		}
+	}
+	return false
+}
+
+// SetupNet gives the guest its network. A monitor on a tap gets one created in
+// the current network namespace, owned by uid and gid, with the traffic of the
+// container's interface redirected to it. Any other monitor opens the guest's
+// sockets in that namespace itself, so the interface is left as it is and only
+// described, for the monitor to know whether the container has a network at
+// all: one started with none gets empty parameters.
+func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	netArgs := types.NetDevParams{}
+	if !tuntap {
+		iface, err := network.ContainerIface()
+		if errors.Is(err, network.ErrNoContainerIface) {
+			uniklog.Debug("no interface in the network namespace of the container, the guest gets no network")
+			return netArgs, nil
+		}
+		if err != nil {
+			return netArgs, fmt.Errorf("failed to describe the container's interface: %w", err)
+		}
+		netArgs.IP = iface.IP
+		netArgs.Mask = iface.Mask
+		netArgs.Gateway = iface.DefaultGateway
+		netArgs.MAC = iface.MAC
+		netArgs.MTU = iface.MTU
+		return netArgs, nil
+	}
+
+	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
 	netManager, err := network.NewNetworkManager(networkType)
 	if err != nil {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
@@ -387,7 +442,7 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, plus the block parameters passed to the guest.
-func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string) (monitorResources, error) {
+func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -400,8 +455,14 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 		return res, fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
 	}
 	res.Mounts = append(res.Mounts, rootfsMounts...)
+	if m, ok := monitorResolvConfMount(vmm, cntrMounts); ok {
+		res.Mounts = append(res.Mounts, m)
+	}
 
-	res.Devices, err = getMonitorDevices(vmm.UsesKVM())
+	// Whether the monitor gets a tap is decided here, once, for its devices
+	// and for its capabilities.
+	res.TUNTAP = vmm.UsesTUNTAP()
+	res.Devices, err = getMonitorDevices(vmm.UsesKVM(), res.TUNTAP)
 	if err != nil {
 		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}
@@ -537,6 +598,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		VCPUs:         uint(defaultVCPUs),
 		SocketPath:    socketPath,
 		Environment:   os.Environ(),
+		Ports:         u.State.Annotations[annotHyperlightPorts],
 	}
 
 	// Check if container is set to unconfined -- disable seccomp
@@ -570,10 +632,14 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
 	mSpec.PreStartCmd = monRes.PreStartCmd
-	// Resolve the guest DNS server once, here in the builder shared by both the
-	// libcontainer and non-libcontainer paths, where the container mount
-	// sources are available.
-	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	// A monitor without a tap hands the container's resolv.conf, mounted in
+	// its rootfs, to the guest. The others get the nameserver out of it,
+	// resolved once here in the builder shared by both the libcontainer and
+	// non-libcontainer paths, where the container mount sources are available.
+	mSpec.ExecArgs.ResolvConf = hasResolvConfMount(monRes.Mounts)
+	if !mSpec.ExecArgs.ResolvConf {
+		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	}
 
 	return mSpec
 }
@@ -653,13 +719,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	netArgs, err := SetupNet(vmm.UsesTUNTAP(), u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
 	}
 	metrics.Capture(m.TS16)
-	withTUNTAP := netArgs.IP != ""
+	withTUNTAP := netArgs.TapDev != ""
 	// SetupNet does not resolve DNS; carry the server resolved at spec build.
 	netArgs.DNSServer = ms.DNSServer
 	unikernelParams.Net = netArgs
