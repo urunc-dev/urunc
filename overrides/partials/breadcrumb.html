@@ -1,0 +1,25 @@
+{% macro render_breadcrumbs(nav_items, path=[]) %}
+  {% for item in nav_items %}
+    {% set new_path = path + [item] %}
+    {% if item.children %}
+      {{ render_breadcrumbs(item.children, new_path) }}
+    {% elif item.url == page.url %}
+      {% if new_path | length > 1 %}
+        <nav class="md-path">
+          <ol class="md-path__list">
+            {% for crumb in new_path[:-1] %}
+              <li class="md-path__item">
+                {# Ensure link is absolute relative to the root #}
+                <a href="{{ crumb.url | url }}" class="md-path__link">
+                  <span class="md-ellipsis">{{ crumb.title }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ol>
+        </nav>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{{ render_breadcrumbs(nav) }}
