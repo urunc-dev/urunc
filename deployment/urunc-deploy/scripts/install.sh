@@ -795,12 +795,14 @@ function main() {
     # cleanup runs in the preStop hook, possibly after the RBAC rules are
     # gone, so it falls back to the version install recorded. Its API calls
     # are bounded, since an unreachable API server would otherwise use up the
-    # Pod's termination grace period before anything is cleaned up.
-    local request_timeout=()
+    # Pod's termination grace period before anything is cleaned up. They are
+    # bounded with timeout, not --request-timeout: any kubectl override
+    # stops it from using the in-cluster configuration.
+    local kubectl_cmd=(kubectl)
     if [ "$action" == "cleanup" ]; then
-        request_timeout=(--request-timeout=5s)
+        kubectl_cmd=(timeout 5 kubectl)
     fi
-    if ! container_runtime_version=$(kubectl get node "$NODE_NAME" "${request_timeout[@]}" \
+    if ! container_runtime_version=$("${kubectl_cmd[@]}" get node "$NODE_NAME" \
             -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}'); then
         container_runtime_version=""
         if [ "$action" == "cleanup" ] && [ -f /host${container_runtime_version_file} ]; then
@@ -947,9 +949,9 @@ function main() {
             # Labeling the node for the cleanup DaemonSet needs the API server,
             # so a failure must not keep the artifacts on the node
             local daemonsets
-            if ! daemonsets=$(kubectl -n kube-system get ds --request-timeout=5s) \
+            if ! daemonsets=$("${kubectl_cmd[@]}" -n kube-system get ds) \
                 || { ! grep -q urunc-deploy <<< "$daemonsets" \
-                    && ! kubectl label node "$NODE_NAME" --overwrite --request-timeout=5s \
+                    && ! "${kubectl_cmd[@]}" label node "$NODE_NAME" --overwrite \
                         urunc.io/urunc-runtime=cleanup; }; then
                 echo "WARNING: cannot label node $NODE_NAME for the cleanup DaemonSet;" \
                     "restart ${runtime} on the node to unload urunc"
