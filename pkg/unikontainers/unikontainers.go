@@ -26,7 +26,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/urunc-dev/urunc/internal/constants"
@@ -1167,70 +1166,6 @@ func (u *Unikontainer) ExecuteHooks(name string) error {
 		return err
 	}
 
-	// NOTE: This wrapper function provides an easy way to toggle between
-	// the sequential and concurrent hook execution.
-	// By default the hooks are executed concurrently.
-	// To execute hooks sequentially, change the following line to:
-	// if false
-	if true {
-		return u.executeHooksConcurrently(name, hooks, s)
-	}
-	return u.executeHooksSequentially(name, hooks, s)
-}
-
-// executeHooksConcurrently executes concurrently any hooks found in spec based on name:
-// NOTE: It is possible that the concurrent execution of the hooks may cause
-// some unknown problems down the line. Be sure to prioritize checking
-// with sequential hook execution when debugging.
-func (u *Unikontainer) executeHooksConcurrently(name string, hooks []specs.Hook, s []byte) error {
-	var (
-		wg       sync.WaitGroup
-		errChan  = make(chan error, len(hooks))
-		firstErr error
-	)
-	for i := range hooks {
-		uniklog.WithFields(logrus.Fields{
-			"id":   u.State.ID,
-			"name": name,
-			"path": hooks[i].Path,
-			"args": hooks[i].Args,
-		}).Debug("Executing hook")
-
-		wg.Add(1)
-		go func(h specs.Hook) {
-			defer wg.Done()
-			err := executeHook(h, s)
-			if err != nil {
-				uniklog.WithFields(logrus.Fields{
-					"id":    u.State.ID,
-					"name":  name,
-					"path":  h.Path,
-					"args":  h.Args,
-					"error": err,
-				}).Error("Executing hook failed")
-				errChan <- err
-			}
-		}(hooks[i])
-	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	for err := range errChan {
-		uniklog.WithField("error", err.Error()).Error("failed to execute hook")
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
-}
-
-// executeHooksSequentially executes sequentially any hooks found in spec based on name:
-// NOTE: This function is left on purpose to aid future debugging efforts
-// in case concurrent hook execution causes unexpected errors.
-func (u *Unikontainer) executeHooksSequentially(name string, hooks []specs.Hook, s []byte) error {
 	for i := range hooks {
 		uniklog.WithFields(logrus.Fields{
 			"id":   u.State.ID,
@@ -1250,7 +1185,6 @@ func (u *Unikontainer) executeHooksSequentially(name string, hooks []specs.Hook,
 			}).Error("Executing hook failed")
 			return fmt.Errorf("failed to execute %s hook: %w", name, err)
 		}
-
 	}
 	return nil
 }
