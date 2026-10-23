@@ -15,6 +15,8 @@
 package unikontainers
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -148,4 +150,29 @@ func TestGuestMemory(t *testing.T) {
 			assert.Equal(t, tt.expected, monitorMemoryBytes(defaultMem, tt.resources))
 		})
 	}
+}
+
+func TestExecuteHooksSequential(t *testing.T) {
+	trace := filepath.Join(t.TempDir(), "trace")
+
+	u := &Unikontainer{
+		State: &specs.State{ID: "test"},
+		Spec: &specs.Spec{
+			Hooks: &specs.Hooks{
+				CreateRuntime: []specs.Hook{
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "printf 1 >> " + trace}},
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "printf 2 >> " + trace}},
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "exit 1"}},
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "printf 3 >> " + trace}},
+				},
+			},
+		},
+	}
+
+	err := u.ExecuteHooks("CreateRuntime")
+	require.Error(t, err)
+
+	out, err := os.ReadFile(trace)
+	require.NoError(t, err)
+	assert.Equal(t, "12", string(out))
 }
