@@ -90,6 +90,7 @@ var supportedGuestMonitorPairs = map[guestMonitorPair]bool{
 	{hypervisors.FirecrackerVmm, unikernels.FreeBSDUnikernel}:   true,
 	{hypervisors.CloudHypervisorVmm, unikernels.LinuxUnikernel}: true,
 	{hypervisors.HyperlightVmm, unikernels.UnikraftUnikernel}:   true,
+	{hypervisors.HviVmm, unikernels.LinuxUnikernel}:             true,
 }
 
 // A UnikernelConfig struct holds the info provided by bima image on how to execute our unikernel

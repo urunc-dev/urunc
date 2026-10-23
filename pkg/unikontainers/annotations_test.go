@@ -482,6 +482,7 @@ func TestValidateValuesGuestMonitorPairs(t *testing.T) {
 		{"rumprun on qemu", string(hypervisors.QemuVmm), unikernels.RumprunUnikernel},
 		{"mewz on hvt", string(hypervisors.HvtVmm), unikernels.MewzUnikernel},
 		{"hedge is not implemented", string(hypervisors.HedgeVmm), unikernels.UnikraftUnikernel},
+		{"unikraft on hvi", string(hypervisors.HviVmm), unikernels.UnikraftUnikernel},
 	}
 
 	for _, tc := range rejected {

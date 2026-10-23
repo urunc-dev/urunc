@@ -120,6 +120,10 @@ function install_artifacts() {
             echo "Installing solo5-hvt"
             install_artifact /urunc-artifacts/hypervisors/solo5-hvt /host${urunc_bin_dir}/solo5-hvt
             ;;
+        hvi)
+            echo "Installing hvi"
+            install_artifact /urunc-artifacts/hypervisors/hvi /host${urunc_bin_dir}/hvi
+            ;;
         *)
             echo "Unsupported hypervisor: $hypervisor"
             ;;

@@ -76,7 +76,7 @@ func (l *Linux) CommandString() (string, error) {
 	// TODO: Check under which conditions console should be set to
 	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
 	// and Qemu ttyAMA0 for aarch64 while for amd64 both are fine with ttyS0
-	if runtime.GOARCH == "arm64" && l.Monitor == "qemu" {
+	if runtime.GOARCH == "arm64" && (l.Monitor == "qemu" || l.Monitor == "hvi") {
 		consoleStr = "console=ttyAMA0"
 	} else {
 		consoleStr = "console=ttyS0"
@@ -181,7 +181,7 @@ func (l *Linux) MonitorBlockCli() []types.MonitorBlockArgs {
 				Path: aBlock.Source,
 			})
 		}
-	case "cloud-hypervisor":
+	case "cloud-hypervisor", "hvi":
 		for _, aBlock := range l.Blk {
 			blkArgs = append(blkArgs, types.MonitorBlockArgs{
 				ID:   aBlock.ID,
@@ -216,7 +216,7 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 			extraCliArgs.ExtraInitrd = urunitConfPath
 		}
 		return extraCliArgs
-	case "firecracker", "cloud-hypervisor":
+	case "firecracker", "cloud-hypervisor", "hvi":
 		if l.InitrdConf && l.RootFsType != "initrd" {
 			return types.MonitorCliArgs{
 				ExtraInitrd: urunitConfPath,

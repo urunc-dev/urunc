@@ -19,10 +19,12 @@ somewhere in the `$PATH`.
 VMMs use hardware-assisted virtualization technologies in order to create a
 Virtual Machine (VM) where a guest OS will execute. It is one of the most
 widely used technologies for providing strong isolation in multi-tenant
-environments. For the time being `urunc` supports 4 types of such VMMs: 1)
+environments. For the time being `urunc` supports 6 types of such VMMs: 1)
 [Qemu](https://www.qemu.org/), 2)
 [Firecracker](https://firecracker-microvm.github.io/), 3)
-[Cloud Hypervisor](https://www.cloudhypervisor.org/) and 4) [Solo5-hvt](https://github.com/Solo5/solo5).
+[Cloud Hypervisor](https://www.cloudhypervisor.org/), 4) [Solo5-hvt](https://github.com/Solo5/solo5), 5)
+[Hyperlight](https://github.com/hyperlight-dev/hyperlight) and 6)
+[hvi](https://github.com/brig-sh/hvi-vmm).
 
 ### Qemu
 
@@ -359,6 +361,48 @@ An example unikernel:
 
 ```bash
 sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 docker.io/urunc/hello-hyperlight-unikraft:v[[ versions["hyperlight-unikraft"] ]]
+```
+
+### hvi
+
+[hvi](https://github.com/brig-sh/hvi-vmm) is a minimal, lightweight KVM-based
+microVMM designed for running Linux guests with minimal footprint and strong
+isolation. Distributed as a single Rust executable for x86-64 and aarch64, `hvi`
+provides a simple device model where all devices reside on `virtio-mmio` and the
+VMM enforces its own internal seccomp sandbox filters.
+
+#### Installing hvi
+
+`hvi` can be built and installed directly from source using the Rust toolchain:
+
+```bash
+git clone https://github.com/brig-sh/hvi-vmm.git
+cd hvi-vmm
+cargo build --release
+sudo install -m0755 target/release/hvi /usr/local/bin/hvi
+```
+
+`urunc` expects the `hvi` binary to be available in `$PATH` or configured via
+`monitors.hvi.path`.
+
+#### hvi and `urunc`
+
+`urunc` integrates with `hvi` using its `boot` command line interface:
+- **Kernel & Initrd**: Passes guest kernels via `--kernel` (uncompressed ELF `vmlinux` or `bzImage`) and initramfs via `--initramfs`.
+- **Memory & vCPUs**: Sets guest RAM via `--mem-mib` and allocated vCPUs via `--cpus`.
+- **Networking**: Attaches to a host TAP device using `--net-tap <tapDev>` and `--net-mac <MAC>`.
+- **Storage**: Attaches block devices via `--disk path=<path>[,readonly=on|off][,serial=<id>]`.
+- **Shared Filesystem**: Supports vhost-user virtiofs via `--fs tag=fs0,socket=<socket>`, matching Cloud Hypervisor's virtiofsd socket model.
+- **Sandboxing**: Runs with `hvi`'s internal seccomp filters by default, or with `--no-sandbox` when container seccomp is disabled.
+
+Supported guests with `urunc`:
+
+- [Linux](../unikernel-support#linux)
+
+An example guest:
+
+```bash
+sudo nerdctl run --rm -ti --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/busybox-hvi-linux-raw:latest
 ```
 
 ## Software-based isolation monitors
