@@ -35,7 +35,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 )
 
-var ErrCopyDir = errors.New("can not copy a directory")
+var ErrNotRegularFile = errors.New("not a regular file")
 
 // setupDevices creates every device from the list inside monitor's rootfs
 func setupDevices(monRootfs string, devices []specs.LinuxDevice, needsTAP bool) error {
@@ -138,8 +138,8 @@ func setupDev(monRootfs string, dev specs.LinuxDevice) error {
 // is placed at the same path it has on the host.
 // A copy is preferred for monitor binaries: none of the monitor processes share
 // memory with other processes of the same monitor, at the cost of being slower
-// and consuming more space. Copying a directory is not supported and returns
-// ErrCopyDir.
+// and consuming more space. Only regular files can be copied; for anything
+// else (a directory, socket, FIFO or device node) it returns ErrNotRegularFile.
 func fileFromHost(monRootfs string, hostPath string, target string) error {
 	// Get the info of the original file
 	var fileInfo unix.Stat_t
@@ -148,8 +148,11 @@ func fileFromHost(monRootfs string, hostPath string, target string) error {
 		return err
 	}
 
-	if (fileInfo.Mode & unix.S_IFMT) == unix.S_IFDIR {
-		return ErrCopyDir
+	// Only a regular file has content to copy: a directory would need a
+	// recursive copy, opening a FIFO blocks, opening a socket fails with ENXIO
+	// and reading a device like /dev/urandom never ends.
+	if (fileInfo.Mode & unix.S_IFMT) != unix.S_IFREG {
+		return ErrNotRegularFile
 	}
 
 	if target == "" {
@@ -389,7 +392,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// containerd's parser cannot translate propagation tokens, and the kernel
 	// ignores per-mount VFS flags (nosuid, nodev, ...) when a bind is created, so
 	// parse the options once and apply them manually later.
-	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, m.Type == "bind")
+	containerdOpts, propagation, vfsFlags := splitMountOptions(m.Options, isBindMount(m))
 
 	cm := mount.Mount{
 		Type:    m.Type,
@@ -405,7 +408,7 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	// them with a remount. In a user namespace the remount must preserve the
 	// flags locked on the source mount, otherwise the kernel rejects it with
 	// EPERM (this is what containerd's own bind remount does for us elsewhere).
-	if m.Type == "bind" && vfsFlags != 0 {
+	if isBindMount(m) && vfsFlags != 0 {
 		remount := vfsFlags | unix.MS_BIND | unix.MS_REMOUNT
 		if userns.RunningInUserNS() {
 			locked, err := getUnprivilegedMountFlags(m.Source)
@@ -441,9 +444,74 @@ func applyMount(rootfsPath string, m specs.Mount) error {
 	return nil
 }
 
+// isBindMount reports whether m is a bind mount. As the OCI runtime spec
+// defines it, a mount is a bind mount if its options include "bind" or
+// "rbind". Its Type is then a dummy and is ignored, as runc does.
+// See the Mounts section of runtime-spec v1.2.1:
+// https://github.com/opencontainers/runtime-spec/blob/524fc0e1b8ab0180e2fc9abd31837a0f4ed1fd6b/config.md#configMounts
+func isBindMount(m specs.Mount) bool {
+	return slices.Contains(m.Options, "bind") || slices.Contains(m.Options, "rbind")
+}
+
+// isHostKernelFS reports whether path resides on one of the filesystems
+// through which the host kernel exposes its state and configuration (sysfs,
+// procfs, cgroupfs, ...).
+func isHostKernelFS(path string) (bool, error) {
+	var st unix.Statfs_t
+	err := unix.Statfs(path, &st)
+	if err != nil {
+		return false, fmt.Errorf("failed to statfs %s: %w", path, err)
+	}
+
+	// Statfs_t.Type is an int64 on amd64 and arm64; the conversion only
+	// matters on architectures where it is narrower.
+	switch int64(st.Type) {
+	case unix.SYSFS_MAGIC,
+		unix.PROC_SUPER_MAGIC,
+		unix.CGROUP_SUPER_MAGIC,
+		unix.CGROUP2_SUPER_MAGIC,
+		unix.SECURITYFS_MAGIC,
+		unix.DEBUGFS_MAGIC,
+		unix.TRACEFS_MAGIC,
+		unix.BPF_FS_MAGIC,
+		unix.EFIVARFS_MAGIC,
+		unix.PSTOREFS_MAGIC,
+		unix.BINFMTFS_MAGIC,
+		unix.NSFS_MAGIC:
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// onlyBindMounts returns the bind mounts among mounts, as recognized by
+// isBindMount, which urunc passes to the guest. It leaves out bind mounts
+// whose source resides on a host kernel filesystem, which the guest should not
+// have access to. The guest has its own kernel and its own instances of these
+// filesystems.
+func onlyBindMounts(mounts []specs.Mount) ([]specs.Mount, error) {
+	var result []specs.Mount
+	for _, m := range mounts {
+		if !isBindMount(m) {
+			continue
+		}
+		kernelFS, err := isHostKernelFS(m.Source)
+		if err != nil {
+			return nil, err
+		}
+		if kernelFS {
+			uniklog.Warnf("skipping bind mount of %s to %s: its source is a host kernel filesystem", m.Source, m.Destination)
+			continue
+		}
+		result = append(result, m)
+	}
+
+	return result, nil
+}
+
 // createMountPoint creates the mountpoint of a mount.
 func createMountPoint(target string, m specs.Mount) error {
-	if m.Type == "bind" {
+	if isBindMount(m) {
 		var st unix.Stat_t
 		err := unix.Stat(m.Source, &st)
 		if err != nil {
