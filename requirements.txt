@@ -13,3 +13,4 @@ pymdown-extensions
 mkdocstrings[python]
 ruff
 mike
+markdown>=3.8.1 # not directly required, pinned by Snyk to avoid a vulnerability
