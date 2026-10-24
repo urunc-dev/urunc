@@ -31,6 +31,20 @@ const (
 	defaultInterval = 1 * time.Second
 )
 
+var _ = BeforeSuite(func() {
+	_, err := commonCmdExec("ctr namespaces create " + testNamespace)
+	if err != nil {
+		GinkgoLogr.Info("namespace setup: " + err.Error())
+	}
+})
+
+var _ = AfterSuite(func() {
+	_, err := commonCmdExec("ctr namespaces remove " + testNamespace)
+	if err != nil {
+		GinkgoLogr.Error(err, "failed to remove namespace "+testNamespace+"; manual cleanup may be required")
+	}
+})
+
 func TestE2E(t *testing.T) {
 	format.MaxLength = 0 // Do not truncate failure output
 	RegisterFailHandler(Fail)

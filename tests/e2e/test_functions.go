@@ -229,15 +229,19 @@ func namespaceTest(tool testTool) error {
 	// We need to retrieve the container's config, in order to get
 	// the namespaces that the container should have joined.
 	containerID := tool.getContainerID()
-	// Try /run/containerd/io.containerd.runtime.v2.task/default/containerID first
-	configPath := filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/default/", containerID, "/config.json")
+	// Try testNamespace first, then fall back to default, k8s.io, and moby.
+	configPath := filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/"+testNamespace+"/", containerID, "/config.json")
 	_, err := os.Stat(configPath)
 	if os.IsNotExist(err) {
-		configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/k8s.io/", containerID, "/config.json")
+		configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/default/", containerID, "/config.json")
 		_, err = os.Stat(configPath)
 		if os.IsNotExist(err) {
-			configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/moby/", containerID, "/config.json")
+			configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/k8s.io/", containerID, "/config.json")
 			_, err = os.Stat(configPath)
+			if os.IsNotExist(err) {
+				configPath = filepath.Join("/var/run/containerd/io.containerd.runtime.v2.task/moby/", containerID, "/config.json")
+				_, err = os.Stat(configPath)
+			}
 		}
 	}
 	if err != nil {
