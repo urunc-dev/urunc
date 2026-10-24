@@ -115,6 +115,12 @@ type UnikernelParams struct {
 	ContainerBoot bool          // Use the generic initrd /init before entering a block rootfs
 }
 
+// BlockDevSpec describes one disk image attached to the guest as virtio-blk.
+type BlockDevSpec struct {
+	Path     string // The path to the disk image on the host
+	ReadOnly bool   // Attach the disk read-only
+}
+
 // ExecArgs holds the data required by Execve to start the VMM
 // FIXME: add extra fields if required by additional VMM's
 type ExecArgs struct {
@@ -140,6 +146,14 @@ type ExecArgs struct {
 	Net                NetDevParams
 	Sharedfs           SharedfsParams
 	SharedDirs         []SharedDirParams // additional tagged virtiofs shares (Vz)
+	// BlockDevs are the disks to attach, in the order they go on the VMM's
+	// command line. The guest finds each one by its serial, disk<N>, where N
+	// is its position here, so the order matters. BlockDevPath is the older
+	// single-disk form; it counts as one writable disk when BlockDevs is
+	// empty, and is ignored otherwise. Use EffectiveBlockDevs to read both.
+	// Read by the darwin builders only (hvi, Vz). The Linux hvi and the QEMU
+	// builders still read BlockDevPath.
+	BlockDevs []BlockDevSpec
 	// GuestUID and GuestGID are who the workload runs as inside the guest.
 	//
 	// A file server sharing a host directory has to present it as owned by
@@ -150,6 +164,18 @@ type ExecArgs struct {
 	// EACCES that names nothing.
 	GuestUID uint32
 	GuestGID uint32
+}
+
+// EffectiveBlockDevs returns the disks to attach, in order: BlockDevs when
+// it is set, else BlockDevPath as a single writable disk, else nil.
+func (a ExecArgs) EffectiveBlockDevs() []BlockDevSpec {
+	if len(a.BlockDevs) > 0 {
+		return a.BlockDevs
+	}
+	if a.BlockDevPath != "" {
+		return []BlockDevSpec{{Path: a.BlockDevPath}}
+	}
+	return nil
 }
 
 type MonitorCliArgs struct {

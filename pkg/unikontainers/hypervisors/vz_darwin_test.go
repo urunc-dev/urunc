@@ -87,3 +87,158 @@ func TestVzDarwinContainerBootRootShareIsTaggedReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestVzDarwinDisks(t *testing.T) {
+	cases := []struct {
+		name string
+		args types.ExecArgs
+		want []string
+	}{
+		{
+			name: "no disk",
+			args: types.ExecArgs{},
+			want: nil,
+		},
+		{
+			name: "legacy BlockDevPath is the root disk",
+			args: types.ExecArgs{BlockDevPath: "/instance/root.ext4"},
+			want: []string{"--rootfs", "/instance/root.ext4"},
+		},
+		{
+			// vz-runner numbers the serials over --disk and --disk-ro only,
+			// so the order here is the order of disk0, disk1.
+			name: "BlockDevs keep their order and mode",
+			args: types.ExecArgs{BlockDevs: []types.BlockDevSpec{
+				{Path: "/store/lower.ext4", ReadOnly: true},
+				{Path: "/instance/upper.ext4"},
+			}},
+			want: []string{"--disk-ro", "/store/lower.ext4", "--disk", "/instance/upper.ext4"},
+		},
+		{
+			name: "BlockDevs win over BlockDevPath",
+			args: types.ExecArgs{
+				BlockDevPath: "/instance/root.ext4",
+				BlockDevs:    []types.BlockDevSpec{{Path: "/store/lower.ext4", ReadOnly: true}},
+			},
+			want: []string{"--disk-ro", "/store/lower.ext4"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.args.KernelPath = "/host/Image"
+			argv, err := NewVzDarwin().BuildExecCmd(tc.args, &fakeUnikernel{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := diskArgs(argv)
+			if strings.Join(got, " ") != strings.Join(tc.want, " ") {
+				t.Fatalf("disks: got %q, want %q\nargv: %v", got, tc.want, argv)
+			}
+		})
+	}
+}
+
+func TestVzDarwinDisksRejected(t *testing.T) {
+	cases := []struct {
+		name  string
+		disks []types.BlockDevSpec
+		want  string
+	}{
+		{
+			name:  "empty path",
+			disks: []types.BlockDevSpec{{Path: "/store/lower.ext4", ReadOnly: true}, {}},
+			want:  "vz: block device 1 has no path",
+		},
+		{
+			name: "duplicate path",
+			disks: []types.BlockDevSpec{
+				{Path: "/instance/disk.ext4", ReadOnly: true},
+				{Path: "/instance/disk.ext4"},
+			},
+			want: `vz: duplicate block device "/instance/disk.ext4"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewVzDarwin().BuildExecCmd(types.ExecArgs{
+				KernelPath: "/host/Image",
+				BlockDevs:  tc.disks,
+			}, &fakeUnikernel{})
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("got error %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// Disks in BlockDevs leave the RootfsPath share in place, as they do the
+// Sharedfs root share.
+func TestVzDarwinDisksKeepRootfsPathShare(t *testing.T) {
+	dir := t.TempDir()
+	out, err := NewVzDarwin().BuildExecCmd(types.ExecArgs{
+		KernelPath: "/host/Image",
+		RootfsPath: dir,
+		BlockDevs:  []types.BlockDevSpec{{Path: "/instance/upper.ext4"}},
+	}, &fakeUnikernel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(out, " ")
+	for _, want := range []string{
+		"--share " + dir + " rootfs",
+		"--disk /instance/upper.ext4",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("expected %q in Vz command:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "--rootfs") {
+		t.Errorf("BlockDevs must not emit --rootfs:\n%s", joined)
+	}
+}
+
+// The legacy root disk replaces the root share. Disks in BlockDevs do not:
+// an overlay boot needs both the share and the disks on the command line.
+func TestVzDarwinDisksKeepRootShare(t *testing.T) {
+	share := types.SharedfsParams{Path: "/store/rootfs", ReadOnly: true}
+
+	out, err := NewVzDarwin().BuildExecCmd(types.ExecArgs{
+		KernelPath: "/host/Image",
+		Sharedfs:   share,
+		BlockDevs: []types.BlockDevSpec{
+			{Path: "/store/lower.ext4", ReadOnly: true},
+			{Path: "/instance/upper.ext4"},
+		},
+	}, &fakeUnikernel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(out, " ")
+	for _, want := range []string{
+		"--share-ro /store/rootfs fs0",
+		"--disk-ro /store/lower.ext4 --disk /instance/upper.ext4",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("expected %q in Vz command:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "--rootfs") {
+		t.Errorf("BlockDevs must not emit --rootfs:\n%s", joined)
+	}
+
+	out, err = NewVzDarwin().BuildExecCmd(types.ExecArgs{
+		KernelPath:   "/host/Image",
+		Sharedfs:     share,
+		BlockDevPath: "/instance/root.ext4",
+	}, &fakeUnikernel{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(out, " ")
+	if !strings.Contains(joined, "--rootfs /instance/root.ext4") {
+		t.Errorf("legacy root disk missing:\n%s", joined)
+	}
+	if strings.Contains(joined, "fs0") {
+		t.Errorf("legacy root disk must replace the root share:\n%s", joined)
+	}
+}
