@@ -42,6 +42,7 @@ const (
 type Linux struct {
 	App        string
 	Command    string
+	Args       []string // application command, verbatim, for urunit
 	Monitor    string
 	Env        []string
 	Net        LinuxNet
@@ -123,7 +124,11 @@ func (l *Linux) CommandString() (string, error) {
 		bootParams += " URUNIT_DEFROUTE=1"
 	}
 	if l.App != "" {
-		initParams := rdinit + "init=" + l.App + " -- " + l.Command
+		initParams := rdinit + "init=" + l.App
+		// urunit takes the application command from its configuration
+		if !l.InitrdConf {
+			initParams += " -- " + l.Command
+		}
 		bootParams += " " + initParams
 	}
 
@@ -275,6 +280,7 @@ func (l *Linux) parseCmdLine(cmdLine []string) error {
 	}
 
 	l.App = normalizedArgs[0]
+	l.Args = cmdLine[1:]
 	if len(normalizedArgs) > 1 {
 		l.Command = strings.Join(normalizedArgs[1:], " ")
 	} else {
@@ -293,6 +299,12 @@ func (l *Linux) configureNetwork(net types.NetDevParams) {
 
 // setupUrunitConfig creates the urunit configuration file with environment variables.
 func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
+	// The configuration is line based, so an argument cannot hold a newline
+	for _, arg := range l.Args {
+		if strings.Contains(arg, "\n") {
+			return fmt.Errorf("failed to setup urunit config: argument %q contains a newline", arg)
+		}
+	}
 	urunitConfig := l.buildUrunitConfig()
 
 	var err error
@@ -337,6 +349,14 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString("WD:")
 	sb.WriteString(l.ProcConfig.WorkDir)
 	sb.WriteString("\n")
+	sb.WriteString("ARC:")
+	sb.WriteString(strconv.Itoa(len(l.Args)))
+	sb.WriteString("\n")
+	for _, arg := range l.Args {
+		sb.WriteString("ARV:")
+		sb.WriteString(arg)
+		sb.WriteString("\n")
+	}
 	sb.WriteString(lpcEndMarker)
 	sb.WriteString("\n")
 	sb.WriteString(blkStartMarker)
