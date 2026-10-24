@@ -32,29 +32,6 @@ const (
 	pullRetryDelay = 2 * time.Second
 )
 
-func getTestImages(cases []containerTestArgs) []string {
-	unique := make(map[string]struct{})
-	for _, tc := range cases {
-		unique[tc.Image] = struct{}{}
-	}
-
-	images := make([]string, 0, len(unique))
-	for img := range unique {
-		images = append(images, img)
-	}
-	return images
-}
-
-func pullAllImages(testFunc string, images []string) error {
-	for _, image := range images {
-		log.Printf("Pulling image: %s", image)
-		if err := pullImageWithRetry(testFunc, image); err != nil {
-			return fmt.Errorf("failed to pull %s: %w", image, err)
-		}
-	}
-	return nil
-}
-
 func removeAllImages(testFunc string, images []string) {
 	for _, image := range images {
 		log.Printf("Removing image: %s", image)
