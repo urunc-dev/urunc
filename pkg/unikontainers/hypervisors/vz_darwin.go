@@ -167,7 +167,7 @@ func (v *VzDarwin) PreExec(_ types.ExecArgs) error {
 }
 
 // Signal sends a signal to the vz-runner process
-func (v *VzDarwin) Signal(pid int, signal unix.Signal) error {
+func (v *VzDarwin) Signal(pid int, signal unix.Signal, _ string) error {
 	return signalProcess(pid, signal)
 }
 

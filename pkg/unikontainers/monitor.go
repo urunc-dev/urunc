@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -159,9 +158,8 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 	// Create the socket directory after setupUser, so the monitor's user owns
 	// it and a non-root monitor can bind there. The monitor creates the socket.
 	if vmm.SupportsControlSocket() && ms.ExecArgs.SocketPath != "" {
-		sockDir := filepath.Dir(ms.ExecArgs.SocketPath)
-		if err = os.MkdirAll(sockDir, 0o700); err != nil {
-			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		if err = prepareControlSocket(ms.ExecArgs.SocketPath); err != nil {
+			return err
 		}
 	}
 

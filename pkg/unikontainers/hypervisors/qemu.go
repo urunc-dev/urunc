@@ -50,7 +50,7 @@ type Qemu struct {
 	qmpSocket string // QMP socket set by a darwin caller; "" means none
 }
 
-func (q *Qemu) Signal(pid int, signal unix.Signal) error {
+func (q *Qemu) Signal(pid int, signal unix.Signal, _ string) error {
 	return signalProcess(pid, signal)
 }
 

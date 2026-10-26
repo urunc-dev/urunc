@@ -108,7 +108,7 @@ func TestKillProcessRefusesInvalidPid(t *testing.T) {
 
 func TestVMMSignalStopRefuseInvalidPid(t *testing.T) {
 	vmms := map[string]interface {
-		Signal(int, unix.Signal) error
+		Signal(int, unix.Signal, string) error
 		Stop(int) error
 	}{
 		"cloud-hypervisor": &CloudHypervisor{},
@@ -121,8 +121,8 @@ func TestVMMSignalStopRefuseInvalidPid(t *testing.T) {
 	for name, vmm := range vmms {
 		for _, pid := range []int{-1, 0} {
 			calls := stubSysKill(t)
-			assert.Error(t, vmm.Signal(pid, unix.SIGKILL), "%s Signal(%d, SIGKILL)", name, pid)
-			assert.Error(t, vmm.Signal(pid, unix.SIGTERM), "%s Signal(%d, SIGTERM)", name, pid)
+			assert.Error(t, vmm.Signal(pid, unix.SIGKILL, ""), "%s Signal(%d, SIGKILL)", name, pid)
+			assert.Error(t, vmm.Signal(pid, unix.SIGTERM, ""), "%s Signal(%d, SIGTERM)", name, pid)
 			assert.Error(t, vmm.Stop(pid), "%s Stop(%d)", name, pid)
 			assert.Empty(t, *calls, "%s pid %d", name, pid)
 		}

@@ -242,7 +242,7 @@ func TestHviDarwinCapabilities(t *testing.T) {
 	if hvi.SupportsControlSocket() {
 		t.Error("hvi on darwin has no control socket")
 	}
-	if err := hvi.Signal(0, 0); err == nil {
+	if err := hvi.Signal(0, 0, ""); err == nil {
 		t.Error("Signal must refuse pid 0")
 	}
 }

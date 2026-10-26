@@ -15,9 +15,13 @@
 package hypervisors
 
 import (
+	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"golang.org/x/sys/unix"
@@ -26,6 +30,9 @@ import (
 const (
 	CloudHypervisorVmm    VmmType = "cloud-hypervisor"
 	CloudHypervisorBinary string  = "cloud-hypervisor"
+
+	chPowerButtonURL = "http://localhost/api/v1/vm.power-button"
+	chAPITimeout     = 2 * time.Second
 )
 
 type CloudHypervisor struct {
@@ -33,8 +40,48 @@ type CloudHypervisor struct {
 	binary     string
 }
 
-func (ch *CloudHypervisor) Signal(pid int, signal unix.Signal) error {
+// Signal turns SIGTERM and SIGINT into a press of the guest's power button,
+// so the guest can shut down on its own, and leaves the monitor running: a
+// SIGKILL follows if the guest does not exit in time. Without a control
+// socket, or if the API fails, the monitor gets the signal.
+func (ch *CloudHypervisor) Signal(pid int, signal unix.Signal, ctrlSock string) error {
+	if ctrlSock != "" && (signal == unix.SIGTERM || signal == unix.SIGINT) {
+		err := ch.pressPowerButton(ctrlSock)
+		if err == nil {
+			return nil
+		}
+		vmmLog.Warnf("signalling the monitor instead: %v", err)
+	}
 	return signalProcess(pid, signal)
+}
+
+// pressPowerButton presses the guest's power button through the REST API on
+// socketPath. The guest sees an ACPI power button on x86 and a GPIO power key
+// on arm64, and its init decides what to do with it.
+func (ch *CloudHypervisor) pressPowerButton(socketPath string) error {
+	client := http.Client{
+		Timeout: chAPITimeout,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", socketPath)
+			},
+		},
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, chPowerButtonURL, http.NoBody)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("cloud-hypervisor power button: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("cloud-hypervisor power button: %s", resp.Status)
+	}
+	return nil
 }
 
 func (ch *CloudHypervisor) Stop(pid int) error {

@@ -34,7 +34,7 @@ func (h *Hedge) Ok() error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 
-func (h *Hedge) Signal(_ int, _ unix.Signal) error {
+func (h *Hedge) Signal(_ int, _ unix.Signal, _ string) error {
 	return fmt.Errorf("hedge not implemented yet")
 }
 

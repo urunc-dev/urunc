@@ -75,7 +75,7 @@ type FirecrackerConfig struct {
 	VSock   FirecrackerVSockDev   `json:"vsock,omitempty"`
 }
 
-func (fc *Firecracker) Signal(pid int, signal unix.Signal) error {
+func (fc *Firecracker) Signal(pid int, signal unix.Signal, _ string) error {
 	if signal == unix.SIGTERM || signal == unix.SIGINT {
 		return fc.Stop(pid)
 	}

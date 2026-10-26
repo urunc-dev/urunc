@@ -588,3 +588,10 @@ wdir
 Werror
 Wextra
 Wformat
+commitlint
+actionlint
+grepped
+linted
+shellcheck
+SARIF
+GPIO
