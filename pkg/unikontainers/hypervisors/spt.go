@@ -31,7 +31,7 @@ type SPT struct {
 	binary     string
 }
 
-func (s *SPT) Signal(pid int, signal unix.Signal) error {
+func (s *SPT) Signal(pid int, signal unix.Signal, _ string) error {
 	return signalProcess(pid, signal)
 }
 

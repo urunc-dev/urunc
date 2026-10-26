@@ -111,7 +111,7 @@ func (h *Hyperlight) Ok() error {
 	return nil
 }
 
-func (h *Hyperlight) Signal(pid int, signal unix.Signal) error {
+func (h *Hyperlight) Signal(pid int, signal unix.Signal, _ string) error {
 	return signalProcess(pid, signal)
 }
 

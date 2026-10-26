@@ -44,7 +44,7 @@ type Hvi struct {
 	binary     string
 }
 
-func (h *Hvi) Signal(pid int, signal unix.Signal) error {
+func (h *Hvi) Signal(pid int, signal unix.Signal, _ string) error {
 	return signalProcess(pid, signal)
 }
 

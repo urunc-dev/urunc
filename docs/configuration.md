@@ -192,9 +192,19 @@ privileges to the monitor's user, so the path is subject to two constraints:
   of the directories in the path. The monitor then binds the socket at
   `socket_path`; that fails if a file already exists at `socket_path` itself.
 
-`urunc` removes the socket when the container is stopped (on a terminating
-signal) and when it is deleted, so a restart that reuses the same `socket_path`
-does not find a stale socket.
+`urunc` removes the socket when the monitor is killed (`SIGKILL`) and when the
+container is deleted. A socket left behind by a monitor that exited otherwise
+is removed before the next monitor binds, so a restart that reuses the same
+`socket_path` does not find a stale socket.
+
+With Cloud Hypervisor, the socket also allows a graceful stop. On `SIGTERM` or
+`SIGINT`, `urunc` presses the guest's power button through the API instead of
+signalling the monitor, and leaves the monitor and its socket in place. The
+guest sees an ACPI power button on x86 and a GPIO power key on arm64, and its
+init has to act on it: `urunit` stops the application with `SIGTERM` on the
+ACPI power button, so on x86. If the guest does not shut down within the stop
+timeout, the `SIGKILL` that follows stops the monitor. If the request fails,
+`urunc` signals the monitor as before.
 
 **Example:**
 

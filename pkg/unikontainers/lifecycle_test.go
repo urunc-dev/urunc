@@ -18,18 +18,22 @@ package unikontainers
 
 import (
 	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
-
+	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 // A container whose monitor never started keeps the initial Pid -1 in its
@@ -237,4 +241,134 @@ func TestMonitorGone(t *testing.T) {
 	require.NoError(t, unix.Kill(zombie.Process.Pid, 0), "the zombie is still there")
 	_ = zombie.Wait()
 	require.True(t, monitorGone(zombie.Process.Pid), "a reaped process")
+}
+
+const testAPISocket = "/run/api.sock"
+
+// unikontainerWithCH returns a container run by Cloud Hypervisor, with its
+// API socket configured and pid as the monitor's pid.
+func unikontainerWithCH(t *testing.T, pid int) *Unikontainer {
+	t.Helper()
+	u := unikontainerWithoutMonitor(t, pid)
+	u.State.Annotations[annotHypervisor] = string(hypervisors.CloudHypervisorVmm)
+	u.UruncCfg.Monitors = map[string]types.MonitorConfig{
+		string(hypervisors.CloudHypervisorVmm): {BinaryPath: "/nonexistent/cloud-hypervisor", SocketPath: testAPISocket},
+	}
+	return u
+}
+
+// serveAPI serves a fake monitor API on the unix socket sock, answering every
+// request with status, and returns the number of requests it gets.
+func serveAPI(t *testing.T, sock string, status int) *atomic.Int32 {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(sock), 0o755))
+	l, err := net.Listen("unix", sock)
+	require.NoError(t, err)
+	var calls atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(status)
+	}))
+	require.NoError(t, srv.Listener.Close())
+	srv.Listener = l
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return &calls
+}
+
+// startMonitor starts a process that stands in for the monitor.
+func startMonitor(t *testing.T) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command("sleep", "60")
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+	return cmd
+}
+
+func TestSignalRequestsGuestShutdown(t *testing.T) {
+	mon := startMonitor(t)
+	u := unikontainerWithCH(t, mon.Process.Pid)
+	sock := filepath.Join(u.monitorRootfs(), testAPISocket)
+	calls := serveAPI(t, sock, http.StatusNoContent)
+
+	require.NoError(t, u.Signal(unix.SIGTERM))
+	require.EqualValues(t, 1, calls.Load())
+	// The monitor and its socket stay, for a SIGKILL if the guest hangs.
+	require.NoError(t, mon.Process.Signal(syscall.Signal(0)))
+	require.FileExists(t, sock)
+}
+
+func TestSignalFallsBackToTheMonitor(t *testing.T) {
+	mon := startMonitor(t)
+	u := unikontainerWithCH(t, mon.Process.Pid)
+	sock := filepath.Join(u.monitorRootfs(), testAPISocket)
+	calls := serveAPI(t, sock, http.StatusInternalServerError)
+
+	require.NoError(t, u.Signal(unix.SIGTERM))
+	require.EqualValues(t, 1, calls.Load())
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, mon.Wait(), &exitErr)
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	require.True(t, ok)
+	require.Equal(t, syscall.SIGTERM, status.Signal())
+	// The socket stays, for prepareControlSocket at the next start.
+	require.FileExists(t, sock)
+}
+
+func TestSignalKillRemovesControlSocket(t *testing.T) {
+	mon := startMonitor(t)
+	u := unikontainerWithCH(t, mon.Process.Pid)
+	sock := filepath.Join(u.monitorRootfs(), testAPISocket)
+	calls := serveAPI(t, sock, http.StatusNoContent)
+
+	require.NoError(t, u.Signal(unix.SIGKILL))
+	require.Zero(t, calls.Load())
+	require.NoFileExists(t, sock)
+}
+
+func TestOpenControlSocketStaysInMonitorRootfs(t *testing.T) {
+	u := unikontainerWithCH(t, -1)
+	sock := filepath.Join(u.monitorRootfs(), testAPISocket)
+	serveAPI(t, sock, http.StatusNoContent)
+
+	f, err := u.openControlSocket(testAPISocket)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// A symlink to a host socket resolves inside the monitor rootfs.
+	hostSock := filepath.Join(t.TempDir(), "host.sock")
+	serveAPI(t, hostSock, http.StatusNoContent)
+	require.NoError(t, os.Remove(sock))
+	require.NoError(t, os.Symlink(hostSock, sock))
+	_, err = u.openControlSocket(testAPISocket)
+	require.Error(t, err)
+
+	require.NoError(t, os.Remove(sock))
+	require.NoError(t, os.WriteFile(sock, nil, 0o600))
+	_, err = u.openControlSocket(testAPISocket)
+	require.ErrorContains(t, err, "not a socket")
+}
+
+func TestPrepareControlSocket(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "run", "api.sock")
+
+	// The directory is created.
+	require.NoError(t, prepareControlSocket(sock))
+	require.DirExists(t, filepath.Dir(sock))
+
+	// A socket left by a monitor that exited on its own is removed.
+	l, err := net.Listen("unix", sock)
+	require.NoError(t, err)
+	l.(*net.UnixListener).SetUnlinkOnClose(false)
+	require.NoError(t, l.Close())
+	require.NoError(t, prepareControlSocket(sock))
+	require.NoFileExists(t, sock)
+
+	// Any other file stays, for the monitor's bind to fail on.
+	require.NoError(t, os.WriteFile(sock, nil, 0o600))
+	require.NoError(t, prepareControlSocket(sock))
+	require.FileExists(t, sock)
 }

@@ -42,6 +42,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	securejoin "github.com/cyphar/filepath-securejoin"
+	pathrs "github.com/cyphar/filepath-securejoin/pathrs-lite"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	m "github.com/urunc-dev/urunc/internal/metrics"
@@ -909,9 +910,8 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// Create the socket directory after setupUser, so the monitor's user owns
 	// it and a non-root monitor can bind there. The monitor creates the socket.
 	if vmm.SupportsControlSocket() && vmmArgs.SocketPath != "" {
-		sockDir := filepath.Dir(vmmArgs.SocketPath)
-		if err = os.MkdirAll(sockDir, 0o700); err != nil {
-			return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+		if err = prepareControlSocket(vmmArgs.SocketPath); err != nil {
+			return err
 		}
 	}
 
@@ -1101,6 +1101,46 @@ func (u *Unikontainer) removeControlSocket(socketPath string) error {
 	return os.Remove(sockRealPath)
 }
 
+// prepareControlSocket creates the directory of the monitor's control socket.
+// A guest stopped gracefully takes its monitor down with it, and nothing
+// removes the socket then, so a socket found there is a leftover and goes.
+// Anything else at socketPath is left for the monitor's bind to fail on.
+func prepareControlSocket(socketPath string) error {
+	sockDir := filepath.Dir(socketPath)
+	if err := os.MkdirAll(sockDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create control socket directory %q: %w", sockDir, err)
+	}
+	info, err := os.Lstat(socketPath)
+	if err != nil || info.Mode()&os.ModeSocket == 0 {
+		return nil
+	}
+	if err = os.Remove(socketPath); err != nil {
+		return fmt.Errorf("failed to remove stale control socket %q: %w", socketPath, err)
+	}
+	return nil
+}
+
+// openControlSocket opens the monitor's control socket, for this root process
+// to dial through /proc/self/fd. The monitor owns its rootfs, so the socket is
+// opened inside it: a symlink swapped in at socketPath cannot point the dial
+// at a socket outside it.
+func (u *Unikontainer) openControlSocket(socketPath string) (*os.File, error) {
+	sock, err := pathrs.OpenInRoot(u.monitorRootfs(), socketPath)
+	if err != nil {
+		return nil, err
+	}
+	var st unix.Stat_t
+	if err = unix.Fstat(int(sock.Fd()), &st); err != nil {
+		sock.Close()
+		return nil, err
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFSOCK {
+		sock.Close()
+		return nil, fmt.Errorf("%s is not a socket", socketPath)
+	}
+	return sock, nil
+}
+
 // Signal sends a specified signal to container's init.
 func (u *Unikontainer) Signal(signal unix.Signal) error {
 	return u.SignalWith(signal, nil)
@@ -1173,6 +1213,9 @@ func (u *Unikontainer) SignalWith(signal unix.Signal, guest GuestSignaller) erro
 		return err
 	}
 
+	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
+	hasSocket := socketPath != "" && vmm.SupportsControlSocket()
+
 	delivered := false
 	if guest != nil && signal != unix.SIGKILL && u.isContainerBoot() {
 		err = guest(signal)
@@ -1187,15 +1230,29 @@ func (u *Unikontainer) SignalWith(signal unix.Signal, guest GuestSignaller) erro
 		}
 	}
 	if !delivered {
-		if err = vmm.Signal(u.State.Pid, signal); err != nil {
+		// The monitor may turn the signal into a request to the guest through
+		// its control socket. Without the socket it still gets the signal.
+		ctrlSock := ""
+		if hasSocket {
+			sock, sockErr := u.openControlSocket(socketPath)
+			if sockErr != nil {
+				uniklog.Debugf("signalling without the control socket: %v", sockErr)
+			} else {
+				defer sock.Close()
+				ctrlSock = fmt.Sprintf("/proc/self/fd/%d", sock.Fd())
+			}
+		}
+
+		if err = vmm.Signal(u.State.Pid, signal, ctrlSock); err != nil {
 			return err
 		}
 	}
 
-	// A stop calls kill with SIGTERM and never runs Delete, so the socket is
-	// removed here too. Best-effort: a failure must not fail the signal.
-	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
-	if (signal == unix.SIGKILL || signal == unix.SIGTERM) && socketPath != "" && vmm.SupportsControlSocket() {
+	// A SIGKILL leaves no monitor behind, so its socket goes too. A monitor
+	// stopped otherwise may still be running; prepareControlSocket removes
+	// what it leaves before the next monitor binds. Best-effort: a failure
+	// must not fail the signal.
+	if signal == unix.SIGKILL && hasSocket {
 		if rmErr := u.removeControlSocket(socketPath); rmErr != nil {
 			uniklog.Warnf("failed to remove control socket: %v", rmErr)
 		}

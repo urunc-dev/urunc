@@ -42,7 +42,10 @@ type VMM interface {
 	// filters here. Most monitors can return nil (no-op).
 	PreExec(args ExecArgs) error
 	Stop(int) error
-	Signal(int, unix.Signal) error
+	// Signal delivers a signal to the monitor with the given pid. ctrlSock is
+	// a dialable path to the monitor's control socket, or empty if there is
+	// none, for a monitor that turns a signal into a request to the guest.
+	Signal(pid int, sig unix.Signal, ctrlSock string) error
 	Path() string
 	UsesKVM() bool
 	// UsesTUNTAP reports whether the guest gets its network through a tap

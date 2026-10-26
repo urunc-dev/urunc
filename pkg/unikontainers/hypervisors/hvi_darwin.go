@@ -200,7 +200,7 @@ func blockDevArgs(backend string, disks []types.BlockDevSpec) ([]string, error) 
 
 func (h *HviDarwin) PreExec(_ types.ExecArgs) error { return nil }
 
-func (h *HviDarwin) Signal(pid int, signal unix.Signal) error {
+func (h *HviDarwin) Signal(pid int, signal unix.Signal, _ string) error {
 	return signalProcess(pid, signal)
 }
 

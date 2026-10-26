@@ -15,13 +15,21 @@
 package hypervisors
 
 import (
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"golang.org/x/sys/unix"
 )
 
 const testCHBinary = "/usr/bin/cloud-hypervisor"
@@ -227,5 +235,104 @@ func TestCloudHypervisorAgentSocketIsNotAtTheRootfsRoot(t *testing.T) {
 	joined := strings.Join(argv, " ")
 	if !strings.Contains(joined, "socket="+constants.AgentVsockUDSPath) {
 		t.Errorf("expected socket=%s in:\n%s", constants.AgentVsockUDSPath, joined)
+	}
+}
+
+// serveUnixHTTP serves handler on a unix socket, the way Cloud Hypervisor
+// serves its REST API, and returns the socket path.
+func serveUnixHTTP(t *testing.T, handler http.HandlerFunc) string {
+	t.Helper()
+	sock := filepath.Join(t.TempDir(), "api.sock")
+	l, err := net.Listen("unix", sock)
+	require.NoError(t, err)
+	srv := httptest.NewUnstartedServer(handler)
+	require.NoError(t, srv.Listener.Close())
+	srv.Listener = l
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return sock
+}
+
+func TestCloudHypervisorPressPowerButton(t *testing.T) {
+	t.Parallel()
+	ch := &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: testCHBinary}
+
+	t.Run("presses the power button", func(t *testing.T) {
+		t.Parallel()
+		var method, path string
+		sock := serveUnixHTTP(t, func(w http.ResponseWriter, r *http.Request) {
+			method, path = r.Method, r.URL.Path
+			w.WriteHeader(http.StatusNoContent)
+		})
+		require.NoError(t, ch.pressPowerButton(sock))
+		assert.Equal(t, http.MethodPut, method)
+		assert.Equal(t, "/api/v1/vm.power-button", path)
+	})
+
+	t.Run("reports an API error", func(t *testing.T) {
+		t.Parallel()
+		sock := serveUnixHTTP(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+		err := ch.pressPowerButton(sock)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("reports a missing socket", func(t *testing.T) {
+		t.Parallel()
+		require.Error(t, ch.pressPowerButton(filepath.Join(t.TempDir(), "none.sock")))
+	})
+}
+
+func TestCloudHypervisorSignal(t *testing.T) {
+	t.Parallel()
+	ch := &CloudHypervisor{binary: CloudHypervisorBinary, binaryPath: testCHBinary}
+
+	tests := []struct {
+		name       string
+		signal     unix.Signal
+		withSocket bool
+		apiStatus  int
+		wantPress  bool
+		wantSignal bool // whether the monitor gets the signal
+	}{
+		{name: "SIGTERM presses the power button", signal: unix.SIGTERM, withSocket: true, apiStatus: http.StatusNoContent, wantPress: true},
+		{name: "SIGINT presses the power button", signal: unix.SIGINT, withSocket: true, apiStatus: http.StatusNoContent, wantPress: true},
+		{name: "SIGTERM falls back on an API error", signal: unix.SIGTERM, withSocket: true, apiStatus: http.StatusInternalServerError, wantPress: true, wantSignal: true},
+		{name: "SIGTERM without a socket signals", signal: unix.SIGTERM, wantSignal: true},
+		{name: "SIGKILL never uses the API", signal: unix.SIGKILL, withSocket: true, apiStatus: http.StatusNoContent, wantSignal: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var presses atomic.Int32
+			ctrlSock := ""
+			if tt.withSocket {
+				ctrlSock = serveUnixHTTP(t, func(w http.ResponseWriter, _ *http.Request) {
+					presses.Add(1)
+					w.WriteHeader(tt.apiStatus)
+				})
+			}
+			mon := exec.Command("sleep", "60")
+			require.NoError(t, mon.Start())
+			t.Cleanup(func() {
+				_ = mon.Process.Kill()
+				_ = mon.Wait()
+			})
+
+			require.NoError(t, ch.Signal(mon.Process.Pid, tt.signal, ctrlSock))
+			assert.Equal(t, tt.wantPress, presses.Load() == 1)
+			if !tt.wantSignal {
+				require.NoError(t, mon.Process.Signal(syscall.Signal(0)), "the monitor must keep running")
+				return
+			}
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, mon.Wait(), &exitErr)
+			status, ok := exitErr.Sys().(syscall.WaitStatus)
+			require.True(t, ok)
+			assert.Equal(t, syscall.Signal(tt.signal), status.Signal())
+		})
 	}
 }
