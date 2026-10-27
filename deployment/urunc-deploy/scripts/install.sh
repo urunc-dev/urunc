@@ -62,7 +62,7 @@ container_runtime_version_file="${urunc_install_dir}/container-runtime-version"
 # Configurable keys discovered from config.toml
 urunc_config_keys=""
 
-HYPERVISORS="${HYPERVISORS:-"firecracker cloud-hypervisor qemu solo5-hvt solo5-spt"}"
+HYPERVISORS="${HYPERVISORS:-"firecracker cloud-hypervisor qemu solo5-hvt solo5-spt hluk"}"
 IFS=' ' read -a hypervisors <<< "$HYPERVISORS"
 
 function host_systemctl() {
@@ -119,6 +119,10 @@ function install_artifacts() {
         solo5-hvt)
             echo "Installing solo5-hvt"
             install_artifact /urunc-artifacts/hypervisors/solo5-hvt /host${urunc_bin_dir}/solo5-hvt
+            ;;
+        hluk)
+            echo "Installing hluk"
+            install_artifact /urunc-artifacts/hypervisors/hluk /host${urunc_bin_dir}/hluk
             ;;
         *)
             echo "Unsupported hypervisor: $hypervisor"
@@ -276,6 +280,13 @@ function install_urunc_config() {
     echo "Installing urunc configuration file"
     mkdir -p /host${urunc_config_dir}
     sed "s|qemu-system-x86_64|qemu-system-$(uname -m)|" /deployment/config.toml > /host${urunc_config_file}
+    # The path of hluk is only kept when urunc-deploy installed it: until now
+    # hluk went on the PATH by hand, and a configured path that does not exist
+    # would hide a binary that does. URUNC_MONITORS_HYPERLIGHT_UNIKRAFT_PATH
+    # still sets it either way.
+    if ! printf '%s\n' "${hypervisors[@]}" | grep -qx hluk; then
+        sed -i '\|^path = "/opt/urunc/bin/hluk"$|d' /host${urunc_config_file}
+    fi
     override_urunc_config_from_env "/host${urunc_config_file}"
     echo "urunc configuration file installed at ${urunc_config_file}"
 }
