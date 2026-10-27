@@ -298,6 +298,11 @@ install it:
 sudo install -m0755 hluk /usr/local/bin/hluk
 ```
 
+On Kubernetes, [`urunc-deploy`](../tutorials/How-to-urunc-on-k8s#urunc-deploy)
+ships `hluk` and, with `hluk` in its `HYPERVISORS` list as it is by default,
+installs it on every node under `/opt/urunc/bin` and points the configuration
+it writes at it, so there is nothing to install by hand.
+
 #### Hyperlight and `urunc`
 
 In the case of [Hyperlight](https://github.com/hyperlight-dev/hyperlight),
