@@ -161,6 +161,7 @@ jobs:
         run: |
           docker exec urunc-deploy-test-control-plane ls -la /usr/local/bin/urunc || exit 1
           docker exec urunc-deploy-test-control-plane ls -la /usr/local/bin/containerd-shim-urunc-v2 || exit 1
+          docker exec urunc-deploy-test-control-plane ls -la /opt/urunc/bin/hluk || exit 1
 
       - name: Deploy nginx-spt unikernel (arm64)
         if: matrix.arch == 'arm64'
@@ -227,6 +228,36 @@ jobs:
           echo "=== LOGS ==="
           cat /tmp/logs.txt
           kubectl describe pod httpreply-fc-amd64 || true
+
+      - name: Deploy hello-hyperlight-unikraft unikernel (amd64)
+        if: matrix.arch == 'amd64'
+        run: |
+          cat <<EOF | kubectl apply -f -
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: hello-hyperlight-amd64
+              labels:
+                run: hello-hyperlight-amd64
+            spec:
+              runtimeClassName: urunc
+              restartPolicy: Never
+              containers:
+                - name: hello-hyperlight
+                  image: docker.io/urunc/hello-hyperlight-unikraft:v0.18.0
+                  imagePullPolicy: Always
+                  resources:
+                    requests:
+                      cpu: 10m
+          EOF
+
+      - name: Verify hello-hyperlight-unikraft deployment (amd64)
+        if: matrix.arch == 'amd64'
+        run: |
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/hello-hyperlight-amd64 --timeout=180s || true
+          kubectl describe pod hello-hyperlight-amd64 || true
+          kubectl logs hello-hyperlight-amd64 | tee /tmp/logs-hyperlight.txt || true
+          grep -q "hello from Python" /tmp/logs-hyperlight.txt
 
       - name: Uninstall urunc-deploy DaemonSet
         run: |
