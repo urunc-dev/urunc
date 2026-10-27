@@ -198,7 +198,6 @@ LABEL "com.urunc.unikernel.binary"=/unikernel/kernel
 LABEL "com.urunc.unikernel.initrd"=/unikernel/initrd
 LABEL "com.urunc.unikernel.unikernelType"="unikraft"
 LABEL "com.urunc.unikernel.hypervisor"="qemu"
-LABEL "com.urunc.unikernel.advertiseDNS"="true"
 CMD ["nginx", "-c", "/nginx/conf/nginx.conf"]
 ```
 
