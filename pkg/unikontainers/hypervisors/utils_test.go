@@ -117,6 +117,7 @@ func TestVMMSignalStopRefuseInvalidPid(t *testing.T) {
 		"hvt":              &HVT{},
 		"spt":              &SPT{},
 		"hyperlight":       &Hyperlight{},
+		"hvi":              &HVI{},
 	}
 	for name, vmm := range vmms {
 		for _, pid := range []int{-1, 0} {

@@ -28,6 +28,7 @@ with virtiofsd. Specifically:
 - [firecracker](https://github.com/firecracker-microvm/firecracker)
 - [Cloud-Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
 - [Hyperlight-unikraft](https://github.com/hyperlight-dev/hyperlight-unikraft)
+- [hvi](https://github.com/brig-sh/hvi-vmm)
 - [virtiofsd](https://virtio-fs.gitlab.io/)
 
 **3. Installation and configuration of `urunc`**
@@ -482,6 +483,18 @@ rm -f hluk
 Alternatively, `hluk` can be installed from
 [crates.io](https://crates.io/crates/hyperlight-unikraft) with
 `cargo install hyperlight-unikraft`.
+
+### hvi
+
+[hvi](https://github.com/brig-sh/hvi-vmm) is built from source using the Rust
+toolchain:
+
+```bash
+git clone https://github.com/brig-sh/hvi-vmm.git
+cd hvi-vmm
+cargo build --release
+sudo install -m0755 target/release/hvi /usr/local/bin/hvi
+```
 
 ### Virtiofsd
 
