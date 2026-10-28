@@ -1,0 +1,85 @@
+name: urunc fuzzing (batch)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+
+# Shared with fuzz_prune.yml. Both download the corpus, change it and upload
+# it again, so overlapping runs would overwrite each other's corpus.
+concurrency:
+  group: clusterfuzzlite-corpus
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: ClusterFuzzLite batch fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The ClusterFuzzLite actions run mutable :v1 images, so this job only
+    # gets read access. The upload-sarif job uploads the results.
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      build: ${{ steps.build.outcome }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Build fuzz targets
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: go
+
+      - name: Run fuzz targets
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          language: go
+          mode: batch
+          fuzz-seconds: 1800
+          output-sarif: true
+
+      - name: Save SARIF results
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-sarif
+          path: cifuzz-sarif/results.sarif
+          if-no-files-found: error
+          retention-days: 7
+
+  upload-sarif:
+    name: Upload SARIF
+    needs: fuzz
+    # Also after a crash, which fails the fuzz job.
+    if: always() && needs.fuzz.outputs.build == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # for github/codeql-action/upload-sarif to upload SARIF results
+      security-events: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Download SARIF results
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fuzz-sarif
+          path: cifuzz-sarif
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: cifuzz-sarif/results.sarif
+          checkout_path: cifuzz-sarif

@@ -3,17 +3,25 @@ name: urunc fuzzing (corpus pruning)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 13 * * *'
+    - cron: '30 13 * * 0'
 
 permissions:
   contents: read
-  actions: read
+
+# Shared with fuzz_batch.yml. Both download the corpus, change it and upload
+# it again, so overlapping runs would overwrite each other's corpus.
+concurrency:
+  group: clusterfuzzlite-corpus
+  cancel-in-progress: false
 
 jobs:
   prune:
     name: ClusterFuzzLite corpus pruning
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
