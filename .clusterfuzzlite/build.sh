@@ -17,4 +17,8 @@
 # Only meant to run inside ClusterFuzzLite or OSS-Fuzz, which provide
 # compile_native_go_fuzzer_v2.
 
-compile_native_go_fuzzer_v2 github.com/urunc-dev/urunc/pkg/unikontainers FuzzGetUnikernelConfig FuzzGetUnikernelConfig
+fuzzer=FuzzGetUnikernelConfig
+compile_native_go_fuzzer_v2 github.com/urunc-dev/urunc/pkg/unikontainers "$fuzzer" "$fuzzer"
+
+# compile_native_go_fuzzer_v2 exits 0 when it cannot find the function.
+test -x "$OUT/$fuzzer"
