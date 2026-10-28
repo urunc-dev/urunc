@@ -1,6 +1,7 @@
 # Keep .git: needed by git describe for version embedding.
 # COMMIT is also passed as a build-arg from CI to avoid a -dirty suffix.
 *
+!/.clusterfuzzlite
 !/.git
 !/cmd
 !/deployment
