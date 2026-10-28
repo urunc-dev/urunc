@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -626,7 +627,21 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	// non-libcontainer paths, where the container mount sources are available.
 	_, mSpec.ExecArgs.ResolvConf = resolvConfMount(monRes.Mounts)
 	if !mSpec.ExecArgs.ResolvConf {
-		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+		advertiseDNSValue := u.State.Annotations[annotAdvertiseDNS]
+		advertiseDNS := false
+		if advertiseDNSValue != "" {
+			var err error
+			advertiseDNS, err = strconv.ParseBool(advertiseDNSValue)
+			if err != nil {
+				uniklog.WithField("advertiseDNS", advertiseDNSValue).Warn("invalid advertiseDNS annotation")
+				advertiseDNS = false
+			}
+		}
+		// Keep the opt-in limited to Mirage for now to preserve DNS behavior
+		// for existing guest types such as Unikraft.
+		if unikernelType != unikernels.MirageUnikernel || advertiseDNS {
+			mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+		}
 	}
 
 	return mSpec
