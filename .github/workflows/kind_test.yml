@@ -8,7 +8,16 @@ on:
       firecracker_version:
         type: string
         required: true
+      cloud_hypervisor_version:
+        type: string
+        required: true
       solo5_version:
+        type: string
+        required: true
+      qemu_version:
+        type: string
+        required: true
+      virtiofsd_version:
         type: string
         required: true
       runc_version:
@@ -39,6 +48,18 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ inputs.ref }}
+
+    # On pull requests, the checkout above is the head of the PR, while GitHub
+    # loaded this workflow from the merge commit (github.sha). Fetch the local
+    # actions from the latter, so that they match this workflow.
+    - name: Checkout the local actions
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.sha }}
+        path: .workflow-actions
+        sparse-checkout: .github/actions/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
 
     - name: Install kind
       run: |
@@ -85,7 +106,7 @@ jobs:
     - name: Install dependencies inside kind node
       run: |
         docker exec urunc-test-control-plane apt-get update
-        docker exec urunc-test-control-plane apt-get install -y git wget build-essential libseccomp-dev pkg-config bc
+        docker exec urunc-test-control-plane apt-get install -y wget
 
     - name: Install runc inside kind node
       run: |
@@ -145,7 +166,7 @@ jobs:
           /usr/local/bin/urunc --version
         '
 
-    - name: Configure urunc with debug logging
+    - name: Configure urunc with debug logging and the monitors' paths
       run: |
         docker exec urunc-test-control-plane bash -c '
           mkdir -p /etc/urunc
@@ -153,38 +174,57 @@ jobs:
         [log]
         level = "debug"
         syslog = true
+
+        [monitors.qemu]
+        path = "/opt/urunc/bin/qemu-system-$(uname -m)"
+        data_path = "/opt/urunc/share/qemu"
+
+        [monitors.firecracker]
+        path = "/opt/urunc/bin/firecracker"
+
+        [monitors.cloud-hypervisor]
+        path = "/opt/urunc/bin/cloud-hypervisor"
+
+        [monitors.hvt]
+        path = "/opt/urunc/bin/solo5-hvt"
+
+        [monitors.spt]
+        path = "/opt/urunc/bin/solo5-spt"
+
+        [extra_binaries.virtiofsd]
+        path = "/opt/urunc/bin/virtiofsd"
         EOF
         '
 
-    - name: Install QEMU inside kind node (amd64 only)
-      if: matrix.arch == 'amd64'
+    - name: Find the monitors-build release with these versions
+      id: monitors
+      uses: ./.workflow-actions/.github/actions/find-monitors-release
+      with:
+        firecracker_version: ${{ inputs.firecracker_version }}
+        cloud_hypervisor_version: ${{ inputs.cloud_hypervisor_version }}
+        solo5_version: ${{ inputs.solo5_version }}
+        qemu_version: ${{ inputs.qemu_version }}
+        virtiofsd_version: ${{ inputs.virtiofsd_version }}
+        arch: ${{ matrix.arch }}
+
+    - name: Install monitors inside kind node
+      env:
+        MONITORS_URL: ${{ steps.monitors.outputs.url }}
+        MONITORS_SHA256: ${{ steps.monitors.outputs.sha256 }}
       run: |
-        docker exec urunc-test-control-plane apt-get install -y qemu-system
-
-
-    - name: Install Firecracker inside kind node
-      run: |      
-        FC_VERSION="${{ inputs.firecracker_version }}"
+        curl -fsSL -o monitors.tar.gz "${MONITORS_URL}"
+        echo "${MONITORS_SHA256}  monitors.tar.gz" | sha256sum -c -
+        docker cp monitors.tar.gz urunc-test-control-plane:/monitors.tar.gz
+        rm -f monitors.tar.gz
+        # The archive extracts to /opt/urunc, which is where the urunc
+        # configuration points to. It records the files as owned by the user
+        # that built it, so let root own them instead.
         docker exec urunc-test-control-plane bash -c '
-          ARCH=$(uname -m)
-          echo "Downloading Firecracker version: '"$FC_VERSION"'"
-          curl -fsSL https://github.com/firecracker-microvm/firecracker/releases/download/'"$FC_VERSION"'/firecracker-'"$FC_VERSION"'-${ARCH}.tgz | tar -xz
-          install -m 755 release-'"$FC_VERSION"'-${ARCH}/firecracker-'"$FC_VERSION"'-${ARCH} /usr/local/bin/firecracker
-          firecracker --version
-        '
-
-    - name: Install Solo5 inside kind node
-      run: |
-        SOLO5_VERSION="${{ inputs.solo5_version }}"
-        docker exec urunc-test-control-plane bash -c '
-          git clone -b "'"$SOLO5_VERSION"'" https://github.com/Solo5/solo5.git
-          cd solo5
-          ./configure.sh && make -j$(nproc)
-          install -m 755 tenders/hvt/solo5-hvt /usr/local/bin/
-          install -m 755 tenders/spt/solo5-spt /usr/local/bin/
-          cd ..
-          rm -rf solo5
-          solo5-hvt --version
+          set -ex
+          tar --no-same-owner --no-overwrite-dir -C /opt -xzf /monitors.tar.gz
+          rm -f /monitors.tar.gz
+          /opt/urunc/bin/firecracker --version
+          /opt/urunc/bin/solo5-hvt --version
         '
 
     - name: Add urunc to containerd config
