@@ -169,3 +169,55 @@ func TestLinuxContainerBootInitRequiresInitrd(t *testing.T) {
 	require.Error(t, err, "a container boot without the boot initrd path cannot build the guest initrd")
 	assert.ErrorContains(t, err, "boot initrd")
 }
+
+// hull on macOS builds its container boot command lines here too. A virtiofs
+// root is the /vz-init role's own virtiofs tag, so no root= goes with it; a
+// block root names /dev/vda. Vz reboots on a reset, so its guest powers off
+// at the end and only stops on a panic; hvi exits on either.
+func TestLinuxDarwinContainerBoot(t *testing.T) {
+	t.Parallel()
+
+	vz := &Linux{
+		Monitor:       "vz",
+		RootFsType:    "virtiofs",
+		ContainerBoot: true,
+		InitrdConf:    true,
+		Net:           LinuxNet{DHCP: true},
+		ProcConfig:    types.ProcessConfig{Args: []string{"/bin/sh"}},
+		hostOS:        "darwin",
+	}
+	cmdline, err := vz.CommandString()
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(cmdline, "panic=0 "), cmdline)
+	for _, want := range []string{"console=hvc0", "ip=dhcp", "URUNIT_POWEROFF=1", "rdinit=/vz-init"} {
+		assert.Contains(t, strings.Fields(cmdline), want)
+	}
+	assert.NotContains(t, cmdline, "root=")
+	assert.NotContains(t, cmdline, " -- ")
+
+	hvi := &Linux{
+		Monitor:       "hvi",
+		RootFsType:    "block",
+		RootFsFsType:  "ext4",
+		ContainerBoot: true,
+		InitrdConf:    true,
+		Net: LinuxNet{Address: "192.168.64.2", Gateway: "192.168.64.1",
+			Mask: "255.255.255.0", DNS: "192.168.64.1"},
+		ProcConfig: types.ProcessConfig{Args: []string{"/bin/sh"}},
+		hostOS:     "darwin",
+	}
+	cmdline, err = hvi.CommandString()
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(cmdline, "panic=-1 "), cmdline)
+	assert.Contains(t, cmdline, "root=/dev/vda rw rootfstype=ext4")
+	assert.Contains(t, cmdline, "ip=192.168.64.2::192.168.64.1:255.255.255.0:urunc:eth0:off:192.168.64.1")
+	assert.True(t, strings.HasSuffix(cmdline, " rdinit=/init"), cmdline)
+	assert.NotContains(t, cmdline, "URUNIT_POWEROFF")
+
+	// The same virtiofs boot on a Linux host keeps its root and /init.
+	vz.hostOS = "linux"
+	cmdline, err = vz.CommandString()
+	require.NoError(t, err)
+	assert.Contains(t, cmdline, "root=fs0 rw rootfstype=virtiofs")
+	assert.Contains(t, strings.Fields(cmdline), "rdinit=/init")
+}

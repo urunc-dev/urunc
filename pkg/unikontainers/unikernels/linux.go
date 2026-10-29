@@ -71,12 +71,40 @@ type Linux struct {
 	BootInitrd    string
 	// InitrdFiles go into that private copy too, next to /urunit.conf.
 	InitrdFiles []types.InitrdFile
+	// hostOS overrides the package's hostOS, for tests.
+	hostOS string
 }
 
 type LinuxNet struct {
 	Address string
 	Gateway string
 	Mask    string
+	// DNS is the nameserver ip= names, read back from /proc/net/pnp in the
+	// guest. Empty names none.
+	DNS string
+	// DHCP asks the kernel to configure eth0 over DHCP, in place of a static
+	// address.
+	DHCP bool
+}
+
+// hostOS is the OS a command line is built for when a Linux names none.
+// The package tests pin it to linux.
+var hostOS = runtime.GOOS
+
+// containerBootVzInit is the init hull's macOS container boots start for a
+// virtiofs root. It mounts the virtiofs tag rootfs itself, so the command line
+// names no root for it.
+const containerBootVzInit = "/vz-init"
+
+// vzInitBoot reports whether a container boot starts containerBootVzInit:
+// hull on macOS, with the image root shared over virtiofs. A block root, and
+// every Linux host, boots containerBootInit with the root on the command line.
+func (l *Linux) vzInitBoot() bool {
+	host := l.hostOS
+	if host == "" {
+		host = hostOS
+	}
+	return l.ContainerBoot && host == "darwin" && l.RootFsType == "virtiofs"
 }
 
 func IsIPInSubnet(ln LinuxNet) bool {
@@ -88,9 +116,49 @@ func IsIPInSubnet(ln LinuxNet) bool {
 	return ip.Mask(mask).Equal(subnet)
 }
 
+// panicParam is how the guest's kernel handles a panic. A panicked guest
+// resets at once, which ends the VM on every monitor but Vz:
+// Virtualization.framework reboots it, so a guest whose init died would boot
+// again and again. On Vz the panic just stops the guest.
+func (l *Linux) panicParam() string {
+	if l.Monitor == "vz" {
+		return "panic=0"
+	}
+	return "panic=-1"
+}
+
+// ipParam is the kernel's ip= for eth0: DHCP, a static address with the
+// nameserver when one is named, or nothing.
+func (n LinuxNet) ipParam() string {
+	switch {
+	case n.DHCP:
+		return "ip=dhcp"
+	case n.Address != "":
+		ip := fmt.Sprintf("ip=%s::%s:%s:urunc:eth0:off", n.Address, n.Gateway, n.Mask)
+		if n.DNS != "" {
+			ip += ":" + n.DNS
+		}
+		return ip
+	}
+	return ""
+}
+
+// initEntry is the init the kernel starts: the application, or for a
+// container boot the boot initrd's /init, which is /vz-init for hull's
+// virtiofs root on macOS.
+func (l *Linux) initEntry() string {
+	if !l.ContainerBoot || (l.App != "" && l.App != containerBootInit) {
+		return l.App
+	}
+	if l.vzInitBoot() {
+		return containerBootVzInit
+	}
+	return containerBootInit
+}
+
 func (l *Linux) CommandString() (string, error) {
 	rdinit := ""
-	bootParams := "panic=-1"
+	bootParams := l.panicParam()
 
 	// TODO: Check if this check causes any performance drop
 	// or explore alternative implementations
@@ -146,18 +214,16 @@ func (l *Linux) CommandString() (string, error) {
 		rootParams += "trans=virtio,version=9p2000.L,msize=5000000,cache=mmap,posixacl"
 		bootParams += " " + rootParams
 	case "virtiofs":
-		rootParams := "root=fs0 rw rootfstype=virtiofs"
-		bootParams += " " + rootParams
+		if !l.vzInitBoot() {
+			rootParams := "root=fs0 rw rootfstype=virtiofs"
+			bootParams += " " + rootParams
+		}
 	case "overlay-block":
 		// The initrd's /urunc-rootfs-lower and /urunc-rootfs-upper name the
 		// root, and /init refuses a root= next to them.
 	}
-	if l.Net.Address != "" {
-		netParams := fmt.Sprintf("ip=%s::%s:%s:urunc:eth0:off",
-			l.Net.Address,
-			l.Net.Gateway,
-			l.Net.Mask)
-		bootParams += " " + netParams
+	if ip := l.Net.ipParam(); ip != "" {
+		bootParams += " " + ip
 	}
 	switch {
 	case !l.InitrdConf:
@@ -186,11 +252,12 @@ func (l *Linux) CommandString() (string, error) {
 	// shared-fs one on the gone virtiofsd. Tell urunit to power the guest off
 	// instead, which Cloud Hypervisor turns into a clean exit. qemu (-no-reboot)
 	// and firecracker already exit on a reset, so they keep urunit's default.
-	if l.ContainerBoot && l.Monitor == "cloud-hypervisor" {
+	// Vz reboots the VM on a reset the same way.
+	if l.ContainerBoot && (l.Monitor == "cloud-hypervisor" || l.Monitor == "vz") {
 		bootParams += " URUNIT_POWEROFF=1"
 	}
-	if l.App != "" {
-		initParams := rdinit + "init=" + l.App
+	if app := l.initEntry(); app != "" {
+		initParams := rdinit + "init=" + app
 		// The kernel command line cannot carry an arbitrary argument list: it
 		// drops quotes and empty arguments, a "--" in the command cuts it off,
 		// and it is truncated at 2048 bytes. urunit reads the command from its

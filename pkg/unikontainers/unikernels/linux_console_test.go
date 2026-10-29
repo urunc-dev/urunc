@@ -69,7 +69,12 @@ func TestLinuxConsolePerMonitor(t *testing.T) {
 			}
 			cmdline, err := l.CommandString()
 			require.NoError(t, err)
-			assert.Equal(t, head+tt.console+tail, cmdline)
+			h := head
+			if tt.monitor == "vz" {
+				// A reset reboots a Vz VM, so a panic only stops the guest.
+				h = "panic=0 quiet "
+			}
+			assert.Equal(t, h+tt.console+tail, cmdline)
 		})
 	}
 }
