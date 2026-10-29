@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -255,6 +256,51 @@ func TestEnsureLowerImage(t *testing.T) {
 	if out, err := exec.Command("debugfs", "-R", "cat /etc/os-release", disks[0]).CombinedOutput(); err == nil {
 		assert.Contains(t, string(out), "ID=test")
 	}
+
+	// The image is removed, and the next image's build drops its lower.
+	rec := strings.TrimSuffix(disks[0], ".ext4") + lowerLayersExt
+	data, err := os.ReadFile(rec)
+	require.NoError(t, err)
+	assert.Equal(t, layer+"\n", string(data))
+	require.NoError(t, os.RemoveAll(layer))
+	other := t.TempDir()
+	_, err = ensureLowerImage(mke2fs, cache, overlayLayout{lowers: []string{other}, upper: "/unused"})
+	require.NoError(t, err)
+	assert.NoFileExists(t, disks[0])
+	assert.NoFileExists(t, rec)
+}
+
+// An image whose layers containerd removed loses its lower; one still in
+// use, one without a record and the one being built keep theirs.
+func TestPruneLowerImages(t *testing.T) {
+	t.Parallel()
+	cache := t.TempDir()
+	present := t.TempDir()
+	gone := filepath.Join(t.TempDir(), "removed-layer")
+	entry := func(key string, layers ...string) string {
+		disk := filepath.Join(cache, key+".ext4")
+		require.NoError(t, os.WriteFile(disk, []byte("ext4"), 0o400))
+		if layers != nil {
+			rec := strings.Join(layers, "\n") + "\n"
+			require.NoError(t, os.WriteFile(filepath.Join(cache, key+lowerLayersExt), []byte(rec), 0o600))
+		}
+		return disk
+	}
+	inUse := entry("inuse", present)
+	stale := entry("stale", present, gone)
+	legacy := entry("legacy")
+	building := entry("building", gone)
+	orphan := filepath.Join(cache, "orphan"+lowerLayersExt)
+	require.NoError(t, os.WriteFile(orphan, []byte(gone+"\n"), 0o600))
+
+	pruneLowerImages(cache, "building")
+
+	assert.FileExists(t, inUse)
+	assert.FileExists(t, legacy)
+	assert.FileExists(t, building)
+	assert.NoFileExists(t, stale)
+	assert.NoFileExists(t, filepath.Join(cache, "stale"+lowerLayersExt))
+	assert.NoFileExists(t, orphan)
 }
 
 func TestEnsureUpperImage(t *testing.T) {

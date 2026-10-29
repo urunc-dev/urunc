@@ -369,7 +369,9 @@ func hasOption(opts []string, want string) bool {
 // The cache key is the list of layers: committed snapshots do not change, so
 // the same list is the same image. The image is built under an flock into a
 // temporary file renamed into place, so concurrent containers of one image
-// build it once. It has no journal and is read-only on the host too.
+// build it once. It has no journal and is read-only on the host too. A record
+// of the layers sits next to it, and building an image first removes the
+// cached images whose layers containerd has removed since.
 func ensureLowerImage(mke2fs, cacheDir string, l overlayLayout) (string, error) {
 	sum := sha256.Sum256([]byte(strings.Join(l.lowers, ":")))
 	key := hex.EncodeToString(sum[:16])
@@ -380,6 +382,7 @@ func ensureLowerImage(mke2fs, cacheDir string, l overlayLayout) (string, error) 
 	if err := os.MkdirAll(cacheDir, 0o711); err != nil {
 		return "", fmt.Errorf("create the rootfs cache %s: %w", cacheDir, err)
 	}
+	pruneLowerImages(cacheDir, key)
 	unlock, err := lockPath(disk + ".lock")
 	if err != nil {
 		return "", err
@@ -428,12 +431,75 @@ func ensureLowerImage(mke2fs, cacheDir string, l overlayLayout) (string, error) 
 		_ = os.Remove(staging)
 		return "", fmt.Errorf("make %s read-only: %w", staging, err)
 	}
+	// The record goes first: a record without its image is pruned like any
+	// other, while an image without its record would stay forever.
+	record := filepath.Join(cacheDir, key+lowerLayersExt)
+	if err := os.WriteFile(record, []byte(strings.Join(l.lowers, "\n")+"\n"), 0o600); err != nil {
+		_ = os.Remove(staging)
+		return "", fmt.Errorf("record the layers of %s: %w", disk, err)
+	}
 	if err := os.Rename(staging, disk); err != nil {
 		_ = os.Remove(staging)
 		return "", fmt.Errorf("install the rootfs image %s: %w", disk, err)
 	}
 	uniklog.Debugf("built the rootfs image %s (%d MiB apparent) in %s", disk, sizeMB, time.Since(started).Round(time.Millisecond))
 	return disk, nil
+}
+
+// lowerLayersExt names the record, next to a lower image, of the layer
+// directories it was built from.
+const lowerLayersExt = ".layers"
+
+// pruneLowerImages removes from cacheDir the lower images whose layers are
+// gone, with their records. containerd removes an image's layers only once no
+// snapshot needs them, so no container can boot from such an image again. The
+// image keep is left alone, and so is an image without a record, whose layers
+// are unknown. Each removal holds the image's lock, so an image being built is
+// never removed. A failure is logged: the cache only costs disk space.
+func pruneLowerImages(cacheDir, keep string) {
+	records, err := filepath.Glob(filepath.Join(cacheDir, "*"+lowerLayersExt))
+	if err != nil {
+		return
+	}
+	for _, record := range records {
+		key := strings.TrimSuffix(filepath.Base(record), lowerLayersExt)
+		if key == keep || !lowerLayersGone(record) {
+			continue
+		}
+		disk := filepath.Join(cacheDir, key+".ext4")
+		unlock, err := lockPath(disk + ".lock")
+		if err != nil {
+			uniklog.Warnf("keeping the rootfs image %s: %v", disk, err)
+			continue
+		}
+		if lowerLayersGone(record) {
+			for _, p := range []string{disk, record} {
+				if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+					uniklog.Warnf("remove the stale rootfs image file %s: %v", p, err)
+				}
+			}
+			uniklog.Debugf("removed the rootfs image %s: its image layers are gone", disk)
+		}
+		unlock()
+	}
+}
+
+// lowerLayersGone reports whether a layer directory named in record no longer
+// exists. A record that cannot be read counts as current.
+func lowerLayersGone(record string) bool {
+	data, err := os.ReadFile(record)
+	if err != nil {
+		return false
+	}
+	for _, dir := range strings.Split(string(data), "\n") {
+		if dir == "" {
+			continue
+		}
+		if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
+			return true
+		}
+	}
+	return false
 }
 
 // lowerImageGeometry sizes the read-only image from the tree it holds: every
