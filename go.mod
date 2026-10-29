@@ -36,7 +36,7 @@ require (
 	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
-	k8s.io/cri-api v0.37.1
+	k8s.io/cri-api v0.37.2
 )
 
 require (
