@@ -17,6 +17,9 @@
 # Only meant to run inside ClusterFuzzLite or OSS-Fuzz, which provide
 # compile_native_go_fuzzer_v2.
 
+# go-118-fuzz-build cannot patch a toolchain that go downloads into the module cache.
+export GOTOOLCHAIN=local
+
 fuzzer=FuzzGetUnikernelConfig
 compile_native_go_fuzzer_v2 github.com/urunc-dev/urunc/pkg/unikontainers "$fuzzer" "$fuzzer"
 
