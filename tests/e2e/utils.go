@@ -56,11 +56,6 @@ func pullAllImages(testFunc string, images []string) error {
 }
 
 func removeAllImages(testFunc string, images []string) {
-	if os.Getenv("KEEP_IMAGES") == "1" {
-		log.Printf("KEEP_IMAGES=1: skipping image cleanup")
-		return
-	}
-
 	for _, image := range images {
 		log.Printf("Removing image: %s", image)
 		if err := removeImageForTest(testFunc, image); err != nil {
