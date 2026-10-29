@@ -62,6 +62,8 @@ type Linux struct {
 	Verbose    bool
 	InitrdConf bool
 	ProcConfig types.ProcessConfig
+	// args is the application command, verbatim, for urunit's configuration.
+	args []string
 	// ContainerBoot marks a generic container boot (see types.UnikernelParams).
 	// The guest then boots BootInitrd, the host boot initrd mounted into the
 	// monitor rootfs, through a private copy carrying the urunit configuration.
@@ -188,7 +190,14 @@ func (l *Linux) CommandString() (string, error) {
 		bootParams += " URUNIT_POWEROFF=1"
 	}
 	if l.App != "" {
-		initParams := rdinit + "init=" + l.App + " -- " + l.Command
+		initParams := rdinit + "init=" + l.App
+		// The kernel command line cannot carry an arbitrary argument list: it
+		// drops quotes and empty arguments, a "--" in the command cuts it off,
+		// and it is truncated at 2048 bytes. urunit reads the command from its
+		// configuration instead, one record per argument.
+		if len(l.ProcConfig.Args) == 0 {
+			initParams += " -- " + l.Command
+		}
 		bootParams += " " + initParams
 	}
 
@@ -345,6 +354,7 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	// urunit shipped in its boot initrd.
 	l.InitrdConf = l.ContainerBoot || strings.Contains(l.App, "urunit")
 	if l.InitrdConf {
+		l.ProcConfig.Args = l.args
 		err := l.setupUrunitConfig(data.Rootfs)
 		if err != nil {
 			return err
@@ -363,6 +373,7 @@ func (l *Linux) parseCmdLine(cmdLine []string) error {
 
 	normalizedArgs := normalizeArgs(cmdLine)
 	l.App = normalizedArgs[0]
+	l.args = cmdLine[1:]
 	if len(normalizedArgs) > 1 {
 		l.Command = strings.Join(normalizedArgs[1:], " ")
 	} else {
@@ -382,6 +393,7 @@ func (l *Linux) parseContainerBootCmdLine(cmdLine []string) error {
 	}
 
 	l.App = containerBootInit
+	l.args = cmdLine
 	l.Command = strings.Join(normalizeArgs(cmdLine), " ")
 
 	return nil
@@ -500,6 +512,12 @@ func BuildUrunitConfig(env []string, proc types.ProcessConfig, blk []types.Block
 	c.record("UID:", strconv.FormatUint(uint64(proc.UID), 10))
 	c.record("GID:", strconv.FormatUint(uint64(proc.GID), 10))
 	c.record("WD:", proc.WorkDir)
+	if len(proc.Args) > 0 {
+		c.record("ARC:", strconv.Itoa(len(proc.Args)))
+		for _, a := range proc.Args {
+			c.record("ARV:", a)
+		}
+	}
 	c.record(lpcEndMarker)
 	c.blocks(blk, monitor)
 	return c.String()

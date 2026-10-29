@@ -15,6 +15,7 @@
 package unikernels
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,6 +107,42 @@ func TestLinuxContainerBootUrunitConfig(t *testing.T) {
 		ContainerBoot: true,
 	}
 	assert.Equal(t, "UES\x00PATH=/usr/bin\x00FOO=bar\x00UEE\x00UCS\x00UID:1000\x00GID:1000\x00WD:/work\x00UCE\x00UBS\x00UBE\x00", l.buildUrunitConfig())
+}
+
+// The kernel command line drops quotes and empty arguments and stops at a
+// "--", so a container boot's command travels in urunit's configuration, one
+// record per argument, and the command line carries none of it.
+func TestLinuxContainerBootArgsInConfig(t *testing.T) {
+	t.Parallel()
+
+	cmd := []string{"/bin/sh", "-c", `printf "<%s>\n" "a b" ''`, "--", "", "two\nlines"}
+	l := &Linux{Monitor: "qemu", RootFsType: "virtiofs", ContainerBoot: true}
+	require.NoError(t, l.parseContainerBootCmdLine(cmd))
+	assert.Equal(t, cmd, l.args)
+	l.InitrdConf = true
+	l.ProcConfig = types.ProcessConfig{UID: 0, GID: 0, WorkDir: "/", Args: l.args}
+
+	cmdline, err := l.CommandString()
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(cmdline, "rdinit=/init"), "nothing follows the init: %s", cmdline)
+	assert.NotContains(t, cmdline, " -- ")
+
+	want := "UCS\x00UID:0\x00GID:0\x00WD:/\x00ARC:6\x00ARV:/bin/sh\x00ARV:-c\x00" +
+		"ARV:printf \"<%s>\\n\" \"a b\" ''\x00ARV:--\x00ARV:\x00ARV:two\nlines\x00UCE\x00"
+	assert.Contains(t, l.buildUrunitConfig(), want)
+}
+
+// Without a command for urunit, as for a Linux guest whose init is not
+// urunit, the arguments stay on the kernel command line.
+func TestLinuxArgsOnCmdlineWithoutUrunit(t *testing.T) {
+	t.Parallel()
+
+	l := &Linux{Monitor: "qemu", RootFsType: "block"}
+	require.NoError(t, l.parseCmdLine([]string{"/sbin/init", "--foo"}))
+	cmdline, err := l.CommandString()
+	require.NoError(t, err)
+	assert.Contains(t, cmdline, "init=/sbin/init -- --foo")
+	assert.NotContains(t, l.buildUrunitConfig(), "ARC:")
 }
 
 func TestLinuxUrunitConfAsInitrd(t *testing.T) {

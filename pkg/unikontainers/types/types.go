@@ -122,6 +122,9 @@ type ProcessConfig struct {
 	UID     uint32 // The uid of the process inside the guest
 	GID     uint32 // The gid of the process inside the guest
 	WorkDir string // The workdir of the process inside the guest
+	// Args is the command of the process, one entry per argument. urunit
+	// runs it when it starts without arguments of its own.
+	Args []string
 }
 
 // UnikernelParams holds the data required by the unikernels commandline
