@@ -214,5 +214,5 @@ google.golang.org/grpc v1.84.0 h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
 google.golang.org/grpc v1.84.0/go.mod h1:ljCht0DrxQrXBDRTZp52Qxh3Ffk8CdYm2sj4O2QN2C0=
 google.golang.org/protobuf v1.36.12 h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc=
 google.golang.org/protobuf v1.36.12/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
-k8s.io/cri-api v0.37.1 h1:Y1fmZuvHIlP/XBO4pbqFZtxzzDmX9iDSFfDrhUoB170=
-k8s.io/cri-api v0.37.1/go.mod h1:6V8Gb6wznJYVPToj8CLxgbxsFeeGIswNZCE7cy+xT90=
+k8s.io/cri-api v0.37.2 h1:UMvN3s6yoG3SVbxX9Mw6yVmVmaLwVAjy0hXUpJzXogo=
+k8s.io/cri-api v0.37.2/go.mod h1:6V8Gb6wznJYVPToj8CLxgbxsFeeGIswNZCE7cy+xT90=
