@@ -1,0 +1,98 @@
+name: Find the monitors-build release
+description: >
+  Find the release of https://github.com/urunc-dev/monitors-build that bundles
+  the given versions of the monitors and return the URL of its archive for the
+  given architecture.
+inputs:
+  firecracker_version:
+    description: 'Firecracker version (e.g. v1.7.0)'
+    required: true
+  cloud_hypervisor_version:
+    description: 'Cloud Hypervisor version (e.g. v50.0)'
+    required: true
+  solo5_version:
+    description: 'Solo5 version (e.g. v0.12.1)'
+    required: true
+  qemu_version:
+    description: 'QEMU version (e.g. v10.1.1)'
+    required: true
+  virtiofsd_version:
+    description: 'virtiofsd version (e.g. v1.13.0)'
+    required: true
+  arch:
+    description: 'Architecture of the archive (amd64 or arm64)'
+    required: true
+outputs:
+  url:
+    description: 'URL of the archive, which extracts to urunc/ (e.g. /opt/urunc)'
+    value: ${{ steps.find.outputs.url }}
+  sha256:
+    description: 'SHA-256 checksum of the archive'
+    value: ${{ steps.find.outputs.sha256 }}
+runs:
+  using: composite
+  steps:
+    - id: find
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        FIRECRACKER_VERSION: ${{ inputs.firecracker_version }}
+        CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version }}
+        SOLO5_VERSION: ${{ inputs.solo5_version }}
+        QEMU_VERSION: ${{ inputs.qemu_version }}
+        VIRTIOFSD_VERSION: ${{ inputs.virtiofsd_version }}
+        ARCH: ${{ inputs.arch }}
+      with:
+        script: |
+          // Each release of urunc-dev/monitors-build lists the versions it
+          // bundles in a fingerprint inside its description, e.g.
+          // FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS-v1.13.0_QM-v10.1.1-9a44e, where
+          // the last part is the hash of the QEMU configuration. The archive
+          // with all the monitors of an architecture is named after it.
+          const wanted = {
+            FC: process.env.FIRECRACKER_VERSION,
+            CLH: process.env.CLOUD_HYPERVISOR_VERSION,
+            S5: process.env.SOLO5_VERSION,
+            VFS: process.env.VIRTIOFSD_VERSION,
+            QM: process.env.QEMU_VERSION,
+          };
+          for (const [name, version] of Object.entries(wanted)) {
+            if (!/^v[0-9]+\.[0-9]+(\.[0-9]+)?$/.test(version)) {
+              core.setFailed(`Invalid ${name} version: ${version}`);
+              return;
+            }
+          }
+          const releases = await github.paginate(github.rest.repos.listReleases, {
+            owner: 'urunc-dev',
+            repo: 'monitors-build',
+          });
+          // Releases are listed from the newest one.
+          for (const release of releases) {
+            const match = /<!-- monitors-fingerprint: (\S+) -->/.exec(release.body || '');
+            if (release.draft || !match) {
+              continue;
+            }
+            const fingerprint = match[1];
+            // Split each part only on its first "-", so that versions like
+            // v1.7.0-rc1 stay whole, and drop the hash after the QEMU version.
+            const versions = Object.fromEntries(fingerprint.split('_').map(part => {
+              const [, name, version] = /^([^-]+)-(.+)$/.exec(part) || [];
+              return [name, name === 'QM' ? version.replace(/-[0-9a-f]{5}$/, '') : version];
+            }));
+            if (!Object.entries(wanted).every(([name, version]) => versions[name] === version)) {
+              continue;
+            }
+            const asset = release.assets.find(a =>
+              a.name === `${fingerprint}-${process.env.ARCH}.tar.gz` && a.state === 'uploaded');
+            if (!asset) {
+              continue;
+            }
+            if (!/^sha256:[0-9a-f]{64}$/.test(asset.digest || '')) {
+              core.setFailed(`${asset.name} of monitors-build ${release.tag_name} has no SHA-256 digest`);
+              return;
+            }
+            core.info(`Using monitors-build ${release.tag_name}: ${fingerprint}`);
+            core.setOutput('url', asset.browser_download_url);
+            core.setOutput('sha256', asset.digest.slice('sha256:'.length));
+            return;
+          }
+          core.setFailed(`No monitors-build release provides ${JSON.stringify(wanted)} for ${process.env.ARCH}`);

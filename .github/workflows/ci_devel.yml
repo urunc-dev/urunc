@@ -55,7 +55,17 @@ on:
         default: ''
         type: string
       solo5_version:
-        description: 'Solo5 version for the e2e tests (e.g. v0.9.3)'
+        description: 'Solo5 version for the e2e tests (e.g. v0.12.1)'
+        required: false
+        default: ''
+        type: string
+      qemu_version:
+        description: 'QEMU version for the e2e tests (e.g. v10.1.1)'
+        required: false
+        default: ''
+        type: string
+      virtiofsd_version:
+        description: 'virtiofsd version for the e2e tests (e.g. v1.13.0)'
         required: false
         default: ''
         type: string
@@ -90,5 +100,7 @@ jobs:
       firecracker_version: ${{ inputs.firecracker_version }}
       cloud_hypervisor_version: ${{ inputs.cloud_hypervisor_version }}
       solo5_version: ${{ inputs.solo5_version }}
+      qemu_version: ${{ inputs.qemu_version }}
+      virtiofsd_version: ${{ inputs.virtiofsd_version }}
       hluk_version: ${{ inputs.hluk_version }}
     secrets: inherit

@@ -34,6 +34,12 @@ on:
       solo5_version:
         type: string
         default: ''
+      qemu_version:
+        type: string
+        default: ''
+      virtiofsd_version:
+        type: string
+        default: ''
       hluk_version:
         type: string
         default: ''
@@ -53,9 +59,13 @@ env:
   CNI_VERSION: ${{ inputs.cni_version || '1.7.1' }}
   NERDCTL_VERSION: ${{ inputs.nerdctl_version || '2.1.3' }}
   CRICTL_VERSION: ${{ inputs.crictl_version || 'v1.30.0' }}
+  # QEMU, Firecracker, Cloud Hypervisor, Solo5 and virtiofsd come from the
+  # release of https://github.com/urunc-dev/monitors-build with these versions.
   FIRECRACKER_VERSION: ${{ inputs.firecracker_version || 'v1.7.0' }}
   CLOUD_HYPERVISOR_VERSION: ${{ inputs.cloud_hypervisor_version || 'v50.0' }}
-  SOLO5_VERSION: ${{ inputs.solo5_version || 'v0.9.3' }}
+  SOLO5_VERSION: ${{ inputs.solo5_version || 'v0.12.1' }}
+  QEMU_VERSION: ${{ inputs.qemu_version || 'v10.1.1' }}
+  VIRTIOFSD_VERSION: ${{ inputs.virtiofsd_version || 'v1.13.0' }}
   HLUK_VERSION: ${{ inputs.hluk_version || 'v0.18.0' }}
 
 jobs:
@@ -79,10 +89,18 @@ jobs:
         fi
         echo "ARCH=${ARCH}" >> "$GITHUB_ENV"
         for var in RUNC_VERSION CONTAINERD_VERSION CNI_VERSION \
-                   NERDCTL_VERSION CRICTL_VERSION FIRECRACKER_VERSION \
-                   CLOUD_HYPERVISOR_VERSION SOLO5_VERSION HLUK_VERSION; do
+                   NERDCTL_VERSION CRICTL_VERSION HLUK_VERSION; do
           value="${!var}"
           if ! [[ "$value" =~ ^v?[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Invalid format for $var: $value"
+            exit 1
+          fi
+        done
+        # monitors-build names every version with a leading "v".
+        for var in FIRECRACKER_VERSION CLOUD_HYPERVISOR_VERSION SOLO5_VERSION \
+                   QEMU_VERSION VIRTIOFSD_VERSION; do
+          value="${!var}"
+          if ! [[ "$value" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo "Invalid format for $var: $value"
             exit 1
           fi
@@ -98,6 +116,18 @@ jobs:
       with:
         ref: ${{ inputs.ref }}
 
+    # On pull requests, the checkout above is the base branch, while GitHub
+    # loaded this workflow from the merge commit (github.sha). Fetch the local
+    # actions from the latter, so that they match this workflow.
+    - name: Checkout the local actions
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.sha }}
+        path: .workflow-actions
+        sparse-checkout: .github/actions/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
@@ -106,10 +136,7 @@ jobs:
     - name: Install base dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git wget build-essential libseccomp-dev pkg-config bc make qemu-system jq
-        wget https://s3.nbfc.io/nbfc-assets/github/urunc/bin/virtiofsd
-        sudo chmod +x virtiofsd
-        sudo mv virtiofsd /usr/libexec/virtiofsd
+        sudo apt-get install -y git wget build-essential bc make jq
 
     - name: Install runc
       run: |
@@ -245,14 +272,30 @@ jobs:
         timeout: 20
         EOT
 
-    - name: Install Firecracker
+    - name: Find the monitors-build release with these versions
+      id: monitors
+      uses: ./.workflow-actions/.github/actions/find-monitors-release
+      with:
+        firecracker_version: ${{ env.FIRECRACKER_VERSION }}
+        cloud_hypervisor_version: ${{ env.CLOUD_HYPERVISOR_VERSION }}
+        solo5_version: ${{ env.SOLO5_VERSION }}
+        qemu_version: ${{ env.QEMU_VERSION }}
+        virtiofsd_version: ${{ env.VIRTIOFSD_VERSION }}
+        arch: ${{ env.ARCH }}
+
+    - name: Install monitors
+      env:
+        MONITORS_URL: ${{ steps.monitors.outputs.url }}
+        MONITORS_SHA256: ${{ steps.monitors.outputs.sha256 }}
       run: |
-        SAFE_FC="${FIRECRACKER_VERSION}"
-        ARCH="$(uname -m)"
-        release_url="https://github.com/firecracker-microvm/firecracker/releases"
-        curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
-        sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker
-        rm -fr "release-${SAFE_FC}-${ARCH}"
+        curl -fsSL -o monitors.tar.gz "${MONITORS_URL}"
+        echo "${MONITORS_SHA256}  monitors.tar.gz" | sha256sum -c -
+        # The archive extracts to /opt/urunc, which is where the urunc
+        # configuration below points to. It records the files as owned by
+        # the user that built it, so let root own them instead.
+        sudo tar --no-same-owner --no-overwrite-dir -C /opt -xzf monitors.tar.gz
+        rm -f monitors.tar.gz
+        ls -l /opt/urunc/bin
 
     - name: Install Firecracker for FreeBSD
       env:
@@ -267,22 +310,6 @@ jobs:
         curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
         sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker-freebsd
         rm -fr "release-${SAFE_FC}-${ARCH}"
-
-    - name: Install Cloud Hypervisor
-      run: |
-        SAFE_CLOUD_HYPERVISOR="${CLOUD_HYPERVISOR_VERSION}"
-        curl -sL "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${SAFE_CLOUD_HYPERVISOR}/cloud-hypervisor-static" -o cloud-hypervisor
-        chmod +x cloud-hypervisor
-        sudo mv cloud-hypervisor /usr/local/bin/cloud-hypervisor
-
-    - name: Install solo5
-      run: |
-        SAFE_SOLO5="${SOLO5_VERSION}"
-        git clone -b "${SAFE_SOLO5}" https://github.com/Solo5/solo5.git
-        cd solo5
-        ./configure.sh && make -j$(nproc)
-        sudo cp tenders/hvt/solo5-hvt /usr/local/bin
-        sudo cp tenders/spt/solo5-spt /usr/local/bin
 
     - name: Install hyperlight-unikraft
       if: ${{ env.ARCH == 'amd64' }}
@@ -316,27 +343,41 @@ jobs:
         sudo mv containerd-shim-urunc-v2_static_${ARCH} /usr/local/bin/containerd-shim-urunc-v2
         urunc --version
 
-    - name: Configure urunc with debug logging
+    - name: Configure urunc with debug logging and the monitors' paths
       run: |
         sudo mkdir -p /etc/urunc
-        sudo tee /etc/urunc/config.toml > /dev/null <<'EOF'
+        sudo tee /etc/urunc/config.toml > /dev/null <<EOF
         [log]
         level = "debug"
         syslog = true
+
+        [monitors.qemu]
+        path = "/opt/urunc/bin/qemu-system-$(uname -m)"
+        data_path = "/opt/urunc/share/qemu"
+
+        [monitors.firecracker]
+        path = "/opt/urunc/bin/firecracker"
+
+        [monitors.cloud-hypervisor]
+        path = "/opt/urunc/bin/cloud-hypervisor"
+
+        [monitors.hvt]
+        path = "/opt/urunc/bin/solo5-hvt"
+
+        [monitors.spt]
+        path = "/opt/urunc/bin/solo5-spt"
+
+        [extra_binaries.virtiofsd]
+        path = "/opt/urunc/bin/virtiofsd"
         EOF
 
     - name: Configure FreeBSD urunc runtime (newer Firecracker)
       run: |
         # Dedicated urunc config that points at a different Firecracker binary
         # for FreeBSD
-        sudo tee /etc/urunc/config-freebsd.toml > /dev/null <<'EOF'
-        [log]
-        level = "debug"
-        syslog = true
-
-        [monitors.firecracker]
-        path = "/usr/local/bin/firecracker-freebsd"
-        EOF
+        sed 's|^path = "/opt/urunc/bin/firecracker"$|path = "/usr/local/bin/firecracker-freebsd"|' \
+          /etc/urunc/config.toml | sudo tee /etc/urunc/config-freebsd.toml > /dev/null
+        grep -q firecracker-freebsd /etc/urunc/config-freebsd.toml
 
         sudo tee /usr/local/bin/containerd-shim-urunc-fc-v2 > /dev/null <<'EOF'
         #!/bin/bash
