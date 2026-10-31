@@ -245,6 +245,11 @@ unittest: test_unikontainers test_initrd test_metrics test_network test_hypervis
 .PHONY: e2etest
 e2etest: test_nerdctl test_ctr test_crictl test_docker
 
+## e2etest_keep_images Run all end-to-end tests and keep pulled images
+.PHONY: e2etest_keep_images
+e2etest_keep_images:
+	URUNC_E2E_TEST_KEEP_IMAGES=1 $(MAKE) e2etest
+
 ## test_unikontainers Run unit tests for unikontainers package
 test_unikontainers:
 	@echo "Unit testing in unikontainers"
