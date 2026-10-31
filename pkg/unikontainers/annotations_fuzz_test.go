@@ -20,12 +20,16 @@ import (
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/urunc-dev/urunc/internal/fuzzseed"
 )
 
 // FuzzGetUnikernelConfig feeds arbitrary bytes as the image's urunc.json.
 func FuzzGetUnikernelConfig(f *testing.F) {
-	// A valid config: linux, qemu and /app, base64 encoded.
-	f.Add([]byte(`{"` + annotType + `":"bGludXg=","` + annotHypervisor + `":"cWVtdQ==","` + annotBinary + `":"L2FwcA=="}`))
+	fuzzseed.QuietLogs(f) // every input logs the fallback to urunc.json
+	for _, seed := range fuzzseed.Load[string]("FuzzGetUnikernelConfig") {
+		fuzzseed.Add(f, []byte(seed))
+	}
 
 	rootfs := f.TempDir()
 

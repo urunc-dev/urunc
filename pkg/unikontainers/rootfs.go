@@ -415,14 +415,15 @@ func changeRoot(rootfsDir string, pivot bool) error {
 }
 
 // getMonitorDevices returns the devices which are needed for the execution of
-// the monitor process. needsTUN is false for a monitor that never creates a
-// tap device.
-func getMonitorDevices(needsKVM bool, needsTUN bool) ([]specs.LinuxDevice, error) {
-	nullDev, err := deviceFromHost("/dev/null")
+// the monitor process. The caller passes devDir, the directory to look the
+// devices up in: /dev, except in tests and fuzzing. needsTUN is false for a
+// monitor that never creates a tap device.
+func getMonitorDevices(devDir string, needsKVM bool, needsTUN bool) ([]specs.LinuxDevice, error) {
+	nullDev, err := deviceFromHost(filepath.Join(devDir, "null"))
 	if err != nil {
 		return nil, fmt.Errorf("could not get host device /dev/null: %w", err)
 	}
-	randomDev, err := deviceFromHost("/dev/urandom")
+	randomDev, err := deviceFromHost(filepath.Join(devDir, "urandom"))
 	if err != nil {
 		return nil, fmt.Errorf("could not get host device /dev/urandom: %w", err)
 	}
@@ -436,7 +437,7 @@ func getMonitorDevices(needsKVM bool, needsTUN bool) ([]specs.LinuxDevice, error
 	// host does not have the "/dev/net/tun" device then simply skip it and fail
 	// later if the container requires network
 	if needsTUN {
-		tunDev, err := deviceFromHost("/dev/net/tun")
+		tunDev, err := deviceFromHost(filepath.Join(devDir, "net/tun"))
 		if err != nil {
 			if errors.Is(err, unix.ENOENT) {
 				uniklog.Warnf("could not find /dev/net/tun in host, skipping it")
@@ -449,7 +450,7 @@ func getMonitorDevices(needsKVM bool, needsTUN bool) ([]specs.LinuxDevice, error
 	}
 
 	if needsKVM {
-		kvmDev, err := deviceFromHost("/dev/kvm")
+		kvmDev, err := deviceFromHost(filepath.Join(devDir, "kvm"))
 		if err != nil {
 			return nil, fmt.Errorf("could not get host device /dev/kvm: %w", err)
 		}
