@@ -83,6 +83,10 @@ jobs:
           push: true
           file: ${{ inputs.dockerfiles }}
           provenance: false
+          cache-from: type=gha,scope=urunc-deploy-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=urunc-deploy-${{ matrix.arch }}
+          # Release builds always start fresh to pick up package updates.
+          no-cache: ${{ inputs.version-tag }}
           build-args: |
             COMMIT=${{ steps.vars.outputs.SHORT_SHA }}
 
