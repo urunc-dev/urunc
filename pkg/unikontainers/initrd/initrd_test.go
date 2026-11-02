@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/cavaliergopher/cpio"
@@ -35,8 +36,6 @@ func TestMergeFileMountsIntoInitrd(t *testing.T) {
 	})
 	require.NoError(t, os.Chmod(initrdPath, 0o640))
 	original := readFile(t, initrdPath)
-	originalInfo, err := os.Stat(initrdPath)
-	require.NoError(t, err)
 	originalTrailer := bytes.Index(original, []byte("TRAILER!!!\x00")) - 110
 	require.GreaterOrEqual(t, originalTrailer, 0)
 
@@ -62,8 +61,8 @@ func TestMergeFileMountsIntoInitrd(t *testing.T) {
 
 	info, err := os.Stat(initrdPath)
 	require.NoError(t, err)
-	require.True(t, os.SameFile(originalInfo, info), "initrd was replaced")
 	require.Equal(t, os.FileMode(0o640), info.Mode().Perm())
+	requireNoTemporaryFiles(t, initrdPath)
 }
 
 func TestMergeFileMountsIntoInitrdCanonicalizesExistingNames(t *testing.T) {
@@ -107,7 +106,7 @@ func TestAddMissingParentsWalksTopDownAndTerminatesAtRoot(t *testing.T) {
 			require.NoError(t, err)
 			w := cpio.NewWriter(archive)
 
-			require.NoError(t, addMissingParents(w, lookupName, make(map[string]struct{}), newInodeAllocator()))
+			require.NoError(t, addMissingParents(w, lookupName, make(map[string]cpio.FileMode), newInodeAllocator()))
 			require.NoError(t, w.Close())
 			require.NoError(t, archive.Close())
 
@@ -261,6 +260,137 @@ func TestMergeFileMountsIntoInitrdInvalidTrailerDoesNotMutateOriginal(t *testing
 	}
 }
 
+func TestMergeFileMountsIntoInitrdFailedMergeKeepsOriginal(t *testing.T) {
+	dir := t.TempDir()
+	initrdPath := filepath.Join(dir, "initrd.cpio")
+	writeArchive(t, initrdPath, []archiveEntry{
+		{name: "./original", mode: cpio.TypeReg | 0o644, content: "old"},
+	})
+	original := readFile(t, initrdPath)
+	originalInfo, err := os.Stat(initrdPath)
+	require.NoError(t, err)
+	source := writeSource(t, dir, "mounted", "new")
+
+	// The first mount is written before the second one fails.
+	err = MergeFileMountsIntoInitrd(initrdPath, []specs.Mount{
+		{Type: "bind", Source: source, Destination: "/mounted"},
+		{Type: "bind", Source: source, Destination: "relative"},
+	})
+
+	require.ErrorContains(t, err, "is not absolute")
+	require.Equal(t, original, readFile(t, initrdPath))
+	updatedInfo, err := os.Stat(initrdPath)
+	require.NoError(t, err)
+	require.True(t, os.SameFile(originalInfo, updatedInfo), "initrd was replaced")
+	requireNoTemporaryFiles(t, initrdPath)
+
+	// Restarting the same container merges again from the intact initrd.
+	require.NoError(t, MergeFileMountsIntoInitrd(initrdPath, []specs.Mount{
+		{Type: "bind", Source: source, Destination: "/mounted"},
+	}))
+	require.Equal(t, "new", lastContent(readArchive(t, initrdPath), "./mounted"))
+}
+
+func TestMergeFileMountsIntoInitrdRejectsConflictingDestinations(t *testing.T) {
+	directory := func(name string) archiveEntry {
+		return archiveEntry{name: name, mode: cpio.TypeDir | 0o755}
+	}
+	file := func(name string) archiveEntry {
+		return archiveEntry{name: name, mode: cpio.TypeReg | 0o644, content: "old"}
+	}
+
+	tests := map[string]struct {
+		archive      []archiveEntry
+		destinations []string
+		wantErr      string
+	}{
+		"parent is a regular file": {
+			archive:      []archiveEntry{directory("./a"), file("./a/b")},
+			destinations: []string{"/a/b/c"},
+			wantErr:      "a/b is not a directory",
+		},
+		"parent spelled without the dot prefix is a regular file": {
+			archive:      []archiveEntry{directory("a"), file("a/b")},
+			destinations: []string{"/a/b/c"},
+			wantErr:      "a/b is not a directory",
+		},
+		"destination is a directory": {
+			archive:      []archiveEntry{directory("./a"), directory("./a/b"), file("./a/b/c")},
+			destinations: []string{"/a/b"},
+			wantErr:      "a/b is a directory",
+		},
+		"earlier mount is a parent of a later mount": {
+			archive:      []archiveEntry{file("./original")},
+			destinations: []string{"/a/b", "/a/b/c"},
+			wantErr:      "a/b is not a directory",
+		},
+		"later mount replaces a parent added for an earlier mount": {
+			archive:      []archiveEntry{file("./original")},
+			destinations: []string{"/a/b/c", "/a/b"},
+			wantErr:      "a/b is a directory",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			initrdPath := filepath.Join(dir, "initrd.cpio")
+			writeArchive(t, initrdPath, tt.archive)
+			original := readFile(t, initrdPath)
+			source := writeSource(t, dir, "mounted", "new")
+
+			var mounts []specs.Mount
+			for _, destination := range tt.destinations {
+				mounts = append(mounts, specs.Mount{Type: "bind", Source: source, Destination: destination})
+			}
+			err := MergeFileMountsIntoInitrd(initrdPath, mounts)
+
+			require.ErrorContains(t, err, tt.wantErr)
+			require.Equal(t, original, readFile(t, initrdPath))
+			requireNoTemporaryFiles(t, initrdPath)
+		})
+	}
+}
+
+func TestMergeFileMountsIntoInitrdAcceptsSymlinkParent(t *testing.T) {
+	dir := t.TempDir()
+	initrdPath := filepath.Join(dir, "initrd.cpio")
+	writeArchive(t, initrdPath, []archiveEntry{
+		{name: "./real", mode: cpio.TypeDir | 0o755},
+		{name: "./link", mode: cpio.TypeSymlink | 0o777, content: "real"},
+	})
+	source := writeSource(t, dir, "mounted", "new")
+
+	require.NoError(t, MergeFileMountsIntoInitrd(initrdPath, []specs.Mount{
+		{Type: "bind", Source: source, Destination: "/link/mounted"},
+	}))
+
+	require.Equal(t, "new", lastContent(readArchive(t, initrdPath), "./link/mounted"))
+}
+
+func TestMergeFileMountsIntoInitrdKeepsOwner(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("changing the owner of a file requires root")
+	}
+	dir := t.TempDir()
+	initrdPath := filepath.Join(dir, "initrd.cpio")
+	writeArchive(t, initrdPath, []archiveEntry{
+		{name: "./original", mode: cpio.TypeReg | 0o644, content: "old"},
+	})
+	require.NoError(t, os.Chown(initrdPath, 1000, 1001))
+	source := writeSource(t, dir, "mounted", "new")
+
+	require.NoError(t, MergeFileMountsIntoInitrd(initrdPath, []specs.Mount{
+		{Type: "bind", Source: source, Destination: "/mounted"},
+	}))
+
+	info, err := os.Stat(initrdPath)
+	require.NoError(t, err)
+	fileInfo := info.Sys().(*syscall.Stat_t)
+	require.Equal(t, uint32(1000), fileInfo.Uid)
+	require.Equal(t, uint32(1001), fileInfo.Gid)
+}
+
 type archiveEntry struct {
 	name    string
 	inode   int64
@@ -322,6 +452,13 @@ func readFile(t *testing.T, name string) []byte {
 	content, err := os.ReadFile(name)
 	require.NoError(t, err)
 	return content
+}
+
+func requireNoTemporaryFiles(t *testing.T, initrdPath string) {
+	t.Helper()
+	leftovers, err := filepath.Glob(initrdPath + ".tmp-*")
+	require.NoError(t, err)
+	require.Empty(t, leftovers)
 }
 
 func countName(entries []archiveEntry, name string) int {
