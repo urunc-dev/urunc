@@ -1,0 +1,80 @@
+# The seeds of every fuzz target, under the target's name. Keep a seed only if it reaches code no other seed does.
+
+# The image's urunc.json, verbatim: linux, qemu and /app, base64 encoded.
+FuzzGetUnikernelConfig = [
+	# cspell:disable-next-line
+	'{"com.urunc.unikernel.unikernelType":"bGludXg=","com.urunc.unikernel.hypervisor":"cWVtdQ==","com.urunc.unikernel.binary":"L2FwcA=="}',
+]
+
+# A container on a monitor/guest pair, "*" for every pair. Each seed lists only what it changes in the base container.
+FuzzCreate = [
+	{ pair = "*" },
+	{ pair = "qemu/linux", block = "/data.img", blkMnt = "/data" },
+	{ pair = "qemu/linux", json = true, initrd = "/unikernel/initrd", mountRootfs = "true", host = 0x01 },
+	{ pair = "qemu/linux", vAccel = true },
+	{ pair = "qemu/linux", queueProxy = true },
+	{ pair = "cloud-hypervisor/linux", mountRootfs = "true", memMiB = 128, seccomp = true, confine = true },
+	{ pair = "hvt/rumprun", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "hvt/mirage", solo5Devs = true },
+	{ pair = "firecracker/unikraft", initrd = "/unikernel/initrd", mounts = ["/etc/cfg", "/data/cfg"] },
+	{ pair = "hyperlight-unikraft/unikraft", memMiB = 256, seccomp = true },
+	{ pair = "hyperlight-unikraft/unikraft", noResolv = true },
+
+	# Sharing the rootfs depends on the guest and the monitor.
+	{ pair = "qemu/freebsd", mountRootfs = "true" },
+	{ pair = "qemu/hermit", mountRootfs = "true" },
+	{ pair = "qemu/mewz", mountRootfs = "true" },
+	{ pair = "firecracker/linux", mountRootfs = "true" },
+	{ pair = "hvt/rumprun", mountRootfs = "true" },
+	{ pair = "hvt/mirage", mountRootfs = "true" },
+	{ pair = "hyperlight-unikraft/unikraft", mountRootfs = "true" },
+
+	# A container process with arguments and an environment of its own, as an image of nginx has.
+	{ pair = "qemu/linux", args = ["/urunit", "/usr/sbin/nginx", "-g", "daemon off;"], env = ["PATH=/usr/bin", "NGINX_VERSION=1.27"], memMiB = 512, seccomp = true },
+
+	# The start step builds a command line per guest and monitor: the network, a block device, a shared rootfs.
+	{ pair = "qemu/hermit", host = 0x01 },
+	{ pair = "hvt/rumprun", host = 0x01 },
+	{ pair = "spt/mirage", host = 0x01 },
+	{ pair = "qemu/mewz", host = 0x01 },
+	{ pair = "firecracker/linux", host = 0x01 },
+	{ pair = "hyperlight-unikraft/unikraft", json = true, initrd = "/unikernel/initrd", mountRootfs = "true", host = 0x01 },
+	{ pair = "cloud-hypervisor/linux", json = true, initrd = "/unikernel/initrd", mountRootfs = "true", host = 0x01 },
+	{ pair = "firecracker/freebsd", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "cloud-hypervisor/linux", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "qemu/freebsd", block = "/data.img", blkMnt = "/", mountRootfs = "true" },
+	{ pair = "spt/mirage", block = "/data.img", blkMnt = "/data" },
+	{ pair = "firecracker/linux", block = "/data.img", blkMnt = "/data" },
+	{ pair = "qemu/unikraft", mountRootfs = "true", memMiB = 128, seccomp = true, confine = true },
+	{ pair = "firecracker/unikraft", version = "0.10.0" },
+	# Without these two no seed reaches the QEMU virtiofs check or the Unikraft nameserver check.
+	{ pair = "qemu/linux", mountRootfs = "true" },
+	{ pair = "qemu/unikraft", version = "0.18.0", host = 0x01 },
+
+	# What the host left behind: a broken urunc config, no monitor, a resolv.conf without a usable nameserver.
+	{ pair = "qemu/linux", host = 0x30 },
+	{ pair = "qemu/linux", host = 0x20 },
+	{ pair = "qemu/linux", host = 0x40 },
+	{ pair = "qemu/linux", host = 0x80 },
+
+	# Values urunc has to reject.
+	{ pair = "qemu/linux", bin = "/../etc/x" },
+	{ pair = "qemu/linux", initrd = "/x,y" },
+	{ pair = "qemu/linux", block = "bad block", blkMnt = "/data" },
+	{ pair = "qemu/linux", mountRootfs = "maybe" },
+	{ pair = "qemu/linux", guest = "bogus" },
+	{ pair = "qemu/linux", json = true, uruncJSON = "not json" },
+	{ pair = "qemu/linux", json = true, uruncJSON = "{}" },
+	# A urunc.json key that is not base64.
+	{ pair = "qemu/linux", json = true, badKey = "unikernelType" },
+	{ pair = "qemu/linux", json = true, badKey = "unikernelVersion" },
+	{ pair = "qemu/linux", json = true, badKey = "binary" },
+	{ pair = "qemu/linux", json = true, badKey = "hypervisor" },
+	{ pair = "qemu/linux", json = true, badKey = "initrd" },
+	{ pair = "qemu/linux", json = true, badKey = "snapshot" },
+	{ pair = "qemu/linux", json = true, badKey = "block" },
+	{ pair = "qemu/linux", json = true, badKey = "blkMntPoint" },
+	{ pair = "qemu/linux", json = true, badKey = "mountRootfs" },
+	{ pair = "qemu/linux", json = true, badKey = "solo5NetDev" },
+	{ pair = "qemu/linux", json = true, badKey = "solo5BlkDev" },
+]

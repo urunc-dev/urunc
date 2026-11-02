@@ -16,6 +16,8 @@ package unikontainers
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -187,6 +189,63 @@ func TestMonitorDeviceMode(t *testing.T) {
 	})
 }
 
+func TestGetMonitorDevices(t *testing.T) {
+	tests := []struct {
+		name        string
+		hostDevices []string
+		needsKVM    bool
+		needsTUN    bool
+		expected    []string
+		expectedErr string
+	}{
+		{
+			name:        "all devices present",
+			hostDevices: []string{"null", "urandom", "net/tun", "kvm"},
+			needsKVM:    true,
+			needsTUN:    true,
+			expected:    []string{"null", "urandom", "net/tun", "kvm"},
+		},
+		{
+			name:        "tun not needed",
+			hostDevices: []string{"null", "urandom", "net/tun"},
+			expected:    []string{"null", "urandom"},
+		},
+		{
+			name:        "kvm needed but missing",
+			hostDevices: []string{"null", "urandom", "net/tun"},
+			needsKVM:    true,
+			needsTUN:    true,
+			expectedErr: "/dev/kvm",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			// Links to /dev/null stand in for the host devices.
+			devDir := t.TempDir()
+			for _, name := range tt.hostDevices {
+				path := filepath.Join(devDir, name)
+				require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+				require.NoError(t, os.Symlink("/dev/null", path))
+			}
+
+			got, err := getMonitorDevices(devDir, tt.needsKVM, tt.needsTUN)
+
+			if tt.expectedErr != "" {
+				assert.ErrorContains(t, err, tt.expectedErr, "getMonitorDevices() error mismatch")
+				return
+			}
+			require.NoError(t, err)
+			var paths []string
+			for _, dev := range got {
+				paths = append(paths, strings.TrimPrefix(dev.Path, devDir+"/"))
+			}
+			assert.Equal(t, tt.expected, paths, "getMonitorDevices() devices mismatch")
+		})
+	}
+}
+
 func TestNoRootfsGetMounts(t *testing.T) {
 	t.Run("mounts the container rootfs read-only without a block image", func(t *testing.T) {
 		t.Parallel()
@@ -230,7 +289,7 @@ func TestGetMonitorDevicesTUN(t *testing.T) {
 		return p
 	}
 
-	devs, err := getMonitorDevices(false, false)
+	devs, err := getMonitorDevices("/dev", false, false)
 	require.NoError(t, err)
 	assert.NotContains(t, paths(devs), "/dev/net/tun")
 	assert.Contains(t, paths(devs), "/dev/null")
@@ -238,7 +297,7 @@ func TestGetMonitorDevicesTUN(t *testing.T) {
 	if _, err := os.Stat("/dev/net/tun"); err != nil {
 		t.Skip("no /dev/net/tun on this host")
 	}
-	devs, err = getMonitorDevices(false, true)
+	devs, err = getMonitorDevices("/dev", false, true)
 	require.NoError(t, err)
 	assert.Contains(t, paths(devs), "/dev/net/tun")
 }

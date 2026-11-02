@@ -15,10 +15,13 @@
 package hypervisors
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -77,4 +80,27 @@ func TestFirecrackerBuildExecCmdSocket(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFirecrackerBuildExecCmdWritesConfig verifies BuildExecCmd writes the config BuildConfig
+// builds to the file the command line points to.
+func TestFirecrackerBuildExecCmdWritesConfig(t *testing.T) {
+	// Not parallel: it moves the file the other tests write to.
+	orig := firecrackerConfigFile
+	firecrackerConfigFile = filepath.Join(t.TempDir(), FCJsonFilename)
+	t.Cleanup(func() { firecrackerConfigFile = orig })
+
+	fc := &Firecracker{binary: FirecrackerBinary, binaryPath: testFCBinary}
+	args := types.ExecArgs{UnikernelPath: testKernelPath, Command: testCommand, VCPUs: 2, MemSizeB: 256 << 20}
+	wantArgs, wantConfig, err := fc.BuildConfig(args, &fakeUnikernel{})
+	require.NoError(t, err)
+
+	gotArgs, err := fc.BuildExecCmd(args, &fakeUnikernel{})
+	require.NoError(t, err)
+	assert.Equal(t, wantArgs, gotArgs)
+	assert.Contains(t, gotArgs, firecrackerConfigFile)
+
+	written, err := os.ReadFile(firecrackerConfigFile)
+	require.NoError(t, err)
+	assert.Equal(t, wantConfig, written)
 }
