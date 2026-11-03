@@ -16,6 +16,7 @@ package hypervisors
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
@@ -105,8 +106,13 @@ func (ch *CloudHypervisor) BuildExecCmd(args types.ExecArgs, ukernel types.Unike
 	// Kernel path
 	exArgs = append(exArgs, "--kernel", args.UnikernelPath)
 
-	// Console configuration - disable graphical output
-	exArgs = append(exArgs, "--console", "off", "--serial", "tty")
+	if runtime.GOARCH == "arm64" {
+		// Use virtio console. Enabling the PL011 serial device makes Cloud
+		// Hypervisor append earlycon after the guest's init arguments.
+		exArgs = append(exArgs, "--console", "tty", "--serial", "off")
+	} else {
+		exArgs = append(exArgs, "--console", "off", "--serial", "tty")
+	}
 
 	// Seccomp configuration
 	if args.Seccomp {

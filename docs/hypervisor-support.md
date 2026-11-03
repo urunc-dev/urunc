@@ -177,6 +177,12 @@ initramfs option to provide the guest with an initial RamFS. Cloud
 Hypervisor supports virtio-block for storage and virtiofs for shared
 filesystems between the host and guest.
 
+On arm64, `urunc` uses the virtio console (`console=hvc0`) and disables the
+serial device. The guest kernel must include `CONFIG_VIRTIO_CONSOLE=y` and
+virtio PCI support. This provides a console to the init process without
+Cloud Hypervisor appending a serial `earlycon` parameter to the application's
+arguments. On amd64, `urunc` uses the serial console (`console=ttyS0`).
+
 Supported guests with `urunc`:
 
 - [Linux](../unikernel-support#linux)

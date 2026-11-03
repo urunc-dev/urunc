@@ -15,14 +15,58 @@
 package hypervisors
 
 import (
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
 
 const testCHBinary = "/usr/bin/cloud-hypervisor"
+
+// Disabling the arm64 serial device also prevents Cloud Hypervisor from
+// appending an earlycon parameter after the guest's init arguments.
+func TestCloudHypervisorBuildExecCmdConsole(t *testing.T) {
+	t.Parallel()
+
+	linux := &unikernels.Linux{
+		Monitor:    "cloud-hypervisor",
+		RootFsType: "initrd",
+		App:        "/urunit",
+		Command:    "/bin/echo 'hello world' --flag",
+		InitrdConf: true,
+	}
+	cmdline, err := linux.CommandString()
+	require.NoError(t, err)
+	ch := &CloudHypervisor{binaryPath: testCHBinary}
+	args, err := ch.BuildExecCmd(types.ExecArgs{
+		UnikernelPath: testKernelPath,
+		InitrdPath:    "/initrd.cpio",
+		Command:       cmdline,
+	}, linux)
+	require.NoError(t, err)
+
+	console, serial, guestConsole := "off", "tty", "console=ttyS0"
+	if runtime.GOARCH == "arm64" {
+		console, serial, guestConsole = "tty", "off", "console=hvc0"
+	}
+	for option, value := range map[string]string{
+		"--console": console,
+		"--serial":  serial,
+		"--cmdline": cmdline,
+	} {
+		index := slices.Index(args, option)
+		require.GreaterOrEqual(t, index, 0, "missing %s", option)
+		require.Less(t, index+1, len(args))
+		assert.NotContains(t, args[index+1:], option, "%s must only occur once", option)
+		assert.Equal(t, value, args[index+1], option)
+	}
+	assert.Contains(t, strings.Fields(cmdline), guestConsole)
+}
 
 // TestCloudHypervisorBuildExecCmdSocket verifies Cloud Hypervisor emits
 // --api-socket only when socket_path is set.
