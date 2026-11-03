@@ -25,8 +25,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
-	"sync"
 	"syscall"
 
 	"github.com/urunc-dev/urunc/internal/constants"
@@ -214,14 +214,17 @@ func (u *Unikontainer) InitialSetup() error {
 
 	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
 	memory := monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources)
-	rfsBuilder := u.newRootfsBuilder(rootfsDir, rootfsParams, unikernel, unikernelPath, initrdPath, memory)
+	rfsBuilder, err := u.newRootfsBuilder(rootfsDir, rootfsParams, unikernel, unikernelPath, initrdPath, memory)
+	if err != nil {
+		return err
+	}
 
 	err = rfsBuilder.preSetup()
 	if err != nil {
 		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
-	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath)
+	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
 	if err != nil {
 		return err
 	}
@@ -281,11 +284,54 @@ func (u *Unikontainer) SetRunningState() error {
 	return u.saveContainerState()
 }
 
-// SetupNet creates the sandbox's network device (tap) in the current network
-// namespace and returns its parameters; uid and gid own the tap device.
-func SetupNet(networkType string, uid, gid uint32) (types.NetDevParams, error) {
-	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
+// monitorResolvConfMount returns the container's own resolv.conf mount, to
+// apply in the monitor rootfs as well, for a monitor that serves the guest's
+// sockets itself: it installs the whole file in the guest, search domains
+// included, so that cluster names resolve as they do in a container, and the
+// guest follows the engine's file as a container does. The monitor only
+// reads it, so it gets it read-only. The other monitors get none, and neither
+// does a container without a resolv.conf.
+func monitorResolvConfMount(vmm types.VMM, cntrMounts []specs.Mount) (specs.Mount, bool) {
+	if vmm.UsesTUNTAP() {
+		return specs.Mount{}, false
+	}
+	m, ok := resolvConfMount(cntrMounts)
+	if !ok {
+		return specs.Mount{}, false
+	}
+	m.Destination = types.ResolvConfPath
+	if !slices.Contains(m.Options, "ro") {
+		m.Options = append(slices.Clone(m.Options), "ro")
+	}
+	return m, true
+}
+
+// SetupNet gives the guest its network. A monitor on a tap gets one created in
+// the current network namespace, owned by uid and gid, with the traffic of the
+// container's interface redirected to it. Any other monitor opens the guest's
+// sockets in that namespace itself, so the interface is left as it is and only
+// described, for the monitor to know whether the container has a network at
+// all: one started with none gets empty parameters.
+func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevParams, error) {
 	netArgs := types.NetDevParams{}
+	if !tuntap {
+		iface, err := network.ContainerIface()
+		if errors.Is(err, network.ErrNoContainerIface) {
+			uniklog.Debug("no interface in the network namespace of the container, the guest gets no network")
+			return netArgs, nil
+		}
+		if err != nil {
+			return netArgs, fmt.Errorf("failed to describe the container's interface: %w", err)
+		}
+		netArgs.IP = iface.IP
+		netArgs.Mask = iface.Mask
+		netArgs.Gateway = iface.DefaultGateway
+		netArgs.MAC = iface.MAC
+		netArgs.MTU = iface.MTU
+		return netArgs, nil
+	}
+
+	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
 	netManager, err := network.NewNetworkManager(networkType)
 	if err != nil {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
@@ -387,7 +433,7 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, plus the block parameters passed to the guest.
-func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string) (monitorResources, error) {
+func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -400,8 +446,14 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 		return res, fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
 	}
 	res.Mounts = append(res.Mounts, rootfsMounts...)
+	if m, ok := monitorResolvConfMount(vmm, cntrMounts); ok {
+		res.Mounts = append(res.Mounts, m)
+	}
 
-	res.Devices, err = getMonitorDevices(vmm.UsesKVM())
+	// Whether the monitor gets a tap is decided here, once, for its devices
+	// and for its capabilities.
+	res.TUNTAP = vmm.UsesTUNTAP()
+	res.Devices, err = getMonitorDevices(vmm.UsesKVM(), res.TUNTAP)
 	if err != nil {
 		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
 	}
@@ -432,11 +484,24 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 // because MountedPath is empty and this is the only way to reach the container
 // rootfs that holds the image and the boot files.
 // TODO: Find a better way for the explicit block image case to reduce arguments.
-func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) rootfsBuilder {
+func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams types.RootfsParams, unikernel types.Unikernel, unikernelPath string, initrdPath string, memory uint64) (rootfsBuilder, error) {
+	// Select the bind mounts passed to the guest once, for every step of the
+	// rootfs setup. Without a guest rootfs, no mount is passed to the guest.
+	// TODO handle other types of mounts too
+	var mounts []specs.Mount
+	switch rootfsParams.Type {
+	case "block", "initrd", "virtiofs", "9pfs":
+		var err error
+		mounts, err = onlyBindMounts(u.Spec.Mounts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	switch rootfsParams.Type {
 	case "block":
 		return blockRootfs{
-			mounts:          u.Spec.Mounts,
+			mounts:          mounts,
 			monRootfs:       rootfsParams.MonRootfs,
 			mountedPath:     rootfsParams.MountedPath,
 			containerRootfs: containerRootfs,
@@ -446,29 +511,29 @@ func (u *Unikontainer) newRootfsBuilder(containerRootfs string, rootfsParams typ
 			uruncJSONPath:   uruncJSONFilename,
 			guestType:       u.State.Annotations[annotType],
 			guest:           unikernel,
-		}
+		}, nil
 	case "initrd":
 		return initrdRootfs{
-			mounts:      u.Spec.Mounts,
+			mounts:      mounts,
 			mountedPath: rootfsParams.MountedPath,
 			initrdPath:  rootfsParams.Path,
 			guestType:   u.State.Annotations[annotType],
-		}
+		}, nil
 	case "virtiofs", "9pfs":
 		return sharedfsRootfs{
-			mounts:      u.Spec.Mounts,
+			mounts:      mounts,
 			mountedPath: rootfsParams.MountedPath,
 			sfsType:     rootfsParams.Type,
 			vfsdConfig:  u.UruncCfg.ExtraBins["virtiofsd"],
 			sharedPath:  containerRootfsMountPath,
 			memory:      memory,
-		}
+		}, nil
 	default:
 		return noRootfs{
 			containerRootfsPath:  rootfsParams.MountedPath,
 			annotBlockPath:       u.State.Annotations[annotBlock],
 			annotBlockMountPoint: u.State.Annotations[annotBlockMntPoint],
-		}
+		}, nil
 	}
 }
 
@@ -537,6 +602,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		VCPUs:         uint(defaultVCPUs),
 		SocketPath:    socketPath,
 		Environment:   os.Environ(),
+		Ports:         u.State.Annotations[annotHyperlightPorts],
 	}
 
 	// Check if container is set to unconfined -- disable seccomp
@@ -570,10 +636,14 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 	mSpec.ExecArgs = vmmArgs
 	mSpec.GuestParams = guest
 	mSpec.PreStartCmd = monRes.PreStartCmd
-	// Resolve the guest DNS server once, here in the builder shared by both the
-	// libcontainer and non-libcontainer paths, where the container mount
-	// sources are available.
-	mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	// A monitor without a tap hands the container's resolv.conf, mounted in
+	// its rootfs, to the guest. The others get the nameserver out of it,
+	// resolved once here in the builder shared by both the libcontainer and
+	// non-libcontainer paths, where the container mount sources are available.
+	_, mSpec.ExecArgs.ResolvConf = resolvConfMount(monRes.Mounts)
+	if !mSpec.ExecArgs.ResolvConf {
+		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
+	}
 
 	return mSpec
 }
@@ -653,13 +723,13 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	netArgs, err := SetupNet(vmm.UsesTUNTAP(), u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
 	}
 	metrics.Capture(m.TS16)
-	withTUNTAP := netArgs.IP != ""
+	withTUNTAP := netArgs.TapDev != ""
 	// SetupNet does not resolve DNS; carry the server resolved at spec build.
 	netArgs.DNSServer = ms.DNSServer
 	unikernelParams.Net = netArgs
@@ -860,12 +930,12 @@ func confineBlockSources(blocks []types.BlockDevParams) ([]types.BlockDevParams,
 // It does not return on success:
 //
 // TODO: The container can still be reported as running if the PreExec step
-// (e.g., BPF/seccomp filter setup) fails after the caller reported success. We
+// fails after the caller reported success. We
 // should find a way to handle that case as well.
 func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execCmd []string) error {
 	uniklog.Debug("calling vmm execve")
 	metrics.Capture(m.TS18)
-	// Perform any monitor-specific pre-exec setup (e.g., seccomp filters for HVT).
+	// Perform any monitor-specific pre-exec setup.
 	err := vmm.PreExec(execArgs)
 	if err != nil {
 		uniklog.WithError(err).Error("failed to perform pre-exec setup")
@@ -1167,70 +1237,6 @@ func (u *Unikontainer) ExecuteHooks(name string) error {
 		return err
 	}
 
-	// NOTE: This wrapper function provides an easy way to toggle between
-	// the sequential and concurrent hook execution.
-	// By default the hooks are executed concurrently.
-	// To execute hooks sequentially, change the following line to:
-	// if false
-	if true {
-		return u.executeHooksConcurrently(name, hooks, s)
-	}
-	return u.executeHooksSequentially(name, hooks, s)
-}
-
-// executeHooksConcurrently executes concurrently any hooks found in spec based on name:
-// NOTE: It is possible that the concurrent execution of the hooks may cause
-// some unknown problems down the line. Be sure to prioritize checking
-// with sequential hook execution when debugging.
-func (u *Unikontainer) executeHooksConcurrently(name string, hooks []specs.Hook, s []byte) error {
-	var (
-		wg       sync.WaitGroup
-		errChan  = make(chan error, len(hooks))
-		firstErr error
-	)
-	for i := range hooks {
-		uniklog.WithFields(logrus.Fields{
-			"id":   u.State.ID,
-			"name": name,
-			"path": hooks[i].Path,
-			"args": hooks[i].Args,
-		}).Debug("Executing hook")
-
-		wg.Add(1)
-		go func(h specs.Hook) {
-			defer wg.Done()
-			err := executeHook(h, s)
-			if err != nil {
-				uniklog.WithFields(logrus.Fields{
-					"id":    u.State.ID,
-					"name":  name,
-					"path":  h.Path,
-					"args":  h.Args,
-					"error": err,
-				}).Error("Executing hook failed")
-				errChan <- err
-			}
-		}(hooks[i])
-	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	for err := range errChan {
-		uniklog.WithField("error", err.Error()).Error("failed to execute hook")
-		if firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
-}
-
-// executeHooksSequentially executes sequentially any hooks found in spec based on name:
-// NOTE: This function is left on purpose to aid future debugging efforts
-// in case concurrent hook execution causes unexpected errors.
-func (u *Unikontainer) executeHooksSequentially(name string, hooks []specs.Hook, s []byte) error {
 	for i := range hooks {
 		uniklog.WithFields(logrus.Fields{
 			"id":   u.State.ID,
@@ -1250,7 +1256,6 @@ func (u *Unikontainer) executeHooksSequentially(name string, hooks []specs.Hook,
 			}).Error("Executing hook failed")
 			return fmt.Errorf("failed to execute %s hook: %w", name, err)
 		}
-
 	}
 	return nil
 }

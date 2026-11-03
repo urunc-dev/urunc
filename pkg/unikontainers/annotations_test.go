@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,16 +34,17 @@ func TestGetConfigFromSpec(t *testing.T) {
 		t.Parallel()
 		spec := &specs.Spec{
 			Annotations: map[string]string{
-				annotType:          "type1",
-				annotBinary:        "binary1",
-				annotHypervisor:    "hypervisor1",
-				annotInitrd:        "initrd1",
-				annotSnapshot:      "snapshot1",
-				annotBlock:         "block1",
-				annotBlockMntPoint: "point1",
-				annotMountRootfs:   "true",
-				annotNetDev:        "management",
-				annotBlkDev:        "database",
+				annotType:            "type1",
+				annotBinary:          "binary1",
+				annotHypervisor:      "hypervisor1",
+				annotInitrd:          "initrd1",
+				annotSnapshot:        "snapshot1",
+				annotBlock:           "block1",
+				annotBlockMntPoint:   "point1",
+				annotMountRootfs:     "true",
+				annotNetDev:          "management",
+				annotBlkDev:          "database",
+				annotHyperlightPorts: "8080",
 			},
 		}
 
@@ -57,6 +59,7 @@ func TestGetConfigFromSpec(t *testing.T) {
 			MountRootfs:     "true",
 			NetDev:          "management",
 			BlkDev:          "database",
+			HyperlightPorts: "8080",
 		}
 
 		config := getConfigFromSpec(spec)
@@ -192,6 +195,7 @@ func TestDecode(t *testing.T) {
 		encodedBinary := base64.StdEncoding.EncodeToString([]byte("testBinary"))
 		encodedInitrd := base64.StdEncoding.EncodeToString([]byte("testInitrd"))
 		encodedSnapshot := base64.StdEncoding.EncodeToString([]byte("testSnapshot"))
+		encodedPorts := base64.StdEncoding.EncodeToString([]byte("8080,9000-9100"))
 
 		config := &UnikernelConfig{
 			Hypervisor:      encodedHypervisor,
@@ -199,6 +203,7 @@ func TestDecode(t *testing.T) {
 			UnikernelBinary: encodedBinary,
 			Initrd:          encodedInitrd,
 			Snapshot:        encodedSnapshot,
+			HyperlightPorts: encodedPorts,
 		}
 
 		// Call the decode method
@@ -211,6 +216,7 @@ func TestDecode(t *testing.T) {
 		assert.Equal(t, "testBinary", config.UnikernelBinary)
 		assert.Equal(t, "testInitrd", config.Initrd)
 		assert.Equal(t, "testSnapshot", config.Snapshot)
+		assert.Equal(t, "8080,9000-9100", config.HyperlightPorts)
 	})
 
 	t.Run("decode invalid base64", func(t *testing.T) {
@@ -246,22 +252,24 @@ func TestMap(t *testing.T) {
 			MountRootfs:     "false",
 			NetDev:          "netdev_value",
 			BlkDev:          "blkdev_value",
+			HyperlightPorts: "443",
 			VAccel:          "vsock",
 			RPCAddress:      "vsock://2:1234",
 		}
 		expectedMap := map[string]string{
-			annotType:          "type_value",
-			annotHypervisor:    "hypervisor_value",
-			annotBinary:        "binary_value",
-			annotInitrd:        "initrd_value",
-			annotSnapshot:      "snapshot_value",
-			annotBlock:         "block_value",
-			annotBlockMntPoint: "point_value",
-			annotMountRootfs:   "false",
-			annotNetDev:        "netdev_value",
-			annotBlkDev:        "blkdev_value",
-			annotVAccel:        "vsock",
-			annotRPCAddress:    "vsock://2:1234",
+			annotType:            "type_value",
+			annotHypervisor:      "hypervisor_value",
+			annotBinary:          "binary_value",
+			annotInitrd:          "initrd_value",
+			annotSnapshot:        "snapshot_value",
+			annotBlock:           "block_value",
+			annotBlockMntPoint:   "point_value",
+			annotMountRootfs:     "false",
+			annotNetDev:          "netdev_value",
+			annotBlkDev:          "blkdev_value",
+			annotHyperlightPorts: "443",
+			annotVAccel:          "vsock",
+			annotRPCAddress:      "vsock://2:1234",
 		}
 		resultMap := config.Map()
 		assert.Equal(t, expectedMap, resultMap)
@@ -653,6 +661,75 @@ func TestGetUnikernelConfigVAccelFromJSONFallback(t *testing.T) {
 	assert.Equal(t, "vsock://2:1234", conf.RPCAddress, "Expected the rpc address to be read from the spec")
 }
 
+// GetUnikernelConfig must read the ports annotation from the spec when the
+// rest of the config comes from urunc.json, as a docker image's does: the
+// ports are the deployment's choice, so a runtime supplied --annotation
+// replaces what the image says, and the image's value stands without one.
+func TestGetUnikernelConfigHyperlightPortsFromJSONFallback(t *testing.T) {
+	t.Parallel()
+
+	writeJSONBundle := func(t *testing.T, ports string) string {
+		t.Helper()
+		jsonConf := map[string]string{
+			annotType:       base64.StdEncoding.EncodeToString([]byte(unikernels.UnikraftUnikernel)),
+			annotHypervisor: base64.StdEncoding.EncodeToString([]byte(hypervisors.HyperlightVmm)),
+			annotInitrd:     base64.StdEncoding.EncodeToString([]byte("/unikernel/initrd.cpio")),
+		}
+		if ports != "" {
+			jsonConf[annotHyperlightPorts] = base64.StdEncoding.EncodeToString([]byte(ports))
+		}
+		configData, err := json.Marshal(jsonConf)
+		assert.NoError(t, err)
+
+		bundle := t.TempDir()
+		rootfsDir := filepath.Join(bundle, rootfsDirName)
+		err = os.Mkdir(rootfsDir, 0755)
+		assert.NoError(t, err)
+		err = os.WriteFile(filepath.Join(rootfsDir, uruncJSONFilename), configData, 0600)
+		assert.NoError(t, err)
+		return bundle
+	}
+
+	t.Run("the spec annotation replaces the ports of urunc.json", func(t *testing.T) {
+		t.Parallel()
+		bundle := writeJSONBundle(t, "8080")
+		spec := &specs.Spec{
+			Root:        &specs.Root{Path: rootfsDirName},
+			Annotations: map[string]string{annotHyperlightPorts: "9000-9100"},
+		}
+
+		conf, err := GetUnikernelConfig(bundle, spec)
+		assert.NoError(t, err)
+		assert.Equal(t, "9000-9100", conf.HyperlightPorts, "Expected the ports to be read from the spec")
+	})
+
+	t.Run("the ports of urunc.json stand without a spec annotation", func(t *testing.T) {
+		t.Parallel()
+		bundle := writeJSONBundle(t, "8080")
+		spec := &specs.Spec{
+			Root:        &specs.Root{Path: rootfsDirName},
+			Annotations: map[string]string{},
+		}
+
+		conf, err := GetUnikernelConfig(bundle, spec)
+		assert.NoError(t, err)
+		assert.Equal(t, "8080", conf.HyperlightPorts, "Expected the ports to be read from urunc.json")
+	})
+
+	t.Run("no ports anywhere leaves the guest to any port", func(t *testing.T) {
+		t.Parallel()
+		bundle := writeJSONBundle(t, "")
+		spec := &specs.Spec{
+			Root:        &specs.Root{Path: rootfsDirName},
+			Annotations: map[string]string{},
+		}
+
+		conf, err := GetUnikernelConfig(bundle, spec)
+		assert.NoError(t, err)
+		assert.Empty(t, conf.HyperlightPorts, "Expected no ports restriction")
+	})
+}
+
 // writeBundle creates a bundle directory with a config.json holding annots.
 func writeBundle(t *testing.T, annots map[string]string) string {
 	t.Helper()
@@ -925,6 +1002,58 @@ func TestValidateValuesSnapshot(t *testing.T) {
 			if tc.wantErr {
 				assert.Error(t, err)
 				assert.ErrorContains(t, err, annotSnapshot, "Expected error to mention the annotation")
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// The ports annotation lists the ports a hyperlight-unikraft guest may serve
+// on, and no other monitor can enforce it.
+func TestValidateValuesHyperlightPorts(t *testing.T) {
+	t.Parallel()
+
+	hyperlight := map[string]string{
+		annotType:       unikernels.UnikraftUnikernel,
+		annotHypervisor: string(hypervisors.HyperlightVmm),
+		annotInitrd:     "/unikernel/initrd.cpio",
+	}
+	qemu := map[string]string{
+		annotType:       unikernels.UnikraftUnikernel,
+		annotHypervisor: string(hypervisors.QemuVmm),
+		annotBinary:     "/unikernel/app",
+	}
+	testCases := []struct {
+		name    string
+		base    map[string]string
+		ports   string
+		wantErr bool
+	}{
+		{name: "a port", base: hyperlight, ports: "8080"},
+		{name: "ports and ranges", base: hyperlight, ports: "80,443,8000-8100"},
+		{name: "the whole range", base: hyperlight, ports: "1-65535"},
+		{name: "unset on qemu", base: qemu, ports: ""},
+		{name: "port zero is rejected", base: hyperlight, ports: "0", wantErr: true},
+		{name: "a port above 65535 is rejected", base: hyperlight, ports: "65536", wantErr: true},
+		{name: "a range from high to low is rejected", base: hyperlight, ports: "8100-8000", wantErr: true},
+		{name: "a trailing comma is rejected", base: hyperlight, ports: "80,", wantErr: true},
+		{name: "all is not a value", base: hyperlight, ports: "all", wantErr: true},
+		{name: "none is not a value", base: hyperlight, ports: "none", wantErr: true},
+		{name: "a word is rejected", base: hyperlight, ports: "http", wantErr: true},
+		{name: "a value on qemu is rejected", base: qemu, ports: "8080", wantErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			annots := maps.Clone(tc.base)
+			if tc.ports != "" {
+				annots[annotHyperlightPorts] = tc.ports
+			}
+			err := validateAnnots(annots)
+			if tc.wantErr {
+				assert.ErrorContains(t, err, annotHyperlightPorts, "Expected error to mention the annotation")
 				return
 			}
 			assert.NoError(t, err)

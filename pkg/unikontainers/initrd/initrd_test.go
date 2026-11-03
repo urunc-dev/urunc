@@ -181,7 +181,6 @@ func TestMergeFileMountsIntoInitrdWithoutRegularBindMountsDoesNotRewrite(t *test
 	require.NoError(t, err)
 
 	require.NoError(t, MergeFileMountsIntoInitrd(initrdPath, []specs.Mount{
-		{Type: "tmpfs", Source: "tmpfs", Destination: "/tmp"},
 		{Type: "bind", Source: dir, Destination: "/directory"},
 	}))
 

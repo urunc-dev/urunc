@@ -15,6 +15,8 @@
 package unikontainers
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -148,4 +150,54 @@ func TestGuestMemory(t *testing.T) {
 			assert.Equal(t, tt.expected, monitorMemoryBytes(defaultMem, tt.resources))
 		})
 	}
+}
+
+func TestExecuteHooksSequential(t *testing.T) {
+	trace := filepath.Join(t.TempDir(), "trace")
+
+	u := &Unikontainer{
+		State: &specs.State{ID: "test"},
+		Spec: &specs.Spec{
+			Hooks: &specs.Hooks{
+				CreateRuntime: []specs.Hook{
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "printf 1 >> " + trace}},
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "printf 2 >> " + trace}},
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "exit 1"}},
+					{Path: "/bin/sh", Args: []string{"sh", "-c", "printf 3 >> " + trace}},
+				},
+			},
+		},
+	}
+
+	err := u.ExecuteHooks("CreateRuntime")
+	require.Error(t, err)
+
+	out, err := os.ReadFile(trace)
+	require.NoError(t, err)
+	assert.Equal(t, "12", string(out))
+}
+
+// noTapVMM is a monitor that opens the guest's sockets itself, with no tap.
+type noTapVMM struct{ types.VMM }
+
+func (noTapVMM) UsesTUNTAP() bool { return false }
+
+// Only a monitor that serves the guest's sockets itself gets the container's
+// own resolv.conf mount in its rootfs, read-only, and only when there is one.
+func TestMonitorResolvConfMount(t *testing.T) {
+	t.Parallel()
+	mounts := []specs.Mount{{Type: "bind", Destination: "/etc/resolv.conf/", Source: "/run/engine/resolv.conf", Options: []string{"rbind", "rprivate"}}}
+
+	m, ok := monitorResolvConfMount(noTapVMM{}, mounts)
+	require.True(t, ok)
+	assert.Equal(t, "bind", m.Type)
+	assert.Equal(t, "/run/engine/resolv.conf", m.Source)
+	assert.Equal(t, types.ResolvConfPath, m.Destination)
+	assert.Equal(t, []string{"rbind", "rprivate", "ro"}, m.Options)
+	assert.Equal(t, []string{"rbind", "rprivate"}, mounts[0].Options, "the container's mount is left as it is")
+
+	_, ok = monitorResolvConfMount(noTapVMM{}, nil)
+	assert.False(t, ok, "a container without a resolv.conf mounts none")
+	_, ok = monitorResolvConfMount(&hypervisors.Qemu{}, mounts)
+	assert.False(t, ok, "a tap-based monitor mounts none")
 }

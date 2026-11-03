@@ -18,6 +18,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -215,4 +216,29 @@ func TestNoRootfsGetMounts(t *testing.T) {
 		assert.Equal(t, containerRootfsMountPath, mounts[0].Destination)
 		assert.NotContains(t, mounts[0].Options, "ro")
 	})
+}
+
+// A monitor that creates no tap gets no /dev/net/tun in its rootfs.
+func TestGetMonitorDevicesTUN(t *testing.T) {
+	t.Parallel()
+
+	paths := func(devs []specs.LinuxDevice) []string {
+		var p []string
+		for _, d := range devs {
+			p = append(p, d.Path)
+		}
+		return p
+	}
+
+	devs, err := getMonitorDevices(false, false)
+	require.NoError(t, err)
+	assert.NotContains(t, paths(devs), "/dev/net/tun")
+	assert.Contains(t, paths(devs), "/dev/null")
+
+	if _, err := os.Stat("/dev/net/tun"); err != nil {
+		t.Skip("no /dev/net/tun on this host")
+	}
+	devs, err = getMonitorDevices(false, true)
+	require.NoError(t, err)
+	assert.Contains(t, paths(devs), "/dev/net/tun")
 }

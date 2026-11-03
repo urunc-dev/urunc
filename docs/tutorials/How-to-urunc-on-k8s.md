@@ -230,7 +230,9 @@ During installation, the following steps take place:
 - The `urunc-deploy` Pod is deployed with privileges on the host, and the `containerd` configuration is mounted inside the Pod.
 - `urunc-deploy` performs the following tasks:
     * Copies `urunc` and `containerd-shim-urunc-v2` binaries to the host under `/usr/local/bin`.
-    * Copies hypervisor binaries to the host under `/opt/urunc/bin`.
+    * Copies the hypervisor binaries to the host under `/opt/urunc/bin`. The
+      `HYPERVISORS` environment variable of the DaemonSet names the ones to
+      install, all of them by default.
     * Copies QEMU data files to `/opt/urunc/share`.
     * Installs a configuration file at `/etc/urunc/config.toml`.
     * Registers `urunc` as a `containerd` runtime: with containerd 2.x through a

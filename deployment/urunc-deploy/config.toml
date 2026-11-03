@@ -45,6 +45,7 @@ path = "/opt/urunc/bin/solo5-hvt"
 [monitors.hyperlight-unikraft]
 default_memory_mb = 256
 default_vcpus = 1
+path = "/opt/urunc/bin/hluk"
 
 [extra_binaries.virtiofsd]
 path = "/opt/urunc/libexec/virtiofsd"

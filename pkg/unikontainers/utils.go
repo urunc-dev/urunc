@@ -46,12 +46,13 @@ const (
 )
 
 // monitorResources holds the chosen guest rootfs params, the mounts and devices
-// that must be replicated inside the monitor's rootfs, and the block parameters
-// the guest needs.
+// that must be replicated inside the monitor's rootfs, whether the monitor gets
+// a tap device, and the block parameters the guest needs.
 type monitorResources struct {
 	Rootfs      types.RootfsParams     `json:"rootfs"`
 	Mounts      []specs.Mount          `json:"mounts"`
 	Devices     []specs.LinuxDevice    `json:"devices"`
+	TUNTAP      bool                   `json:"tuntap"`
 	BlockArgs   []types.BlockDevParams `json:"blockArgs"`
 	Sharedfs    types.SharedfsParams   `json:"sharedfs"`
 	PreStartCmd []string               `json:"preStartCmd,omitempty"`
@@ -377,17 +378,24 @@ func executeHook(hook specs.Hook, state []byte) error {
 	return nil
 }
 
-func getDNSServer(mounts []specs.Mount) string {
-	resolvConf := ""
-	for _, mount := range mounts {
-		if filepath.Clean(mount.Destination) == "/etc/resolv.conf" {
-			resolvConf = mount.Source
-			break
+// resolvConfMount returns the mount of the container's /etc/resolv.conf,
+// or false when there is none. Mounts apply in order, so the last one is the
+// file the container sees.
+func resolvConfMount(mounts []specs.Mount) (specs.Mount, bool) {
+	for i := len(mounts) - 1; i >= 0; i-- {
+		if filepath.Clean(mounts[i].Destination) == "/etc/resolv.conf" {
+			return mounts[i], true
 		}
 	}
-	if resolvConf == "" {
+	return specs.Mount{}, false
+}
+
+func getDNSServer(mounts []specs.Mount) string {
+	m, ok := resolvConfMount(mounts)
+	if !ok {
 		return ""
 	}
+	resolvConf := m.Source
 
 	data, err := os.ReadFile(resolvConf)
 	if err != nil {

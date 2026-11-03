@@ -202,6 +202,11 @@ connected with the project team and other contributors.
 - Invitation: [link](https://zoom-lfx.platform.linuxfoundation.org/meeting/91431746302?password=92a8b698-8d9d-43d3-9037-450804362208&invite=true)
 - [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J)
 
+## Adopters
+
+See [ADOPTERS.md](ADOPTERS.md) for organizations using `urunc`. If you use
+`urunc`, please consider adding yourself to the list.
+
 ## Contributing
 
 We will be very happy to receive any feedback and any kind of contributions for

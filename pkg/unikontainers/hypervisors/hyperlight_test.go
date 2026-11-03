@@ -100,6 +100,64 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot"},
 		},
 		{
+			name: "the network of the container is opened to a booted guest",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				Net:        types.NetDevParams{IP: "10.244.1.7"},
+			},
+			unikernel: &fakeUnikernel{monitorCli: types.MonitorCliArgs{OtherArgs: []string{"--guest-exec=/entrypoint.py"}}},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--net", "--port=all", "--guest-exec=/entrypoint.py"},
+		},
+		{
+			name: "the network of the container is opened to a resumed guest",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+				Net:          types.NetDevParams{IP: "10.244.1.7"},
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--net", "--port=all"},
+		},
+		{
+			name: "the container's resolv.conf is installed in a networked guest",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+				Net:          types.NetDevParams{IP: "10.244.1.7"},
+				ResolvConf:   true,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--net", "--port=all", "--resolv-conf=/etc/resolv.conf"},
+		},
+		{
+			name: "the ports annotation limits what a booted guest serves on",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				Net:        types.NetDevParams{IP: "10.244.1.7"},
+				Ports:      "8080,9000-9100",
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio", "--net", "--port=8080", "--port=9000-9100"},
+		},
+		{
+			name: "the ports annotation limits what a resumed guest serves on",
+			args: types.ExecArgs{
+				SnapshotPath: "/unikernel/snapshot",
+				Net:          types.NetDevParams{IP: "10.244.1.7"},
+				Ports:        "8080",
+				ResolvConf:   true,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "snapshot", "run", "/unikernel/snapshot", "--net", "--port=8080", "--resolv-conf=/etc/resolv.conf"},
+		},
+		{
+			name: "a container without a network leaves the guest to hluk's default of none",
+			args: types.ExecArgs{
+				InitrdPath: "/unikernel/initrd.cpio",
+				ResolvConf: true,
+			},
+			unikernel: &fakeUnikernel{},
+			expected:  []string{"/usr/local/bin/hluk", "run", "--initrd", "/unikernel/initrd.cpio"},
+		},
+		{
 			name: "no initrd is an error",
 			args: types.ExecArgs{
 				UnikernelPath: "/unikernel/kernel",
@@ -122,5 +180,13 @@ func TestHyperlightBuildExecCmd(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, cmd)
 		})
+	}
+}
+
+func TestHyperlightUsesTUNTAP(t *testing.T) {
+	t.Parallel()
+	assert.False(t, (&Hyperlight{}).UsesTUNTAP(), "hyperlight-unikraft opens the guest's sockets itself, with no tap")
+	for _, tap := range []types.VMM{&Qemu{}, &Firecracker{}, &CloudHypervisor{}, &HVT{}, &SPT{}, &Hedge{}} {
+		assert.True(t, tap.UsesTUNTAP(), "%T gets a tap", tap)
 	}
 }

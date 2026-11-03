@@ -2,6 +2,8 @@ module github.com/urunc-dev/urunc
 
 go 1.26.8
 
+toolchain go1.27.3
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
@@ -14,7 +16,6 @@ require (
 	github.com/containerd/ttrpc v1.2.10
 	github.com/creack/pty v1.1.24
 	github.com/cyphar/filepath-securejoin v0.7.0
-	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackpal/gateway v1.2.0
 	github.com/moby/sys/mountinfo v0.7.2

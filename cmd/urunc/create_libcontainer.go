@@ -133,6 +133,10 @@ func buildMonitorArgs(id string, logFormat string) []string {
 // pivot: /proc is always mounted in the monitor rootfs, so this re-execs the
 // sealed urunc binary without urunc having to be copied into that rootfs.
 func monitorProcess(cmd *cli.Command, u *unikontainers.Unikontainer, readyFile *os.File) (*libcontainer.Process, error) {
+	caps, err := u.MonitorCapabilities()
+	if err != nil {
+		return nil, err
+	}
 	process := &libcontainer.Process{
 		Args: buildMonitorArgs(u.State.ID, cmd.String("log-format")),
 		Env:  os.Environ(),
@@ -141,7 +145,7 @@ func monitorProcess(cmd *cli.Command, u *unikontainers.Unikontainer, readyFile *
 		Cwd: "/",
 		// TODO set uid, gid and additional groups here
 		Init:         true,
-		Capabilities: unikontainers.MonitorCapabilities(u.Spec),
+		Capabilities: caps,
 		LogLevel:     strconv.Itoa(int(logrus.GetLevel())),
 		// The ready pipe's write end. It must be the only/first ExtraFile so the
 		// monitor inherits it at unikontainers.ReadyPipeFD:

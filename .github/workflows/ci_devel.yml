@@ -55,7 +55,7 @@ on:
         default: ''
         type: string
       solo5_version:
-        description: 'Solo5 version for the e2e tests (e.g. v0.9.3)'
+        description: 'Solo5 version for the e2e tests (e.g. v0.12.1)'
         required: false
         default: ''
         type: string

@@ -65,6 +65,12 @@ Sandbox monitors, along with the unikernels that can run on top of them.
 
 <!-- ## urunc and the CNCF -->
 
+## Adopters
+
+See [ADOPTERS.md](https://github.com/urunc-dev/urunc/blob/main/ADOPTERS.md) for
+organizations using `urunc`. If you use `urunc`, please consider adding
+yourself to the list.
+
 ## Community and Meetings
 
 Join us for our monthly open meetings, held every last Wednesday of the month.

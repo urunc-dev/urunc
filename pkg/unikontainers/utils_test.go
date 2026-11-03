@@ -417,3 +417,19 @@ func TestGetDNSServer(t *testing.T) {
 		assert.Equal(t, "", getDNSServer(mounts))
 	})
 }
+
+// OCI mounts apply in order, so the last /etc/resolv.conf mount is the file
+// the container sees.
+func TestResolvConfMount(t *testing.T) {
+	t.Parallel()
+	mounts := []specs.Mount{
+		{Destination: "/etc/resolv.conf", Source: "/engine/resolv.conf"},
+		{Destination: "/etc/hosts", Source: "/engine/hosts"},
+		{Destination: "/etc/resolv.conf/", Source: "/user/resolv.conf"},
+	}
+	m, ok := resolvConfMount(mounts)
+	assert.True(t, ok)
+	assert.Equal(t, "/user/resolv.conf", m.Source)
+	_, ok = resolvConfMount(mounts[1:2])
+	assert.False(t, ok)
+}

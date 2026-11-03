@@ -8,7 +8,7 @@ on:
         default: '["amd64", "aarch64"]'
       dockerfiles:
         type: string
-        default: '["Dockerfile"]'
+        default: 'deployment/urunc-deploy/Dockerfile'
       registry:
         type: string
         default: 'ghcr.io'
@@ -69,19 +69,22 @@ jobs:
           tags: |
             type=sha,prefix=${{ env.ARCH }}-
 
+      - name: Compute short commit SHA
+        id: vars
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push urunc-deploy-${{ matrix.arch}}
         id: build-and-push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # master
         with:
-          context: ./deployment/urunc-deploy
+          context: .
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: true
           file: ${{ inputs.dockerfiles }}
-          build-args: |
-            BRANCH=${{ github.ref_name }}
-            REPO=${{ github.repository }}
           provenance: false
+          build-args: |
+            COMMIT=${{ steps.vars.outputs.SHORT_SHA }}
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # main

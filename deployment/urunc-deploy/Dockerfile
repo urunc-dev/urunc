@@ -26,8 +26,8 @@ RUN rm -f /var/lib/dpkg/info/libc-bin.* && \
 WORKDIR /app
 
 # Clone Solo5 repository and force static linking
-RUN git -c http.sslVerify=false clone --branch v0.9.3 https://github.com/Solo5/solo5.git . && \
-    sed -i '66 a\HOSTLDFLAGS += -static-pie' tenders/GNUmakefile
+RUN git -c http.sslVerify=false clone --branch v0.12.1 https://github.com/Solo5/solo5.git . && \
+    echo 'HOSTLDFLAGS += -static-pie' >> tenders/GNUmakefile
 
 # Build Solo5 and verify artifacts
 RUN ./configure.sh && make || true && \
@@ -38,14 +38,16 @@ WORKDIR /artifacts
 RUN cp /app/tenders/hvt/solo5-hvt /artifacts/ && \
     cp /app/tenders/spt/solo5-spt /artifacts/
 
-FROM golang:1.27.2-alpine3.24@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS urunc-builder
+FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS urunc-builder
+# COMMIT is passed from CI (first 7 chars of GITHUB_SHA) so that
+# `git describe --dirty` is not used inside the build context,
+# preventing a -dirty suffix in the embedded version string.
+ARG COMMIT
 RUN apk update && \
     apk add --no-cache git make build-base linux-headers
 WORKDIR /app
-ARG REPO=urunc-dev/urunc
-ARG BRANCH=main
-RUN git clone --depth 1 --branch ${BRANCH} https://github.com/${REPO} . && \
-    make
+COPY . .
+RUN make COMMIT=${COMMIT}
 WORKDIR /artifacts
 RUN cp -r /app/dist .
 
@@ -72,6 +74,27 @@ RUN ARCH=$(uname -m) && \
 WORKDIR /artifacts
 RUN cp /cloud-hypervisor .
 
+FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac6da80685 AS hluk-builder
+RUN apk update && apk add --no-cache curl tar
+# hluk, the monitor of Hyperlight guests, embeds the Unikraft kernel it boots
+# and its Linux releases are static binaries, so the release tarball is all a
+# node needs. The download is checked against the checksums of the release.
+# Images built for one hluk release do not run on another, so this version
+# moves together with HLUK_VERSION in vm_test.yml, hyperlight-unikraft in
+# docs/variables/versions.yml and the image tag in urunc-deploy-test.yml.
+ARG HLUK_VERSION=v0.18.0
+RUN ARCH=$(uname -m) && \
+    VERSION="${HLUK_VERSION}" && \
+    RELEASE_URL="https://github.com/hyperlight-dev/hyperlight-unikraft/releases" && \
+    ASSET="hluk-${VERSION}-${ARCH}-unknown-linux-musl.tar.gz" && \
+    curl -fL -o "${ASSET}" "${RELEASE_URL}/download/${VERSION}/${ASSET}" && \
+    curl -fL -o SHA256SUMS "${RELEASE_URL}/download/${VERSION}/SHA256SUMS" && \
+    grep " ${ASSET}\$" SHA256SUMS | sha256sum -c - && \
+    tar xzf "${ASSET}" && \
+    test -x hluk
+WORKDIR /artifacts
+RUN cp /hluk .
+
 FROM quay.io/kata-containers/kata-deploy:3.15.0@sha256:fbab8bdbe910b52cf9396261f887f894cd3e71f86abe68ec11595ab7628b4a10 AS qemu-builder
 WORKDIR /artifacts
 RUN ARCH=$(uname -m) && \
@@ -86,6 +109,7 @@ COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/share/kata-qemu/qemu /urun
 COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/libexec/virtiofsd /urunc-artifacts/libexec/virtiofsd
 COPY --from=firecracker-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=cloud-hypervisor-builder /artifacts /urunc-artifacts/hypervisors
+COPY --from=hluk-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=urunc-builder /artifacts/dist /urunc-artifacts
 
 RUN apk update && \
@@ -107,8 +131,8 @@ FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac
 COPY --from=intermediate /urunc-artifacts /urunc-artifacts
 COPY --from=intermediate /usr/bin/jq /usr/bin/jq
 COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
-COPY scripts/install.sh /urunc-artifacts/scripts/install.sh
-COPY config.toml /deployment/config.toml
+COPY deployment/urunc-deploy/scripts/install.sh /urunc-artifacts/scripts/install.sh
+COPY deployment/urunc-deploy/config.toml /deployment/config.toml
 RUN apk update && \
     apk add --no-cache bash curl py3-pip && \
     pip install --no-cache-dir --break-system-packages yq==3.2.3 && \

@@ -340,6 +340,32 @@ func pingTest(tool testTool) error {
 	return nil
 }
 
+// httpGetTest fetches the root of the HTTP server that the guest serves on
+// port 8000, at the address of the container, from the host.
+func httpGetTest(tool testTool) error {
+	extractedIPAddr, err := tool.inspectPAndGet("ip")
+	if err != nil && err != errToolDoesNotSupport {
+		return fmt.Errorf("Failed to extract container IP: %v", err)
+	} else if err == errToolDoesNotSupport {
+		extractedIPAddr, err = tool.inspectCAndGet("IPAddress")
+		if err != nil {
+			return fmt.Errorf("Failed to extract container IP: %v", err)
+		}
+	}
+	url := fmt.Sprintf("http://%s:8000/", extractedIPAddr)
+	// The guest may still be starting when the container reports running.
+	cmd := exec.Command("curl", "-sSf", "-m", "10", "--retry", "5", "--retry-delay", "1", "--retry-all-errors", url) //nolint:gosec
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Failed to GET %s: %v\n%s", url, err, output)
+	}
+	if len(output) == 0 {
+		return fmt.Errorf("Empty response from %s", url)
+	}
+
+	return nil
+}
+
 func httpStaticNetTest(tool testTool) (err error) {
 	extractedPid, err := tool.inspectCAndGet("pid")
 	if err != nil {
