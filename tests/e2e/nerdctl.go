@@ -19,6 +19,7 @@ import (
 )
 
 const nerdctlName = "nerdctl"
+const nerdctlCmd = nerdctlName + " --namespace " + testNamespace
 
 type nerdctlInfo struct {
 	testArgs    containerTestArgs
@@ -63,7 +64,7 @@ func (i *nerdctlInfo) createPod() (string, error) {
 }
 
 func (i *nerdctlInfo) createContainer() (string, error) {
-	return commonCreate(nerdctlName, i.testArgs)
+	return commonCreate(nerdctlCmd, i.testArgs)
 }
 
 // nolint:unused
@@ -73,15 +74,15 @@ func (i *nerdctlInfo) startPod() (string, error) {
 }
 
 func (i *nerdctlInfo) startContainer(detach bool) (string, error) {
-	return commonStart(nerdctlName, i.containerID, detach)
+	return commonStart(nerdctlCmd, i.containerID, detach)
 }
 
 func (i *nerdctlInfo) runContainer(detach bool) (string, error) {
-	return commonRun(nerdctlName, i.testArgs, detach)
+	return commonRun(nerdctlCmd, i.testArgs, detach)
 }
 
 func (i *nerdctlInfo) stopContainer() error {
-	output, err := commonStopContainer(nerdctlName, i.containerID)
+	output, err := commonStopContainer(nerdctlCmd, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
 		return fmt.Errorf("Failed to stop %s: %v", i.containerID, err)
@@ -95,7 +96,7 @@ func (i *nerdctlInfo) stopPod() error {
 }
 
 func (i *nerdctlInfo) rmContainer() error {
-	output, err := commonRmContainer(nerdctlName, i.containerID)
+	output, err := commonRmContainer(nerdctlCmd, i.containerID)
 	err = checkExpectedOut(i.containerID, output, err)
 	if err != nil {
 		return fmt.Errorf("Failed to stop %s: %v", i.containerID, err)
@@ -109,11 +110,11 @@ func (i *nerdctlInfo) rmPod() error {
 }
 
 func (i *nerdctlInfo) logContainer() (string, error) {
-	return commonLogs(nerdctlName, i.containerID)
+	return commonLogs(nerdctlCmd, i.containerID)
 }
 
 func (i *nerdctlInfo) searchContainer(cID string) (bool, error) {
-	return commonSearchContainer(nerdctlName, cID)
+	return commonSearchContainer(nerdctlCmd, cID)
 }
 
 func (i *nerdctlInfo) searchPod(string) (bool, error) {
@@ -122,7 +123,7 @@ func (i *nerdctlInfo) searchPod(string) (bool, error) {
 }
 
 func (i *nerdctlInfo) inspectCAndGet(key string) (string, error) {
-	return commonInspectCAndGet(nerdctlName, i.containerID, key)
+	return commonInspectCAndGet(nerdctlCmd, i.containerID, key)
 }
 
 func (i *nerdctlInfo) inspectPAndGet(string) (string, error) {
