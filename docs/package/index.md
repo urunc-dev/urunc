@@ -102,26 +102,23 @@ allowing us to create OCI images from any type of file. Currently [bunny](https:
 process two formats of files: a) the typical Dockerfile-like syntax files and b)
 `bunnyfile`, a specialized YAML-based file.
 
-When using Dockerfile-like files, [bunny](https://github.com/nubificus/bunny)
-can only package pre-built unikernel images; it cannot build them. This format
-is primarily retained for compatibility with pun and bima, which are no longer
-maintained. Currently, [bunny](https://github.com/nubificus/bunny)
-can handle the following *instructions*:
+Bunny supports standard Containerfile/Dockerfile syntax, including `RUN`,
+`ENV`, `ENTRYPOINT`, `CMD`, multi-stage builds and `COPY --from=`. It adds
+`urunc` annotations and a `urunc.json` file to the resulting OCI image.
 
-- `FROM`: Specify an existing OCI image to use as a base.
-- `COPY`: this works as in Dockerfiles. At this moment, only a single copy
-  operation per *instruction* (think one copy per line). These files are copied
-  inside the container's image rootfs.
-- `LABEL`: all LABEL *instructions* are added as annotations to the container's
-  image. They are also added to a special `urunc.json` inside the container's image
-  rootfs.
+For Containerfile input, bunny also supplies the following defaults:
 
-To further extend the functionality and provide a common interface to facilitate
-unikernel building, we defined `bunnyfile`. It is a YAML-based special file that
-[bunny](https://github.com/nubificus/bunny) transforms to LLB with all the
-necessary steps to build the respective unikernel. Apart from building
-unikernels, [bunny](https://github.com/nubificus/bunny) can also be used to build or append files in the unikernel's
-rootfs.
+- The guest is Linux over QEMU unless the corresponding `com.urunc.unikernel.*`
+  labels specify otherwise.
+- If `com.urunc.unikernel.binary` is not set, bunny adds a kernel selected for
+  the configured monitor (QEMU, Firecracker or Cloud Hypervisor).
+- For Linux guests, bunny copies `/urunit` into the image and prepends it to
+  the image's entrypoint. Set `LABEL bunny.urunit=false` to disable this when
+  providing your own init process.
+
+The YAML-based `bunnyfile` provides explicit fields for the platform, kernel,
+rootfs and application configuration. The automatic kernel and urunit defaults
+above apply to Containerfile input; a bunnyfile specifies those files explicitly.
 
 The current syntax of `bunnyfile` is the following one:
 
@@ -135,20 +132,34 @@ platforms:                                      # [3] The target platform for bu
   monitor: qemu                                 # [3c] The hypervisor/VMM or any other kind of monitor.
   architecture: x86                             # [3d] The target architecture.
 
-rootfs:                                         # [4] (Optional) Specifies the rootfs of the unikernel.
-  from: local                                   # [4a] (Optional) The source of the rootfs.
-  path: initrd                                  # [4b] (Required if from is not scratch) The path in the source, where the prebuilt rootfs file resides.
-  type: initrd                                  # [4c] (optional) The type of rootfs (e.g. initrd, raw, block)
-  include:                                      # [4d] (Optional) A list of local files to include in the rootfs
-    - src:dst
+rootfs:                                         # [4] (Optional) Rootfs configuration.
+  from: scratch                                 # [4a] scratch, local, or an OCI image reference.
+  type: initrd                                  # [4b] initrd, block, or raw, subject to framework support.
+  include:                                      # [4c] Files to copy into the rootfs.
+    - config.txt:/etc/app.conf                  # Local source:destination shorthand.
+    - from: nginx:alpine                        # Copy from another OCI image.
+      source: /usr/share/nginx/html/index.html
+      destination: /www/index.html
 
-kernel:                                         # [5] Specify a prebuilt kernel to use
-  from: local                                   # [5a] Specify the source of a prebuilt kernel.
-  path: kernel                                  # [5b] The path where the kernel image resides.
+kernel:                                         # [5] Prebuilt kernel configuration.
+  from: local                                   # [5a] local or an OCI image reference.
+  path: kernel                                  # [5b] Path to the kernel in that source.
 
-cmdline: hello                                  # [6] The cmdline of the app.
+envs:                                           # [6] Environment variables as KEY=VALUE strings.
+  - MESSAGE=hello
+cmd: ["hello"]                                  # [7] Application command/arguments, like CMD.
+entrypoint: ["/app"]                            # [8] Entrypoint, like ENTRYPOINT.
 
 ```
+
+For an existing rootfs file, use `rootfs.from: local` (or an OCI image
+reference) and `rootfs.path` to select the file. The `include` shorthand copies
+local files; the mapping form selects a source with `from`, `source` and
+`destination`. Use `from: local` in that mapping for the local build context.
+
+`cmd` and `entrypoint` are lists, so each argument is a separate item. `envs`
+is a list of `KEY=VALUE` strings. The old `cmdline` string is accepted for
+backward compatibility when `cmd` is empty; use `cmd` in new files.
 
 For more information regarding the `bunnyfile` please take a look at the
 respective section of [bunny's
@@ -219,7 +230,7 @@ kernel:
   from: local
   path: nginx-qemu-x86_64-initrd_qemu-x86_64
 
-cmdline: nginx -c /nginx/conf/nginx.conf
+cmd: ["nginx", "-c", "/nginx/conf/nginx.conf"]
 ```
 
 and we can build it with a docker command:

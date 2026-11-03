@@ -43,7 +43,7 @@ kernel:
   from: local
   path: network.hvt
 
-cmdline: ""
+cmd: []
 ```
 
 In the above file we specify the following:
