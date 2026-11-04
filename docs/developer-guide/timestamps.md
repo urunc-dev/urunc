@@ -40,52 +40,36 @@ Timestamp logging is now handled through a fixed schema using zerolog. The previ
 
 ## How to enable timestamping
 
-In order to capture the timestamps, a separate `containerd-shim` and container runtime must be configured in your system.
+Timestamping is enabled via urunc's configuration file at `/etc/urunc/config.toml`:
 
-To create the "timestamping" version of `containerd-shim-urunc-v2`:
-
-```bash
-sudo tee -a /usr/local/bin/containerd-shim-uruncts-v2 > /dev/null << 'EOT'
-#!/bin/bash
-URUNC_TIMESTAMPS=1 /usr/local/bin/containerd-shim-urunc-v2 $@
-EOT
-sudo chmod +x /usr/local/bin/containerd-shim-uruncts-v2
+```toml
+[timestamps]
+enabled     = true
+destination = "/var/log/urunc/timestamps.log"
 ```
 
-To add the "timestamping" urunc to containerd config:
+No separate `containerd-shim` or container runtime configuration is required — urunc reads this setting directly at startup.
 
-```bash
-sudo tee -a /etc/containerd/config.toml > /dev/null << 'EOT'
-# timestamping urunc
-[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.uruncts]
-    runtime_type = "io.containerd.uruncts.v2"
-    container_annotations = ["com.urunc.unikernel.*"]
-    pod_annotations = ["com.urunc.unikernel.*"]
-    snapshotter = "devmapper"
-EOT
-sudo systemctl restart containerd.service
-```
+If the destination directory does not exist, urunc logs a warning and disables metrics gracefully instead of crashing.
 
 ## How to gather timestamps
 
-Now we need to run a unikernel using the new container runtime `uruncts`:
+Now we need to run a unikernel with timestamping enabled in the config:
 
 ```bash
-sudo nerdctl run --rm --snapshotter devmapper --runtime io.containerd.uruncts.v2 harbor.nbfc.io/nubificus/urunc/hello-hvt-rumprun:latest
+sudo nerdctl run --rm --snapshotter devmapper --runtime io.containerd.urunc.v2 harbor.nbfc.io/nubificus/urunc/hello-hvt-rumprun:latest
 ```
 
-The timestamp logs are located at `/tmp/urunc.zlog`:
+The timestamp logs are located at `/var/log/urunc/timestamps.log`:
 
 ```console
-$ cat /tmp/urunc.zlog | grep TS
+$ cat /var/log/urunc/timestamps.log | grep TS
 {"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS00","timestampName":"CR.invoked","timestampOrder":0,"time":1703676366849599657}
 {"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS01","timestampName":"CR.unikontainer_created","timestampOrder":1,"time":1703676366850466038}
 {"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS02","timestampName":"CR.initial_setup","timestampOrder":2,"time":1703676366850709857}
 {"containerID":"faaf830245ffab0df81927cebd7f11065e70c7703121fbc1b11d4bca49bab461","timestampID":"TS03","timestampName":"CR.start_reexec","timestampOrder":3,"time":1703676366850900287}
 # ... (rest of the output)
 ```
-
-> Note: the timestamp destination (`/tmp/urunc.zlog`) is hardcoded for the time being.
 
 ## Gathering the timestamps
 
