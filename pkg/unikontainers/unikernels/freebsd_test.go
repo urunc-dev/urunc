@@ -15,6 +15,7 @@
 package unikernels
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -259,14 +260,15 @@ func TestFreeBSDUsesUrunit(t *testing.T) {
 func TestFreeBSDPlainInit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
+	image := writeTestImage(t, ufsTestImage(ufsSuperblockUFS2, ufs2Magic))
 
 	f := newFreeBSD()
 	err := f.Init(types.UnikernelParams{
 		CmdLine: []string{"/sbin/init"},
 		Monitor: "qemu",
 		Net:     types.NetDevParams{IP: "172.17.0.2", Mask: "255.255.0.0", Gateway: "172.17.0.1"},
-		Block:   []types.BlockDevParams{{ID: "rootfs", Source: "/rootfs.ufs", MountPoint: "/"}},
-		Rootfs:  types.RootfsParams{Type: "block", Path: "/rootfs.ufs", MonRootfs: dir},
+		Block:   []types.BlockDevParams{{ID: "rootfs", Source: image, MountPoint: "/"}},
+		Rootfs:  types.RootfsParams{Type: "block", Path: image, MonRootfs: dir},
 	})
 	require.NoError(t, err)
 	assert.False(t, f.WithUrunit)
@@ -302,12 +304,148 @@ func TestFreeBSDInitRootfsType(t *testing.T) {
 	}
 
 	// block and 9pfs are accepted.
+	image := writeTestImage(t, ufsTestImage(ufsSuperblockUFS2, ufs2Magic))
 	for _, rootfs := range []string{"block", "9pfs"} {
 		f := newFreeBSD()
 		err := f.Init(types.UnikernelParams{
 			CmdLine: []string{"/bin/sh"},
+			Block:   []types.BlockDevParams{{ID: "rootfs", Source: image}},
 			Rootfs:  types.RootfsParams{Type: rootfs},
 		})
 		assert.NoError(t, err, "rootfs type %q must be accepted", rootfs)
 	}
+}
+
+func ufsTestImage(location int64, magic uint32) []byte {
+	image := make([]byte, 300000)
+	sb := image[location:]
+	binary.LittleEndian.PutUint32(sb[ufsGroupCountOffset:], 1)
+	binary.LittleEndian.PutUint32(sb[ufsBlockSizeOffset:], 32768)
+	binary.LittleEndian.PutUint32(sb[ufsFragSizeOffset:], 4096)
+	binary.LittleEndian.PutUint32(sb[ufsFragsPerBlockOffset:], 8)
+	binary.LittleEndian.PutUint32(sb[ufsSuperblockSizeOffset:], 4096)
+	binary.LittleEndian.PutUint32(sb[ufsMagicOffset:], magic)
+
+	return image
+}
+
+func extTestImage(compatible, incompatible, readOnly uint32) []byte {
+	image := make([]byte, 300000)
+	sb := image[extSuperblockOffset:]
+	binary.LittleEndian.PutUint16(sb[extMagicOffset:], extMagic)
+	binary.LittleEndian.PutUint32(sb[extCompatibleOffset:], compatible)
+	binary.LittleEndian.PutUint32(sb[extIncompatibleOffset:], incompatible)
+	binary.LittleEndian.PutUint32(sb[extReadOnlyOffset:], readOnly)
+
+	return image
+}
+
+func withMagicAt(image []byte, offset int, magic uint32) []byte {
+	binary.LittleEndian.PutUint32(image[offset:], magic)
+
+	return image
+}
+
+func writeTestImage(t *testing.T, image []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "rootfs.img")
+	require.NoError(t, os.WriteFile(path, image, 0o600))
+
+	return path
+}
+
+func TestFreeBSDDetectRootfsType(t *testing.T) {
+	t.Parallel()
+
+	const (
+		filetype = 0x0002
+		extents  = 0x0040
+	)
+	ext4 := func() []byte { return extTestImage(extCompatibleJournal, filetype|extents, 0x0003) }
+
+	testCases := []struct {
+		name     string
+		image    []byte
+		expected string
+	}{
+		{"UFS2 at 65536", ufsTestImage(65536, ufs2Magic), fsTypeUFS},
+		{"UFS1 at 8192", ufsTestImage(8192, ufs1Magic), fsTypeUFS},
+		{"UFS2 at 8192 is not accepted by the kernel", ufsTestImage(8192, ufs2Magic), ""},
+		{"UFS1 at 65536 is not accepted by the kernel", ufsTestImage(65536, ufs1Magic), ""},
+		{"ext2", extTestImage(0, filetype, 0x0003), fsTypeExt2},
+		{"ext3", extTestImage(extCompatibleJournal, filetype, 0x0003), fsTypeExt3},
+		{"ext4", ext4(), fsTypeExt4},
+		{"ext4 without a journal", extTestImage(0, filetype|extents, 0x0003), fsTypeExt4},
+		{"external ext journal", extTestImage(0, extIncompatibleJournalDev, 0), ""},
+		{"ext4 with UFS1 magic at 66908", withMagicAt(ext4(), 66908, ufs1Magic), fsTypeExt4},
+		{"ext4 with UFS1 magic at 263516", withMagicAt(ext4(), 263516, ufs1Magic), fsTypeExt4},
+		{"ext4 with UFS1 magic at 9564", withMagicAt(ext4(), 9564, ufs1Magic), fsTypeExt4},
+		{"zeros", make([]byte, 300000), ""},
+		{"too short", make([]byte, 100), ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fsType, err := detectRootfsType(writeTestImage(t, tc.image))
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, fsType)
+		})
+	}
+}
+
+func TestFreeBSDInitBlockRootfs(t *testing.T) {
+	t.Parallel()
+
+	const filetype = 0x0002
+	testCases := []struct {
+		name     string
+		image    []byte
+		expected string
+	}{
+		{"ufs", ufsTestImage(65536, ufs2Magic), freeBSDufs},
+		{"ext2", extTestImage(0, filetype, 0x0003), freeBSDext2fs},
+		{"ext3 is unsupported", extTestImage(extCompatibleJournal, filetype, 0x0003), ""},
+		{"ext4 is unsupported", extTestImage(extCompatibleJournal, filetype|0x0040, 0x0003), ""},
+		{"unrecognized", make([]byte, 300000), ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFreeBSD()
+			err := f.Init(types.UnikernelParams{
+				CmdLine: []string{"/bin/sh"},
+				Block:   []types.BlockDevParams{{ID: "rootfs", Source: writeTestImage(t, tc.image)}},
+				Rootfs:  types.RootfsParams{Type: "block"},
+			})
+			if tc.expected == "" {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, f.BlockFsType)
+		})
+	}
+
+	t.Run("missing image", func(t *testing.T) {
+		t.Parallel()
+		f := newFreeBSD()
+		err := f.Init(types.UnikernelParams{
+			CmdLine: []string{"/bin/sh"},
+			Block:   []types.BlockDevParams{{ID: "rootfs", Source: filepath.Join(t.TempDir(), "missing.img")}},
+			Rootfs:  types.RootfsParams{Type: "block"},
+		})
+		assert.Error(t, err)
+	})
+
+	t.Run("no rootfs block device", func(t *testing.T) {
+		t.Parallel()
+		f := newFreeBSD()
+		err := f.Init(types.UnikernelParams{
+			CmdLine: []string{"/bin/sh"},
+			Rootfs:  types.RootfsParams{Type: "block"},
+		})
+		assert.Error(t, err)
+	})
 }
