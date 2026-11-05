@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
@@ -485,12 +486,12 @@ func setupConsole(monRootfs string) error {
 	return nil
 }
 
-// mountsForMonitor returns all the required mounts from the host for the
-// monitor execution: the binary, supporting libraries and data directories.
-// These are the host files that need to be mirrored inside the monitor rootfs.
-// In addition, it also includes the special filesystems required for the monitor
-// execution (e.g. procfs)
-func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount, error) {
+// mountsForMonitor returns the mounts of the monitor rootfs: the special
+// filesystems, the monitor binary, Qemu's data directories and the host
+// libraries. The libraries can not overlap these mounts, otherMounts or the
+// control socket. They are mounted first, so a later mount hides them if they
+// still overlap. All the paths must be absolute and clean.
+func mountsForMonitor(monitorPath string, monitorDataPath string, socketPath string, libs []string, otherMounts []specs.Mount) ([]specs.Mount, error) {
 	procMount := specs.Mount{
 		Type:        "proc",
 		Source:      "proc",
@@ -509,23 +510,9 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 		Options:     []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620"},
 	}
 
-	mounts := []specs.Mount{procMount, devMount, devPtsMount, bindMount(monitorPath, monitorPath, true, true)}
+	mounts := []specs.Mount{bindMount(monitorPath, monitorPath, true, true), procMount, devMount, devPtsMount}
 
 	monitorName := filepath.Base(monitorPath)
-	// TODO: Remove most of these when we switch to static binaries.
-	if monitorName != "firecracker" {
-		mounts = append(mounts, bindMount("/lib", "/lib", true, true))
-
-		// If /lib64 does not exist, just ignore it
-		if _, err := os.Stat("/lib64"); err == nil {
-			mounts = append(mounts, bindMount("/lib64", "/lib64", true, true))
-		} else if !os.IsNotExist(err) {
-			return nil, err
-		}
-
-		mounts = append(mounts, bindMount("/usr/lib", "/usr/lib", true, true))
-	}
-
 	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
 		qDataPath := filepath.Join(monitorDataPath, "qemu")
 		sBiosPath := filepath.Join(monitorDataPath, "seabios")
@@ -552,5 +539,97 @@ func mountsForMonitor(monitorPath string, monitorDataPath string) ([]specs.Mount
 		}
 	}
 
+	// Without host libraries, the default, there is nothing to check.
+	if len(libs) == 0 {
+		return mounts, nil
+	}
+
+	// The host libraries can not overlap anything else that urunc adds in the
+	// monitor rootfs.
+	reservedPaths := make([]string, 0, len(otherMounts)+len(mounts)+3)
+	for _, m := range otherMounts {
+		reservedPaths = append(reservedPaths, m.Destination)
+	}
+	for _, m := range mounts {
+		reservedPaths = append(reservedPaths, m.Destination)
+	}
+	// urunc writes the boot files of a block rootfs and the monitor spec of
+	// libcontainer before the mounts. A library mounted there would hide
+	// them, so reserve them too.
+	reservedPaths = append(reservedPaths, containerRootfsMountPath, "/"+monitorSpecFilename)
+	// Reserve the socket itself, not its directory, which might be / (e.g.
+	// for /api.sock). A library that contains the socket would make its
+	// directory read-only, so neither urunc nor the monitor could create it.
+	if socketPath != "" {
+		reservedPaths = append(reservedPaths, socketPath)
+	}
+	libMounts, err := hostLibMounts(libs, reservedPaths)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(libMounts, mounts...), nil
+}
+
+// hostLibMounts returns a read-only, nodev and nosuid bind mount for each path
+// in libs, at the same path in the monitor rootfs. Each path must exist and be
+// a regular file or a directory. It can not overlap reservedPaths or another
+// path in libs. A path listed twice, e.g. by the monitor and virtiofsd, is
+// mounted once. All the paths must be absolute and clean.
+func hostLibMounts(libs []string, reservedPaths []string) ([]specs.Mount, error) {
+	var valid []string
+	var mounts []specs.Mount
+	for _, lib := range libs {
+		// Any other path in libs that overlaps lib would also overlap a
+		// duplicate of lib, so if lib is a duplicate, it is found first.
+		path, found := overlappingPath(lib, valid)
+		if found {
+			if path == lib {
+				continue
+			}
+			return nil, fmt.Errorf("host library path %s overlaps the host library path %s", lib, path)
+		}
+		path, found = overlappingPath(lib, reservedPaths)
+		if found {
+			return nil, fmt.Errorf("host library path %s overlaps %s, which urunc adds itself", lib, path)
+		}
+
+		info, err := os.Stat(lib)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get info of host library path %s: %w", lib, err)
+		}
+		if !info.Mode().IsRegular() && !info.IsDir() {
+			return nil, fmt.Errorf("host library path %s is neither a regular file nor a directory", lib)
+		}
+		valid = append(valid, lib)
+		mounts = append(mounts, bindMount(lib, lib, true, true, "nodev", "nosuid"))
+	}
+
 	return mounts, nil
+}
+
+// overlappingPath returns the first of paths that overlaps path, i.e. that:
+//   - is the same path, e.g. /proc
+//   - contains it, e.g. /dev, which contains /dev/shm
+//   - is inside it, e.g. Qemu's /usr/share/qemu inside /usr/share
+//
+// Either way, a mount at one of the two would hide the other. All the paths
+// must be clean and absolute.
+func overlappingPath(path string, paths []string) (string, bool) {
+	for _, p := range paths {
+		if hasPathPrefix(path, p) || hasPathPrefix(p, path) {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// hasPathPrefix reports whether path is prefix itself or a path under it.
+// Unlike strings.HasPrefix, it compares whole path elements: /usr/lib has the
+// path prefix /usr, but /usr2 does not. Both paths must be clean and absolute.
+func hasPathPrefix(path string, prefix string) bool {
+	if prefix == "/" {
+		return true
+	}
+	return strings.HasPrefix(path, prefix) && (len(path) == len(prefix) || path[len(prefix)] == '/')
 }

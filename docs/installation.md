@@ -413,6 +413,10 @@ path = "/opt/urunc/bin/virtiofsd"
 
 Alternatively, each monitor can be simply downloaded or built from source.
 
+A monitor that is dynamically linked, like the Qemu package of a distribution or
+Solo5 built from source, needs its shared libraries listed in the `host_libs`
+field of [`urunc`'s configuration](../configuration#monitor-fields).
+
 #### Solo5
 
 In the case of Solo5, there is only the option of building from source cloning
@@ -487,6 +491,8 @@ curl -fsSL "${release_url}/download/${VERSION}/hluk-${VERSION}-x86_64-unknown-li
 sudo install -m0755 hluk /usr/local/bin/hluk
 rm -f hluk
 ```
+
+We recommend this static (musl) build of `hluk` for use with `urunc`.
 
 Alternatively, `hluk` can be installed from
 [crates.io](https://crates.io/crates/hyperlight-unikraft) with

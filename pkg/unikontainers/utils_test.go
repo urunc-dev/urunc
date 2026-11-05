@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,7 +25,37 @@ import (
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
+
+// Only ENOENT gets the hint, which keeps the error for errors.Is.
+func TestHintHostLibs(t *testing.T) {
+	t.Parallel()
+
+	err := hintHostLibs(fmt.Errorf("failed to execute /usr/bin/qemu-system-x86_64: %w", unix.ENOENT))
+	assert.ErrorIs(t, err, unix.ENOENT)
+	assert.ErrorContains(t, err, "needs its libraries in host_libs")
+
+	err = hintHostLibs(fmt.Errorf("failed to execute /usr/bin/qemu-system-x86_64: %w", unix.EACCES))
+	assert.EqualError(t, err, "failed to execute /usr/bin/qemu-system-x86_64: permission denied")
+}
+
+// The binary exists, but its interpreter does not, as for a dynamically linked
+// binary without its libraries. The test is not parallel, since a fork of
+// another test could keep the binary open for writing and make the exec fail
+// with ETXTBSY.
+func TestSpawnProcessMissingInterpreter(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "virtiofsd")
+	err := os.WriteFile(bin, []byte("#!/nonexistent/ld.so\n"), 0o600)
+	require.NoError(t, err)
+	err = os.Chmod(bin, 0o700)
+	require.NoError(t, err)
+
+	err = spawnProcess([]string{bin})
+	assert.ErrorIs(t, err, unix.ENOENT)
+	assert.ErrorContains(t, err, "needs its libraries in host_libs")
+}
 
 func TestWritePidFile(t *testing.T) {
 	tmpDir := t.TempDir() // Create a temporary directory for the test

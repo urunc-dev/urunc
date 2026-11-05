@@ -222,6 +222,10 @@ func LoadUruncConfig(path string) (*UruncConfig, error) {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("invalid extra binary virtiofsd: %w", err))
 		}
+		err = checkHostLibs(bin.HostLibs)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid extra binary virtiofsd: %w", err))
+		}
 		if bin.Options == "" {
 			bin.Options = def.Options
 		}
@@ -245,14 +249,35 @@ func checkMonitorPaths(mon types.MonitorConfig) error {
 		}
 	}
 	if mon.SocketPath != "" {
-		return checkConfigPath("socket_path", mon.SocketPath)
+		err := checkConfigPath("socket_path", mon.SocketPath)
+		if err != nil {
+			return err
+		}
+	}
+	return checkHostLibs(mon.HostLibs)
+}
+
+// checkHostLibs checks the host_libs field of a monitor or an extra binary.
+//
+// Arguments:
+//   - libs: the host paths that urunc mounts in the monitor rootfs.
+//
+// Returns:
+//   - an error for the first path that is not absolute and clean.
+func checkHostLibs(libs []string) error {
+	for _, lib := range libs {
+		err := checkConfigPath("host_libs", lib)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // checkConfigPath returns an error if path, the value of a path field of the
 // configuration, is not absolute and clean. urunc uses these paths at the same
-// place in the monitor rootfs, where a relative path has no meaning.
+// place in the monitor rootfs, where a relative path has no meaning. Clean
+// paths can also be compared as strings.
 func checkConfigPath(field, path string) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return fmt.Errorf("%s %q is not an absolute and clean path", field, path)
@@ -263,6 +288,8 @@ func checkConfigPath(field, path string) error {
 func (p *UruncConfig) Map() map[string]string {
 	// since log and timestamps are loaded at the start of urunc, we will not be adding
 	// them to this map. this map will be used to save the rest of the urunc config to state.json
+	// The host libraries are not added either, since only create uses them,
+	// with the configuration from the file.
 	cfgMap := make(map[string]string)
 
 	cfgMap[libcontainerKey] = strconv.FormatBool(p.Runtime.Libcontainer)

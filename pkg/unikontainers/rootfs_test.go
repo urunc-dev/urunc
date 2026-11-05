@@ -16,6 +16,7 @@ package unikontainers
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -23,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
+	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -241,4 +243,138 @@ func TestGetMonitorDevicesTUN(t *testing.T) {
 	devs, err = getMonitorDevices(false, true)
 	require.NoError(t, err)
 	assert.Contains(t, paths(devs), "/dev/net/tun")
+}
+
+// The host libraries reach the monitor rootfs only as listed in the
+// configuration: read-only, nodev and nosuid, but executable for the loader,
+// at the same path and once each.
+func TestHostLibMounts(t *testing.T) {
+	t.Parallel()
+
+	reservedPaths := []string{"/proc", "/dev", "/dev/pts", "/usr/local/bin/" + hypervisors.HvtBinary}
+	libDir := t.TempDir()
+	usrLibDir := t.TempDir()
+
+	tests := []struct {
+		name string
+		libs []string
+		want []string
+	}{
+		{"none", nil, nil},
+		{"listed", []string{libDir, usrLibDir}, []string{libDir, usrLibDir}},
+		{"duplicate", []string{libDir, usrLibDir, libDir}, []string{libDir, usrLibDir}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mounts, err := hostLibMounts(tc.libs, reservedPaths)
+			require.NoError(t, err)
+
+			var got []string
+			for _, m := range mounts {
+				assert.Equal(t, m.Source, m.Destination)
+				assert.Subset(t, m.Options, []string{"ro", "nodev", "nosuid"})
+				assert.NotContains(t, m.Options, "noexec")
+				got = append(got, m.Destination)
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// A host library path must be absolute, exist, be a regular file or a
+// directory (e.g. not a socket or a fifo), and it can not overlap what urunc
+// mounts or creates itself in the monitor rootfs, in either direction.
+func TestInvalidHostLibMounts(t *testing.T) {
+	t.Parallel()
+
+	reservedPaths := []string{
+		"/proc",
+		"/dev",
+		"/dev/pts",
+		"/usr/bin/qemu-system-x86_64",
+		"/usr/share/qemu",
+		containerRootfsMountPath,
+		types.ResolvConfPath,
+	}
+	fifo := filepath.Join(t.TempDir(), "fifo")
+	require.NoError(t, unix.Mkfifo(fifo, 0o600))
+
+	invalid := []struct {
+		name string
+		lib  string
+		want string
+	}{
+		{"missing", filepath.Join(t.TempDir(), "missing"), "failed to get info"},
+		{"fifo", fifo, "neither a regular file nor a directory"},
+		{"root", "/", "overlaps /proc,"},
+		{"proc", "/proc", "overlaps /proc,"},
+		{"inside dev", "/dev/shm", "overlaps /dev,"},
+		{"parent of the monitor", "/usr/bin", "overlaps /usr/bin/qemu-system-x86_64,"},
+		{"parent of qemu data", "/usr/share", "overlaps /usr/share/qemu,"},
+		{"inside qemu data", "/usr/share/qemu/firmware", "overlaps /usr/share/qemu,"},
+		{"parent of resolv.conf", "/etc", "overlaps /etc/resolv.conf,"},
+	}
+	for _, tc := range invalid {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := hostLibMounts([]string{tc.lib}, reservedPaths)
+			assert.ErrorContains(t, err, tc.want)
+		})
+	}
+}
+
+// A host library path can not contain or be inside another listed one,
+// whichever is listed first.
+func TestNestedHostLibMounts(t *testing.T) {
+	t.Parallel()
+
+	libDir := t.TempDir()
+	nestedLib := filepath.Join(libDir, "libc.so.6")
+	require.NoError(t, os.WriteFile(nestedLib, nil, 0o600))
+
+	_, err := hostLibMounts([]string{libDir, nestedLib}, nil)
+	assert.ErrorContains(t, err, "host library path "+nestedLib+" overlaps the host library path "+libDir)
+
+	_, err = hostLibMounts([]string{nestedLib, libDir}, nil)
+	assert.ErrorContains(t, err, "host library path "+libDir+" overlaps the host library path "+nestedLib)
+}
+
+// hasPathPrefix compares whole path elements, so a path that only starts with
+// the same characters is not under the prefix.
+func TestHasPathPrefix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		path   string
+		prefix string
+		want   bool
+	}{
+		{"/usr/lib", "/usr/lib", true},
+		{"/usr/lib/x86_64-linux-gnu", "/usr/lib", true},
+		{"/usr/lib64", "/usr/lib", false},
+		{"/usr", "/usr/lib", false},
+		{"/devices", "/dev", false},
+		{"/dev", "/", true},
+		{"/", "/", true},
+		{"/", "/dev", false},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.want, hasPathPrefix(tc.path, tc.prefix), "hasPathPrefix(%q, %q)", tc.path, tc.prefix)
+	}
+}
+
+// Only what urunc adds for the monitor and the container is checked, so e.g. a
+// path that overlaps Qemu's data files is valid for another monitor.
+func TestHostLibMountsOnlyCheckReservedPaths(t *testing.T) {
+	t.Parallel()
+
+	share := t.TempDir()
+
+	_, err := hostLibMounts([]string{share}, []string{filepath.Join(share, "qemu")})
+	assert.ErrorContains(t, err, "overlaps")
+
+	mounts, err := hostLibMounts([]string{share}, nil)
+	require.NoError(t, err)
+	assert.Len(t, mounts, 1)
 }

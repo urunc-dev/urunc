@@ -186,9 +186,15 @@ func (noTapVMM) UsesTUNTAP() bool { return false }
 // hvtVMM is a Solo5 hvt monitor, which needs neither KVM nor a tap in the tests.
 type hvtVMM struct{ types.VMM }
 
-func (hvtVMM) Path() string     { return "/usr/local/bin/" + hypervisors.HvtBinary }
-func (hvtVMM) UsesKVM() bool    { return false }
-func (hvtVMM) UsesTUNTAP() bool { return false }
+func (hvtVMM) Path() string                { return "/usr/local/bin/" + hypervisors.HvtBinary }
+func (hvtVMM) UsesKVM() bool               { return false }
+func (hvtVMM) UsesTUNTAP() bool            { return false }
+func (hvtVMM) SupportsControlSocket() bool { return false }
+
+// socketVMM is a monitor like hvtVMM, but with a control socket.
+type socketVMM struct{ hvtVMM }
+
+func (socketVMM) SupportsControlSocket() bool { return true }
 
 // fakeRootfs is a rootfs builder that adds only the given mounts and block
 // volumes, or fails with blockErr to get the block volumes.
@@ -204,13 +210,95 @@ func (f fakeRootfs) getBlockDevs() ([]types.BlockDevParams, error) { return f.bl
 func (fakeRootfs) getSharedDirs() (types.SharedfsParams, error)    { return types.SharedfsParams{}, nil }
 func (fakeRootfs) preStartCmd() []string                           { return nil }
 
+// The host libraries are mounted first and then the monitor binary, so that the
+// rest of the mounts hide them if they overlap. The rest of the mounts of the
+// monitor come before the mounts of the rootfs. The host libraries are checked
+// against everything else that urunc adds in the monitor rootfs.
+func TestGetMonitorResourcesHostLibs(t *testing.T) {
+	t.Parallel()
+
+	share := t.TempDir()
+	lib := t.TempDir()
+	rfs := fakeRootfs{mounts: []specs.Mount{bindMount(t.TempDir(), filepath.Join(share, "rootfs"), true, false)}}
+
+	res, err := getMonitorResources(rfs, hvtVMM{}, "", "", []string{lib}, nil)
+	require.NoError(t, err)
+	var got []string
+	for _, m := range res.Mounts {
+		got = append(got, m.Destination)
+	}
+	want := []string{lib, hvtVMM{}.Path(), "/proc", "/dev", "/dev/pts", filepath.Join(share, "rootfs")}
+	assert.Equal(t, want, got)
+
+	invalid := []struct {
+		lib  string
+		want string
+	}{
+		// A mount of the rootfs.
+		{share, "overlaps " + filepath.Join(share, "rootfs") + ","},
+		// The devices are under /dev.
+		{"/dev/null", "overlaps /dev,"},
+		{"/dev/shm", "overlaps /dev,"},
+		// Paths that urunc writes before the mounts.
+		{containerRootfsMountPath, "overlaps " + containerRootfsMountPath + ","},
+		{"/" + monitorSpecFilename, "overlaps /" + monitorSpecFilename + ","},
+	}
+	for _, tc := range invalid {
+		_, err = getMonitorResources(rfs, hvtVMM{}, "", "", []string{tc.lib}, nil)
+		assert.ErrorContains(t, err, tc.want, tc.lib)
+	}
+}
+
+// The host libraries of virtiofsd are added only for a virtiofs rootfs, where
+// virtiofsd runs in the monitor rootfs too. The configuration is not modified.
+func TestMonitorHostLibs(t *testing.T) {
+	t.Parallel()
+
+	// qemuLibs uses the first element of qemuLibsArray and has the second one
+	// as spare capacity, so a plain append would write into the second one.
+	qemuLibsArray := [2]string{"/usr/lib"}
+	qemuLibs := qemuLibsArray[:1]
+	cfg := &UruncConfig{
+		Monitors:  map[string]types.MonitorConfig{"qemu": {HostLibs: qemuLibs}},
+		ExtraBins: map[string]types.ExtraBinConfig{"virtiofsd": {HostLibs: []string{"/lib"}}},
+	}
+
+	assert.Equal(t, []string{"/usr/lib"}, monitorHostLibs(cfg, "qemu", "block"))
+	assert.Equal(t, []string{"/usr/lib"}, monitorHostLibs(cfg, "qemu", "9pfs"))
+	assert.Equal(t, []string{"/usr/lib", "/lib"}, monitorHostLibs(cfg, "qemu", "virtiofs"))
+	assert.Empty(t, qemuLibsArray[1], "the libraries of the configuration were modified")
+	assert.Nil(t, monitorHostLibs(cfg, "hvt", "block"))
+}
+
+// The control socket of the monitor is reserved, since a library that contains
+// it would make its directory read-only, but only for a monitor that has one.
+func TestGetMonitorResourcesControlSocket(t *testing.T) {
+	t.Parallel()
+
+	lib := t.TempDir()
+	socket := filepath.Join(lib, "urunc", "api.sock")
+	rfs := fakeRootfs{}
+
+	_, err := getMonitorResources(rfs, socketVMM{}, "", socket, []string{lib}, nil)
+	assert.ErrorContains(t, err, "overlaps "+socket+",")
+
+	// The socket's directory is not reserved, which could be / and reject
+	// every library.
+	_, err = getMonitorResources(rfs, socketVMM{}, "", "/api.sock", []string{lib}, nil)
+	assert.NoError(t, err)
+
+	// A monitor without a control socket ignores the path.
+	_, err = getMonitorResources(rfs, hvtVMM{}, "", socket, []string{lib}, nil)
+	assert.NoError(t, err)
+}
+
 // getMonitorResources changes nothing on the host, so it does not get the
 // block devices, which unmounts the block volumes of the container.
 func TestGetMonitorResourcesSkipsBlockDevices(t *testing.T) {
 	t.Parallel()
 
 	rfs := fakeRootfs{blockErr: errors.New("block volumes unmounted")}
-	res, err := getMonitorResources(rfs, hvtVMM{}, "", nil)
+	res, err := getMonitorResources(rfs, hvtVMM{}, "", "", nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, res.BlockArgs)
 }

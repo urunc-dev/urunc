@@ -506,3 +506,11 @@ Inuth
 clusterfuzzlite
 gotoolchain
 fuzzseed
+musl
+ldd
+RUNPATH
+vdso
+pathlist
+libs
+dlopen
+ipxe

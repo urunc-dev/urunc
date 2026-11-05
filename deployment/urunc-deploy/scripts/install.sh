@@ -184,29 +184,47 @@ function validate_config_value() {
                 return 1
             fi
             ;;
+        pathlist)
+            # One or more paths separated by ':', each absolute and clean. The
+            # appended ':' makes an empty last entry (e.g. 'a:') show up too.
+            local rest="${value}:" entry
+            while [ -n "${rest}" ]; do
+                entry="${rest%%:*}"
+                rest="${rest#*:}"
+                if ! is_clean_absolute_path "${entry}"; then
+                    echo "ERROR: invalid path list for ${name} (expected absolute and clean paths separated by ':', without '//', '.', '..', a trailing '/' or control characters): $(printf '%q' "${value}")" >&2
+                    return 1
+                fi
+            done
+            ;;
     esac
     return 0
 }
 
 # Discover the configurable keys directly from the config file given as $1: every
-# scalar leaf is an overridable variable. Emits one "ENV_VAR|jq path|type" line
-# per leaf, so the env-var-to-config-key mapping is derived from config.toml
-# rather than maintained by hand. The environment variable name is the upper-cased
-# key path with '.' and '-' replaced by '_' and prefixed with URUNC_; the type is
-# inferred from the value (number -> int, boolean -> bool, string -> str). A
-# string key named path or socket_path is a path, which urunc create requires
-# to be absolute and clean.
+# scalar leaf and every list is an overridable variable. Emits one
+# "ENV_VAR|jq path|type" line per key, so the env-var-to-config-key mapping is
+# derived from config.toml rather than maintained by hand. The environment
+# variable name is the upper-cased key path with '.' and '-' replaced by '_' and
+# prefixed with URUNC_; the type is inferred from the value (number -> int,
+# boolean -> bool, string -> str, list -> pathlist). A string key named path or
+# socket_path is a path, which urunc create requires to be absolute and clean.
+# Every list of the urunc configuration is a list of such paths, which a
+# variable sets separated by ':'
+# (e.g. URUNC_MONITORS_QEMU_HOST_LIBS=/lib/x86_64-linux-gnu/libc.so.6:/lib64/ld-linux-x86-64.so.2).
 function urunc_config_specs() {
     local source_config="$1"
     # The $-variables below are jq variables, not shell variables, so the filter
-    # is intentionally single-quoted.
+    # is intentionally single-quoted. A list is a key of its own, so the
+    # elements inside it, whose paths end in an index, are skipped.
     tomlq -r '
-        paths(type == "string" or type == "number" or type == "boolean") as $p
+        paths(type == "string" or type == "number" or type == "boolean" or type == "array") as $p
+        | select($p | all(type == "string"))
         | ($p | map(ascii_upcase | gsub("-"; "_")) | join("_")) as $env
         | ($p | map("[\"" + . + "\"]") | join("")) as $path
         | (getpath($p) | type) as $vtype
         | (if $vtype == "string" and ($p[-1] == "path" or $p[-1] == "socket_path") then "path"
-           else {"number": "int", "boolean": "bool", "string": "str"}[$vtype] end) as $type
+           else {"number": "int", "boolean": "bool", "string": "str", "array": "pathlist"}[$vtype] end) as $type
         | "URUNC_\($env)|.\($path)|\($type)"
     ' "${source_config}"
 }
@@ -272,6 +290,7 @@ function override_urunc_config_from_env() {
         [ -z "${val}" ] && continue
         case "${type}" in
             int|bool) expr="(\$ENV[\"${name}\"] | fromjson)" ;;
+            pathlist) expr="(\$ENV[\"${name}\"] | split(\":\"))" ;;
             *)        expr="\$ENV[\"${name}\"]" ;;
         esac
         if [ -n "${filter}" ]; then

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -259,11 +260,31 @@ func spawnProcess(argv []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start %s: %w", argv[0], err)
+	err := cmd.Start()
+	if err != nil {
+		return hintHostLibs(fmt.Errorf("failed to start %s: %w", argv[0], err))
 	}
 
 	return nil
+}
+
+// hintHostLibs adds a hint about host_libs to an error of executing a binary
+// in the monitor rootfs. urunc mounts the binary there before executing it.
+// An ENOENT of execve then means that an interpreter of the binary is
+// missing, e.g. the dynamic loader of a dynamically linked binary without its
+// libraries in host_libs.
+//
+// Arguments:
+//   - err: the error of the execution.
+//
+// Returns:
+//   - err with the hint, when err is ENOENT.
+//   - err as it is, otherwise.
+func hintHostLibs(err error) error {
+	if !errors.Is(err, unix.ENOENT) {
+		return err
+	}
+	return fmt.Errorf("%w (an interpreter of the binary is missing, e.g. the dynamic loader of a dynamically linked binary, which needs its libraries in host_libs)", err)
 }
 
 func resolveAgainstBase(base string, path string) (string, error) {

@@ -301,8 +301,10 @@ replaced by `_`, and prefixed with `URUNC_`:
 | `monitors.qemu.data_path` | `URUNC_MONITORS_QEMU_DATA_PATH` | string |
 | `monitors.qemu.vhost` | `URUNC_MONITORS_QEMU_VHOST` | bool |
 | `monitors.<monitor>.socket_path` | `URUNC_MONITORS_<MONITOR>_SOCKET_PATH` | path |
+| `monitors.<monitor>.host_libs` | `URUNC_MONITORS_<MONITOR>_HOST_LIBS` | pathlist |
 | `extra_binaries.virtiofsd.path` | `URUNC_EXTRA_BINARIES_VIRTIOFSD_PATH` | path |
 | `extra_binaries.virtiofsd.options` | `URUNC_EXTRA_BINARIES_VIRTIOFSD_OPTIONS` | string |
+| `extra_binaries.virtiofsd.host_libs` | `URUNC_EXTRA_BINARIES_VIRTIOFSD_HOST_LIBS` | pathlist |
 
 `<monitor>` is one of the monitors declared in `config.toml` (`qemu`,
 `firecracker`, `cloud-hypervisor`, `spt`, `hvt`, `hyperlight-unikraft`), e.g.
@@ -310,7 +312,9 @@ replaced by `_`, and prefixed with `URUNC_`:
 in `config.toml` are overridable; `socket_path` is declared for `qemu`,
 `firecracker` and `cloud-hypervisor`, the monitors that support a control socket.
 A `path` variable sets an absolute and clean path, without `//`, `.`, `..` or a
-trailing `/`.
+trailing `/`. A `pathlist` variable sets a list of such paths, separated by `:`,
+e.g.
+`URUNC_MONITORS_QEMU_HOST_LIBS=/lib/x86_64-linux-gnu/libc.so.6:/lib64/ld-linux-x86-64.so.2`.
 
 Example — raise the default QEMU memory and enable debug logging:
 
@@ -330,7 +334,7 @@ rejected:
 - a non-integer value, zero, or a value exceeding the maximum signed 64-bit integer,
   for an integer key (e.g. `*_DEFAULT_MEMORY_MB`, `*_DEFAULT_VCPUS`);
 - a value other than `true` or `false` for a boolean key (e.g. `URUNC_LOG_SYSLOG`, `URUNC_TIMESTAMPS_ENABLED`);
-- a path that is not absolute and clean, for a `path` key (e.g.
+- a path that is not absolute and clean, for a `path` or `pathlist` key (e.g.
   `URUNC_MONITORS_QEMU_PATH=/opt/urunc/bin/qemu-system-x86_64/`), which every
   `urunc create` on the node would otherwise reject;
 - an unrecognized `URUNC_*` variable that does not map to a key in `config.toml` (e.g. a typo).

@@ -14,6 +14,13 @@ and a few comments regarding their integration with `urunc`.
 > Note: In general, `urunc` expects all supported VM/Sandbox monitors to be available
 somewhere in the `$PATH`.
 
+`urunc` creates a minimal execution environment for each monitor, which by
+default contains no host libraries. Therefore, we strongly recommend the
+use of statically linked monitors. See the [monitors-build
+releases](https://github.com/urunc-dev/monitors-build/releases) for how to
+build and obtain statically linked binaries. Alternatively, each monitor can be
+installed following its respective guide below.
+
 ## Virtual Machine Monitors (VMMs)
 
 VMMs use hardware-assisted virtualization technologies in order to create a
@@ -42,9 +49,14 @@ We can easily install [Qemu](https://www.qemu.org/) through almost all package
 managers. For more details check [Qemu's download
 page](https://www.qemu.org/download#linux). For instance, in the case of
 Ubuntu, we can simply run the following command:
+
 ```bash
 sudo apt-get install qemu-system
 ```
+
+With the above installation process, the Qemu binary is dynamically linked, so
+its shared libraries need to be listed in the `host_libs` field of [`urunc`'s
+configuration](../configuration#monitor-fields).
 
 #### Qemu and `urunc`
 
@@ -215,14 +227,17 @@ Next, we can clone and build `solo5-hvt`.
 git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
 cd solo5
 ./configure.sh && make -j$(nproc)
+sudo cp tenders/hvt/solo5-hvt /usr/local/bin
 ```
 
 It is important to note that `urunc` expects to find the `solo5-hvt` binary
-located in the `$PATH` and named as `solo5-hvt`. Therefore, to install it:
+located in the `$PATH` and named as `solo5-hvt`. Otherwise its full path must be
+specified in the `path` field of [`urunc`'s
+configuration](../configuration#monitor-fields).
 
-```bash
-sudo cp tenders/hvt/solo5-hvt /usr/local/bin
-```
+The `solo5-hvt` built this way is dynamically linked, so its shared libraries
+need to be listed in the `host_libs` field of [`urunc`'s
+configuration](../configuration#monitor-fields).
 
 #### Solo5-hvt and `urunc`
 
@@ -282,6 +297,8 @@ VERSION="v[[ versions["hyperlight-unikraft"] ]]"
 release_url="https://github.com/hyperlight-dev/hyperlight-unikraft/releases"
 curl -fsSL "${release_url}/download/${VERSION}/hluk-${VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
 ```
+
+We recommend this static (musl) build of `hluk` for use with `urunc`.
 
 Alternatively, `hluk` can be installed from
 [crates.io](https://crates.io/crates/hyperlight-unikraft) with
@@ -429,14 +446,17 @@ Next, we can clone and build `solo5-spt`.
 git clone -b v[[ versions.solo5 ]] https://github.com/Solo5/solo5.git
 cd solo5
 ./configure.sh && make -j$(nproc)
+sudo cp tenders/spt/solo5-spt /usr/local/bin
 ```
 
 It is important to note that `urunc` expects to find the `solo5-spt` binary
-located in the `$PATH` and named `solo5-spt`. Therefore, to install it:
+located in the `$PATH` and named `solo5-spt`. Otherwise its full path must be
+specified in the `path` field of [`urunc`'s
+configuration](../configuration#monitor-fields).
 
-```bash
-sudo cp tenders/spt/solo5-spt /usr/local/bin
-```
+The `solo5-spt` built this way is dynamically linked, so its shared libraries
+need to be listed in the `host_libs` field of [`urunc`'s
+configuration](../configuration#monitor-fields).
 
 #### Solo5-spt and `urunc`
 
