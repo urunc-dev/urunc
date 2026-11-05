@@ -19,34 +19,41 @@ path = "/opt/urunc/bin/qemu-system-x86_64"
 data_path = "/opt/urunc/share"
 vhost = false
 socket_path = ""
+host_libs = []
 
 [monitors.firecracker]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/firecracker"
 socket_path = ""
+host_libs = []
 
 [monitors.cloud-hypervisor]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/cloud-hypervisor"
 socket_path = ""
+host_libs = []
 
 [monitors.spt]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/solo5-spt"
+host_libs = []
 
 [monitors.hvt]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/solo5-hvt"
+host_libs = []
 
 [monitors.hyperlight-unikraft]
 default_memory_mb = 256
 default_vcpus = 1
 path = "/opt/urunc/bin/hluk"
+host_libs = []
 
 [extra_binaries.virtiofsd]
 path = "/opt/urunc/libexec/virtiofsd"
 options = "--cache always --sandbox none"
+host_libs = []

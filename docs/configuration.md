@@ -34,6 +34,7 @@ destination = "/var/log/urunc/timestamps.log"
 default_memory_mb = 512
 default_vcpus = 2
 path = "/usr/bin/qemu-system-x86_64"
+host_libs = ["/lib", "/lib64", "/usr/lib"]
 
 [monitors.firecracker]
 default_memory_mb = 256
@@ -168,15 +169,80 @@ Each monitor subsection supports the following fields:
 | `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
 | `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
+| `host_libs` | list of strings | (empty) | Optional host paths with the shared libraries the monitor needs. Each one is mounted read-only at the same path in the monitor's execution environment |
 
-The `path` and `socket_path` fields must hold absolute and clean paths, e.g.
-without `..` or a trailing `/`. This applies to every monitor in the file, even
-one that no container uses. Otherwise, every `urunc create` fails, also for the
-containers that `urunc` hands to `runc`.
+The `path`, `socket_path` and `host_libs` fields must hold absolute and clean
+paths, e.g. without `..` or a trailing `/`. This applies to every monitor in the
+file, even one that no container uses. Otherwise, every `urunc create` fails,
+also for the containers that `urunc` hands to `runc`.
 
-Since Qemu is the only currently supported monitor which requires extra data to
-boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
-Qemu's data files.
+`urunc` creates a minimal execution environment for each monitor, which by
+default contains no host libraries. Therefore, we strongly recommend
+statically linked monitors, like the ones in the [monitors-build
+releases](https://github.com/urunc-dev/monitors-build/releases), since they do
+not need any shared libraries from the host. Other files that a monitor needs
+from the host are added with the following fields:
+
+- `host_libs`: The shared libraries of a dynamically linked monitor, like the
+  Qemu package of a distribution or a Solo5 tender built from source, and its
+  dynamic loader. `urunc` does not know how a monitor was built, so it does not
+  add any of them by default. Every path must exist on the host and be either a
+  regular file or a directory, otherwise the container fails to start. A path
+  can not be, contain or be inside anything that `urunc` adds itself in the
+  monitor's execution environment, like `/proc`, `/dev`, `/tmp`, the monitor
+  binary, its control socket or, for Qemu, its data files in `/usr/share/qemu`.
+  For example, `/` can never be listed, while `/usr/share` can not be listed for
+  Qemu. A path can also not contain or be inside another
+  listed one, including the ones in the `host_libs` of an extra binary that the
+  container uses, like `virtiofsd`, but the same path can be listed in both. A
+  directory is mounted with everything inside it, so list only the directories
+  with the libraries. For instance, the monitor can connect to any host socket
+  inside a listed directory, even though the mount is read-only.
+- `data_path`: The directory with the monitor's data files. For instance, for
+  Qemu, `urunc` mounts its `qemu` subdirectory at `/usr/share/qemu` and, if it
+  exists, its `seabios` subdirectory at `/usr/share/seabios`. If it is not set,
+  `urunc` checks `/usr/local/share` and then `/usr/share`.
+
+A good starting point to find the libraries needed by a dynamically linked
+monitor is `ldd <monitor binary>`. For example, for a `solo5-spt` built from
+source on Ubuntu 24.04 (x86_64):
+
+```console
+$ ldd /usr/local/bin/solo5-spt
+	linux-vdso.so.1 (0x00007ffc329ed000)
+	libseccomp.so.2 => /lib/x86_64-linux-gnu/libseccomp.so.2 (0x000077920b922000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000077920b600000)
+	/lib64/ld-linux-x86-64.so.2 (0x000077920b953000)
+```
+
+```toml
+[monitors.spt]
+host_libs = ["/lib64/ld-linux-x86-64.so.2",
+        "/lib/x86_64-linux-gnu/libc.so.6",
+        "/lib/x86_64-linux-gnu/libseccomp.so.2"]
+```
+
+When listing `host_libs`, keep in mind that:
+
+- The `/etc/ld.so.cache` of the host is not available to the monitor, so the
+  libraries must be in the default search paths of the dynamic loader or in the
+  RUNPATH of the binary.
+- Files are preferred over directories. A symlink inside a listed directory
+  that points outside of it (e.g. `/lib64/ld-linux-x86-64.so.2` or the links to
+  `/etc/alternatives` on Debian and Ubuntu) will be broken inside the monitor's
+  execution environment unless its target is also listed.
+- Every listed path is a separate mount at each container start, so collecting
+  the necessary files in a directory is the optimal setup.
+- `ldd` does not show the libraries loaded at run time with `dlopen()`, like the
+  modules of Qemu (e.g. in `/usr/lib/x86_64-linux-gnu/qemu` on Debian and
+  Ubuntu), and its output can change after an upgrade of the monitor.
+- Qemu also looks for firmware outside of `/usr/share/qemu`, in the directories
+  that `qemu-system-x86_64 -L help` shows. On Debian and Ubuntu (x86_64), its
+  network boot ROM is `/usr/lib/ipxe/qemu/efi-virtio.rom`. Without it, Qemu
+  fails to start a container that has a network.
+- A dynamically linked `virtiofsd` needs its libraries listed too. So does a
+  dynamically linked `urunc` in libcontainer mode, since it runs in the
+  monitor's execution environment.
 
 The `socket_path` field applies to the monitors that expose a control socket:
 Firecracker (its API socket), Qemu (a QMP socket) and Cloud Hypervisor (its REST
@@ -235,8 +301,10 @@ Each extra binary subsection supports the following fields:
 |--------|------|---------|-------------|
 | `path` | string | (empty) | Optional custom path to the extra binary. If not specified, urunc will search for the binary in PATH |
 | `options` | string | (empty) | Optional custom cli options for the extra binary |
+| `host_libs` | list of strings | (empty) | Optional host paths with the shared libraries the extra binary needs, as in the [monitor's `host_libs` field](#monitor-fields). They are mounted only when the extra binary is used |
 
-The `path` field must hold an absolute and clean path, as for the monitors.
+The `path` and `host_libs` fields must hold absolute and clean paths, as for the
+monitors.
 
 Specifically for `virtiofsd` the default values are the following:
 
@@ -299,7 +367,7 @@ To create a configuration file, you can:
 
 - **Does not exist**: `urunc` uses default values and logs a warning
 - **Can not be read or decoded** (e.g. no read permission, a syntax error, a table defined twice or a field of the wrong type): every `urunc create` fails with the error, also for the containers that `urunc` hands to `runc`, since the default values would silently replace every field of the file
-- **Contains an invalid path**: a `path` or `socket_path` field of a monitor, or the `path` field of an extra binary, that is not absolute and clean makes every `urunc create` fail in the same way
+- **Contains an invalid path**: a `path`, `socket_path` or `host_libs` field of a monitor, or a `path` or `host_libs` field of an extra binary, that is not absolute and clean makes every `urunc create` fail in the same way
 - **Contains other invalid values**: `urunc` will either use default values for invalid fields, e.g. for a zero `default_vcpus` or an unknown log `level`, or fail to start if critical errors are found
 
 ## Default Values

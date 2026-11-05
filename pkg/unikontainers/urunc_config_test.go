@@ -15,6 +15,7 @@
 package unikontainers
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -627,6 +628,7 @@ socket_path = "/run/urunc/qmp.sock"
 
 [extra_binaries.virtiofsd]
 path = "/usr/libexec/virtiofsd"
+host_libs = ["/usr/lib"]
 `)
 		config, err := LoadUruncConfig(path)
 		require.NoError(t, err)
@@ -643,6 +645,10 @@ path = "/usr/libexec/virtiofsd"
 			"unclean socket_path":     "[monitors.firecracker]\nsocket_path = \"/run/urunc//api.sock\"\n",
 			"virtiofsd path with a /": "[extra_binaries.virtiofsd]\npath = \"/usr/libexec/virtiofsd/\"\n",
 			"relative virtiofsd path": "[extra_binaries.virtiofsd]\npath = \"virtiofsd\"\n",
+			"relative host library":   "[monitors.qemu]\nhost_libs = [\"usr/lib\"]\n",
+			"host library with a /":   "[monitors.qemu]\nhost_libs = [\"/usr/lib/\"]\n",
+			"empty host library":      "[monitors.qemu]\nhost_libs = [\"\"]\n",
+			"virtiofsd host library":  "[extra_binaries.virtiofsd]\nhost_libs = [\"/usr//lib\"]\n",
 			// A monitor that no container uses is checked too.
 			"unused monitor": "[monitors.spt]\npath = \"solo5-spt\"\n",
 		}
@@ -666,12 +672,14 @@ path = "/usr/bin/firecracker"
 
 [extra_binaries.virtiofsd]
 path = "virtiofsd"
+host_libs = ["/usr//lib"]
 `)
 		config, err := LoadUruncConfig(path)
 		assert.Nil(t, config)
 		assert.ErrorContains(t, err, `invalid monitor spt: path "solo5-spt" is not an absolute and clean path`)
 		assert.ErrorContains(t, err, `invalid monitor qemu: path "qemu-system-x86_64" is not an absolute and clean path`)
 		assert.ErrorContains(t, err, `invalid extra binary virtiofsd: path "virtiofsd" is not an absolute and clean path`)
+		assert.ErrorContains(t, err, `invalid extra binary virtiofsd: host_libs "/usr//lib" is not an absolute and clean path`)
 		assert.NotContains(t, err.Error(), "firecracker")
 	})
 
@@ -731,6 +739,33 @@ path = "/opt/urunc/bin/virtiofsd"
 		assert.Equal(t, "/opt/urunc/bin/virtiofsd", virtiofsd.Path)
 		assert.Equal(t, defaultExtraBinConfig()["virtiofsd"].Options, virtiofsd.Options)
 	})
+	t.Run("host libraries are loaded but not stored", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.qemu]
+host_libs = ["/lib", "/lib64", "/usr/lib"]
+
+[extra_binaries.virtiofsd]
+host_libs = ["/usr/lib"]
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"/lib", "/lib64", "/usr/lib"}, config.Monitors["qemu"].HostLibs)
+		assert.Equal(t, []string{"/usr/lib"}, config.ExtraBins["virtiofsd"].HostLibs)
+		assert.Nil(t, config.Monitors["hvt"].HostLibs)
+
+		// Only create uses them, with the configuration from the file. So
+		// neither state.json nor the monitor spec holds them.
+		for key := range config.Map() {
+			assert.NotContains(t, key, "host_libs")
+		}
+		monJSON, err := json.Marshal(config.Monitors["qemu"])
+		require.NoError(t, err)
+		assert.NotContains(t, string(monJSON), "HostLibs")
+		binJSON, err := json.Marshal(config.ExtraBins["virtiofsd"])
+		require.NoError(t, err)
+		assert.NotContains(t, string(binJSON), "HostLibs")
+	})
 }
 
 func TestCheckConfigPath(t *testing.T) {
@@ -773,6 +808,7 @@ func TestCheckMonitorPaths(t *testing.T) {
 		mon := types.MonitorConfig{
 			BinaryPath: "/usr/bin/qemu-system-x86_64",
 			SocketPath: "/run/urunc/qmp.sock",
+			HostLibs:   []string{"/lib", "/usr/lib"},
 		}
 		assert.NoError(t, checkMonitorPaths(mon))
 	})
@@ -788,6 +824,11 @@ func TestCheckMonitorPaths(t *testing.T) {
 		}
 		err = checkMonitorPaths(mon)
 		assert.EqualError(t, err, `socket_path "qmp.sock" is not an absolute and clean path`)
+
+		mon.SocketPath = "/run/urunc/qmp.sock"
+		mon.HostLibs = []string{"/lib", "/usr/lib/"}
+		err = checkMonitorPaths(mon)
+		assert.EqualError(t, err, `host_libs "/usr/lib/" is not an absolute and clean path`)
 	})
 }
 

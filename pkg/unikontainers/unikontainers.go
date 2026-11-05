@@ -207,13 +207,13 @@ func (u *Unikontainer) InitialSetup() error {
 	}
 
 	vmmType := u.State.Annotations[annotHypervisor]
+	monCfg := u.UruncCfg.Monitors[vmmType]
 	vmm, err := hypervisors.NewVMM(hypervisors.VmmType(vmmType), u.UruncCfg.Monitors)
 	if err != nil {
 		return err
 	}
 
-	defaultMemSizeMB := u.UruncCfg.Monitors[vmmType].DefaultMemoryMB
-	memory := monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources)
+	memory := monitorMemoryBytes(monCfg.DefaultMemoryMB, u.Spec.Linux.Resources)
 	rfsBuilder, err := u.newRootfsBuilder(rootfsDir, rootfsParams, unikernel, unikernelPath, initrdPath, memory)
 	if err != nil {
 		return err
@@ -221,7 +221,8 @@ func (u *Unikontainer) InitialSetup() error {
 
 	// Collect the resources of the monitor before preSetup changes the host,
 	// so that a bad configuration fails early.
-	monRes, err := getMonitorResources(rfsBuilder, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
+	monLibs := monitorHostLibs(u.UruncCfg, vmmType, rootfsParams.Type)
+	monRes, err := getMonitorResources(rfsBuilder, vmm, monCfg.DataPath, monCfg.SocketPath, monLibs, u.Spec.Mounts)
 	if err != nil {
 		return err
 	}
@@ -442,21 +443,28 @@ func ChooseRootfs(bundle, specRoot string, annot map[string]string, cfg *UruncCo
 	return switchMonRootfs(result, bundleDir), nil
 }
 
+// monitorHostLibs returns the host libraries of the monitor rootfs. They are
+// the ones of the monitor and, for a virtiofs rootfs, the ones of virtiofsd,
+// which runs there too.
+func monitorHostLibs(cfg *UruncConfig, vmmType string, rootfsType string) []string {
+	libs := cfg.Monitors[vmmType].HostLibs
+	if rootfsType != "virtiofs" {
+		return libs
+	}
+	// Clone, so that append never writes into the slice of the configuration.
+	return append(slices.Clone(libs), cfg.ExtraBins["virtiofsd"].HostLibs...)
+}
+
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, apart from the block devices.
-func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
+func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, monitorDataPath string, socketPath string, monitorLibs []string, cntrMounts []specs.Mount) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
-	res.Mounts, err = mountsForMonitor(vmm.Path(), monitorDataPath)
-	if err != nil {
-		return res, err
-	}
-	rootfsMounts, err := rfs.getMounts()
+	res.Mounts, err = rfs.getMounts()
 	if err != nil {
 		return res, fmt.Errorf("failed to get mounts for monitor rootfs: %w", err)
 	}
-	res.Mounts = append(res.Mounts, rootfsMounts...)
 	if m, ok := monitorResolvConfMount(vmm, cntrMounts); ok {
 		res.Mounts = append(res.Mounts, m)
 	}
@@ -474,6 +482,25 @@ func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, monitorDataPath strin
 	}
 
 	res.PreStartCmd = rfs.preStartCmd()
+
+	// The mounts of the monitor come after the rest, so that its host
+	// libraries can be checked against them. They are still mounted first, so
+	// that e.g. /dev does not hide another mount inside it.
+	//
+	// Devices are not checked, since urunc creates them under /dev, which is
+	// reserved. Only a block device node made by hand may be elsewhere. If it
+	// is in a listed directory, setting it up fails at start, with or without
+	// a user namespace.
+	//
+	// Only a monitor with a control socket creates it in its rootfs.
+	if !vmm.SupportsControlSocket() {
+		socketPath = ""
+	}
+	monMounts, err := mountsForMonitor(vmm.Path(), monitorDataPath, socketPath, monitorLibs, res.Mounts)
+	if err != nil {
+		return res, err
+	}
+	res.Mounts = append(monMounts, res.Mounts...)
 
 	return res, nil
 }
@@ -966,7 +993,8 @@ func execMonitor(metrics m.Writer, vmm types.VMM, execArgs types.ExecArgs, execC
 
 	// Execute the VMM using the command we built earlier.
 	uniklog.WithField("command", execCmd).Debug("Ready to execve VMM")
-	return syscall.Exec(vmm.Path(), execCmd, execArgs.Environment) //nolint: gosec
+	err = syscall.Exec(vmm.Path(), execCmd, execArgs.Environment) //nolint: gosec
+	return hintHostLibs(fmt.Errorf("failed to execute %s: %w", vmm.Path(), err))
 }
 
 func setupUser(user specs.User) error {

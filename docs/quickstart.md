@@ -55,6 +55,37 @@ Let's make sure that [Qemu](https://www.qemu.org/download/) is installed:
 sudo apt install -y qemu-system
 ```
 
+`urunc` creates a minimal execution environment for each monitor, which by
+default contains no host libraries. However, since the Qemu package is
+dynamically linked, it can not start without its shared libraries. Therefore,
+the host directories with Qemu's libraries need to be listed in the `host_libs`
+field of [`urunc`'s configuration](../configuration#monitor-fields). For
+example, on Debian and Ubuntu (x86_64), a coarse-grained selection of host
+libraries is:
+
+```bash
+sudo mkdir -p /etc/urunc
+sudo tee -a /etc/urunc/config.toml > /dev/null <<'EOF'
+[monitors.qemu]
+host_libs = ["/lib", "/lib64", "/usr/lib"]
+EOF
+```
+
+On arm64, leave out `/lib64`, which does not exist there, since every listed
+path must exist on the host.
+
+Please use a much more fine-grained list in production: the files that `ldd`
+shows for Qemu and its network boot ROM. On Debian and Ubuntu (x86_64), the
+following command prints them:
+
+```bash
+{ ldd /usr/bin/qemu-system-x86_64 | grep -o '/[^ ]*'
+  echo /usr/lib/ipxe/qemu/efi-virtio.rom; }
+```
+
+Every listed path is a mount at each container start, so a long list also makes
+the containers start slower.
+
 #### Run the unikernel
 
 Now we are ready to run Nginx as a Unikraft unikernel using [docker](https://docs.docker.com/engine/install/ubuntu/) and `urunc`:
@@ -245,6 +276,24 @@ cd solo5
 ./configure.sh  && make -j$(nproc)
 sudo cp tenders/hvt/solo5-hvt /usr/local/bin
 ```
+
+Similarly to [Qemu](#install-qemu), the `solo5-hvt` built this way is
+dynamically linked, so its shared libraries need to be listed in the `host_libs`
+field of `urunc`'s configuration:
+
+```bash
+sudo mkdir -p /etc/urunc
+sudo tee -a /etc/urunc/config.toml > /dev/null <<'EOF'
+[monitors.hvt]
+host_libs = ["/lib", "/lib64", "/usr/lib"]
+EOF
+```
+
+As with Qemu, leave out `/lib64` on arm64.
+
+If `/etc/urunc/config.toml` already has a `[monitors.hvt]` table, add
+`host_libs` to it instead of appending a second one, since a table can not be
+defined twice in TOML.
 
 #### Run the Unikernel!
 

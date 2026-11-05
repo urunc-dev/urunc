@@ -153,17 +153,19 @@ type MonitorBlockArgs struct {
 // ExtraBinConfig struct is used to hold specific configuration for extra binaries
 // like virtiofsd. It is parsed from the urunc config file or state.json annotations
 type ExtraBinConfig struct {
-	Path    string `toml:"path"`              // The path to the binary
-	Options string `toml:"options,omitempty"` // Optional cli options for the extra binary
+	Path     string   `toml:"path"`                         // The path to the binary
+	Options  string   `toml:"options,omitempty"`            // Optional cli options for the extra binary
+	HostLibs []string `toml:"host_libs,omitempty" json:"-"` // Optional host library paths the binary needs (only used by create)
 }
 
 // MonitorConfig struct is used to hold hypervisor specific configuration
 // that is parsed from the urunc config file or state.json annotations
 type MonitorConfig struct {
-	DefaultMemoryMB uint   `toml:"default_memory_mb"`
-	DefaultVCPUs    uint   `toml:"default_vcpus"`
-	BinaryPath      string `toml:"path,omitempty"`        // Optional path to the hypervisor binary
-	DataPath        string `toml:"data_path,omitempty"`   // Optional path to the hypervisor data files (e.g. qemu bios stuff)
-	Vhost           bool   `toml:"vhost,omitempty"`       // Optional: enable vhost for network performance optimization
-	SocketPath      string `toml:"socket_path,omitempty"` // Optional path for the monitor's control socket (unset means no control socket)
+	DefaultMemoryMB uint     `toml:"default_memory_mb"`
+	DefaultVCPUs    uint     `toml:"default_vcpus"`
+	BinaryPath      string   `toml:"path,omitempty"`               // Optional path to the hypervisor binary
+	DataPath        string   `toml:"data_path,omitempty"`          // Optional path to the hypervisor data files (e.g. qemu bios stuff)
+	Vhost           bool     `toml:"vhost,omitempty"`              // Optional: enable vhost for network performance optimization
+	SocketPath      string   `toml:"socket_path,omitempty"`        // Optional path for the monitor's control socket (unset means no control socket)
+	HostLibs        []string `toml:"host_libs,omitempty" json:"-"` // Optional host library paths the monitor needs (only used by create)
 }

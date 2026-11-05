@@ -78,6 +78,28 @@ Install QEMU:
 sudo apt install -y qemu-kvm
 ```
 
+`urunc` creates a minimal execution environment for each monitor, which by
+default contains no host libraries. However, since the QEMU package is
+dynamically linked, it can not start without its shared libraries. Therefore,
+the host directories with QEMU's libraries need to be listed in the `host_libs`
+field of [`urunc`'s
+configuration](https://urunc.io/configuration#monitor-fields). For example, on
+Debian and Ubuntu (x86_64), a coarse-grained selection of host libraries is:
+
+```bash
+sudo mkdir -p /etc/urunc
+sudo tee -a /etc/urunc/config.toml > /dev/null <<'EOF'
+[monitors.qemu]
+host_libs = ["/lib", "/lib64", "/usr/lib"]
+EOF
+```
+
+On arm64, leave out `/lib64`, which does not exist there, since every listed
+path must exist on the host.
+
+Please use a much more fine-grained list in production. The `ldd` tool can help
+identify the exact paths.
+
 Now we are ready to run nginx as a Unikraft unikernel using Docker and `urunc`:
 
 ```bash
