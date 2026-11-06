@@ -299,12 +299,6 @@ func (l *Linux) configureNetwork(net types.NetDevParams) {
 
 // setupUrunitConfig creates the urunit configuration file with environment variables.
 func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
-	// The configuration is line based, so an argument cannot hold a newline
-	for _, arg := range l.Args {
-		if strings.Contains(arg, "\n") {
-			return fmt.Errorf("failed to setup urunit config: argument %q contains a newline", arg)
-		}
-	}
 	urunitConfig := l.buildUrunitConfig()
 
 	var err error
