@@ -15,7 +15,11 @@
 package unikernels
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,7 +40,51 @@ const (
 	freeBSDufs      string = "ufs"
 	freeBSDext2fs   string = "ext2fs"
 	p9MountTag      string = "fs0"
+
+	fsTypeUFS  string = "ufs"
+	fsTypeExt2 string = "ext2"
+	fsTypeExt3 string = "ext3"
+	fsTypeExt4 string = "ext4"
 )
+
+// UFS superblock fields (struct fs in FreeBSD's sys/ufs/ffs/fs.h).
+const (
+	ufsSuperblockSize       int    = 1376
+	ufs1Magic               uint32 = 0x00011954
+	ufs2Magic               uint32 = 0x19540119
+	ufsGroupCountOffset     int    = 44
+	ufsBlockSizeOffset      int    = 48
+	ufsFragSizeOffset       int    = 52
+	ufsFragsPerBlockOffset  int    = 56
+	ufsSuperblockSizeOffset int    = 104
+	ufsMagicOffset          int    = 1372
+	ufsSuperblockUFS1       int64  = 8192
+	ufsSuperblockUFS2       int64  = 65536
+	ufsMinBlockSize         uint32 = 4096
+	ufsMaxBlockSize         uint32 = 65536
+	ufsMinFragSize          uint32 = 512
+	ufsMaxFrag              uint32 = 8
+	ufsMaxSuperblockSize    uint32 = 8192
+)
+
+// ext superblock and feature flags (as in the ext probe of util-linux).
+const (
+	extSuperblockOffset       int64  = 1024
+	extSuperblockSize         int    = 1024
+	extMagic                  uint16 = 0xEF53
+	extMagicOffset            int    = 56
+	extCompatibleOffset       int    = 92
+	extIncompatibleOffset     int    = 96
+	extReadOnlyOffset         int    = 100
+	extCompatibleJournal      uint32 = 0x0004
+	extIncompatibleJournalDev uint32 = 0x0008
+	extReadOnlySupported      uint32 = 0x0007 // sparse_super, large_file, btree_dir
+	ext2IncompatibleSupported uint32 = 0x0012 // filetype, meta_bg
+	ext3IncompatibleSupported uint32 = 0x0016 // ext2's and needs_recovery
+)
+
+// The order in which FreeBSD searches for the superblock (sys/ufs/ffs/fs.h).
+var ufsSuperblockLocations = []int64{ufsSuperblockUFS2, ufsSuperblockUFS1, 0, 262144}
 
 type FreeBSD struct {
 	Command     []string
@@ -215,10 +263,11 @@ func (f *FreeBSD) Init(data types.UnikernelParams) error {
 	f.RootFsType = data.Rootfs.Type
 	switch f.RootFsType {
 	case "block":
-		f.BlockFsType = freeBSDufs
-		if data.Rootfs.MountedPath != "" {
-			f.BlockFsType = freeBSDext2fs
+		mountType, err := blockRootfsMountType(data.Block)
+		if err != nil {
+			return err
 		}
+		f.BlockFsType = mountType
 	case "9pfs":
 		// The rootfs is served over 9p; nothing extra to configure here.
 	default:
@@ -234,6 +283,136 @@ func (f *FreeBSD) Init(data types.UnikernelParams) error {
 	}
 
 	return nil
+}
+
+// blockRootfsMountType returns the filesystem name for vfs.root.mountfrom.
+// It reads the rootfs, so it must run after the pivot into the monitor rootfs.
+func blockRootfsMountType(blocks []types.BlockDevParams) (string, error) {
+	for _, b := range blocks {
+		if b.ID != "rootfs" {
+			continue
+		}
+		fsType, err := detectRootfsType(b.Source)
+		if err != nil {
+			return "", fmt.Errorf("freebsd: failed to read the block rootfs: %w", err)
+		}
+		switch fsType {
+		case fsTypeUFS:
+			return freeBSDufs, nil
+		case fsTypeExt2:
+			return freeBSDext2fs, nil
+		case "":
+			return "", errors.New("freebsd: could not recognize the filesystem of the block rootfs")
+		default:
+			return "", fmt.Errorf("freebsd: unsupported block rootfs filesystem %q: only ufs and ext2 are supported", fsType)
+		}
+	}
+
+	return "", errors.New("freebsd: no block device found for the block rootfs")
+}
+
+// detectRootfsType returns the filesystem of a block image or device, or an
+// empty string if it is not recognized.
+func detectRootfsType(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	for _, location := range ufsSuperblockLocations {
+		sb, err := readSuperblock(f, location, ufsSuperblockSize)
+		if err != nil {
+			return "", err
+		}
+		if isUFSSuperblock(sb, location) {
+			return fsTypeUFS, nil
+		}
+	}
+
+	sb, err := readSuperblock(f, extSuperblockOffset, extSuperblockSize)
+	if err != nil {
+		return "", err
+	}
+
+	return extFsType(sb), nil
+}
+
+// readSuperblock returns nil if the file is too short to hold size bytes at offset.
+func readSuperblock(f *os.File, offset int64, size int) ([]byte, error) {
+	sb := make([]byte, size)
+	_, err := f.ReadAt(sb, offset)
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return sb, nil
+}
+
+// isUFSSuperblock applies a subset of the FreeBSD kernel's superblock checks.
+// The kernel accepts UFS2 only at 65536 or 0, and UFS1 only up to 8192.
+func isUFSSuperblock(sb []byte, location int64) bool {
+	if sb == nil {
+		return false
+	}
+	field := func(offset int) uint32 {
+		return binary.LittleEndian.Uint32(sb[offset:])
+	}
+
+	switch field(ufsMagicOffset) {
+	case ufs2Magic:
+		if location != ufsSuperblockUFS2 && location != 0 {
+			return false
+		}
+	case ufs1Magic:
+		if location > ufsSuperblockUFS1 {
+			return false
+		}
+	default:
+		return false
+	}
+
+	blockSize, fragSize, frags := field(ufsBlockSizeOffset), field(ufsFragSizeOffset), field(ufsFragsPerBlockOffset)
+	superblockSize := field(ufsSuperblockSizeOffset)
+
+	return field(ufsGroupCountOffset) >= 1 &&
+		isPowerOfTwo(blockSize) && blockSize >= ufsMinBlockSize && blockSize <= ufsMaxBlockSize &&
+		isPowerOfTwo(fragSize) && fragSize >= ufsMinFragSize &&
+		frags >= 1 && frags <= ufsMaxFrag && fragSize*frags == blockSize &&
+		superblockSize >= uint32(ufsSuperblockSize) && superblockSize <= ufsMaxSuperblockSize
+}
+
+func isPowerOfTwo(v uint32) bool {
+	return v != 0 && v&(v-1) == 0
+}
+
+// extFsType uses the feature flags, as ext2, ext3 and ext4 share one magic number.
+// The rules are those of the ext probe in util-linux.
+func extFsType(sb []byte) string {
+	if sb == nil || binary.LittleEndian.Uint16(sb[extMagicOffset:]) != extMagic {
+		return ""
+	}
+	compatible := binary.LittleEndian.Uint32(sb[extCompatibleOffset:])
+	incompatible := binary.LittleEndian.Uint32(sb[extIncompatibleOffset:])
+	readOnly := binary.LittleEndian.Uint32(sb[extReadOnlyOffset:])
+
+	// An external journal holds no filesystem to boot from.
+	if incompatible&extIncompatibleJournalDev != 0 {
+		return ""
+	}
+	if readOnly&^extReadOnlySupported == 0 {
+		if compatible&extCompatibleJournal == 0 && incompatible&^ext2IncompatibleSupported == 0 {
+			return fsTypeExt2
+		}
+		if compatible&extCompatibleJournal != 0 && incompatible&^ext3IncompatibleSupported == 0 {
+			return fsTypeExt3
+		}
+	}
+
+	return fsTypeExt4
 }
 
 // usesUrunit reports whether the entrypoint of the container was urunit.
