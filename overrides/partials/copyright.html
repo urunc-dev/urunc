@@ -1,0 +1,18 @@
+<div class="md-copyright">
+    {% if config.copyright %}
+    <div class="md-copyright__highlight">
+        {{ config.copyright }}.<br>For website terms of use, trademark policy and other project policies, please see 
+        <a href="https://lfprojects.org/policies/">lfprojects.org/policies/</a>.
+    </div>
+    {% endif %}
+    {% if not config.extra.generator == false %}
+    <div style="margin-top: 1.1em;">
+        Made with
+        <span class=" twemoji heart">
+            {% include ".icons/octicons/heart-fill-24.svg" %}
+        </span> by the
+        <a href="https://github.com/urunc-dev/urunc/graphs/contributors" target="_blank" rel="noopener">urunc Project
+            Authors</a> and <a href="https://squidfunk.github.io/mkdocs-material/">Material for MkDocs</a>
+    </div>
+    {% endif %}
+</div>
