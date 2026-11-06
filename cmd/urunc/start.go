@@ -101,7 +101,18 @@ func startUnikontainer(cmd *cli.Command) error {
 		return err
 	}
 
-	return unikontainer.ExecuteHooks("Poststart")
+	if err := unikontainer.ExecuteHooks("Poststart"); err != nil {
+		// The spec requires a failing poststart hook to stop the container and
+		// continue with the delete transition (runtime.md, lifecycle step 9).
+		// The monitor keeps the guest alive otherwise, and a plain delete
+		// refuses while the container's init process still runs.
+		if killErr := unikontainer.Kill(); killErr != nil {
+			return errors.Join(err, fmt.Errorf("failed to stop the container after a failing poststart hook: %w", killErr))
+		}
+		return err
+	}
+
+	return nil
 }
 
 // startMonitorInit starts the urunc monitor process, blocked since create from
