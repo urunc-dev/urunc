@@ -94,6 +94,10 @@ LINT_CNTR_CMD  ?= golangci-lint run -v --timeout=5m
 #? DOCS_CNTR_IMG The mkdocs image to use (default: harbor.nbfc.io/nubificus/urunc/mkdocs:test)
 DOCS_CNTR_IMG  ?= harbor.nbfc.io/nubificus/urunc/mkdocs:latest
 
+#? URUNC_DEPLOY_IMG Name and tag of the urunc-deploy image (default: urunc-deploy:latest)
+URUNC_DEPLOY_IMG ?= urunc-deploy:latest
+URUNC_DEPLOY_DOCKERFILE := $(CURDIR)/deployment/urunc-deploy/Dockerfile
+
 # Install dependencies variables
 #
 # If we have already built either static or dynamic version of urunc
@@ -231,6 +235,19 @@ docs:
 .PHONY: docs_container
 docs_container:
 	$(CNTR_TOOL) $(CNTR_OPTS) -p 8000:8000 -v $${PWD}:/docs $(DOCS_CNTR_IMG)
+
+# Deployment targets
+#
+# The urunc-deploy image must be built from the repository root and needs
+# COMMIT as a build-arg, otherwise the embedded version has no commit.
+## urunc_deploy Build the urunc-deploy container image for host arch.
+.PHONY: urunc_deploy
+urunc_deploy:
+	$(CNTR_TOOL) build \
+		--build-arg COMMIT=$(COMMIT) \
+		-f $(URUNC_DEPLOY_DOCKERFILE) \
+		-t $(URUNC_DEPLOY_IMG) \
+		$(CURDIR)
 
 # Testing targets
 ## test Run all tests

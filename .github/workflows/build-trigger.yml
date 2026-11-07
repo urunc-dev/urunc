@@ -12,6 +12,8 @@ on:
       - 'internal/**'
       - 'Makefile'
       - 'VERSION'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
 
 concurrency:
