@@ -39,11 +39,13 @@ type HermitNet struct {
 func (h *Hermit) CommandString() (string, error) {
 	var args []string
 
+	// Hermit takes the gateway as part of ip=<ip>/<prefix>:<gateway>.
 	if h.Net.Address != "" {
-		args = append(args, fmt.Sprintf("ip=%s/%d", h.Net.Address, h.Net.Mask))
-	}
-	if h.Net.Gateway != "" {
-		args = append(args, fmt.Sprintf("gateway=%s", h.Net.Gateway))
+		ip := fmt.Sprintf("%s/%d", h.Net.Address, h.Net.Mask)
+		if h.Net.Gateway != "" {
+			ip += ":" + h.Net.Gateway
+		}
+		args = append(args, "ip="+ip)
 	}
 
 	// Add separator ONLY if we have net args AND a command
