@@ -13,7 +13,8 @@ on:
         default: "no"
         type: string
       # The e2e runners and environment versions. Leave a field empty to use
-      # the default in vm_test.yml.
+      # the default in vm_test.yml, or in the find-monitors-release action for
+      # the monitors.
       runners:
         description: 'Runners for the e2e tests, as a JSON list (e.g. ["ubuntu-24.04"])'
         required: false
@@ -59,6 +60,16 @@ on:
         required: false
         default: ''
         type: string
+      qemu_version:
+        description: 'QEMU version for the e2e tests (e.g. v10.1.1)'
+        required: false
+        default: ''
+        type: string
+      virtiofsd_version:
+        description: 'virtiofsd version for the e2e tests (e.g. v1.13.0)'
+        required: false
+        default: ''
+        type: string
       hluk_version:
         description: 'hyperlight-unikraft version for the e2e tests (e.g. v0.18.0)'
         required: false
@@ -90,5 +101,7 @@ jobs:
       firecracker_version: ${{ inputs.firecracker_version }}
       cloud_hypervisor_version: ${{ inputs.cloud_hypervisor_version }}
       solo5_version: ${{ inputs.solo5_version }}
+      qemu_version: ${{ inputs.qemu_version }}
+      virtiofsd_version: ${{ inputs.virtiofsd_version }}
       hluk_version: ${{ inputs.hluk_version }}
     secrets: inherit

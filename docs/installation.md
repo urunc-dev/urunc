@@ -345,27 +345,32 @@ creation of a new release with different versions. More information can be found
 in the [respective section of the repository's README
 file](https://github.com/urunc-dev/monitors-build?tab=readme-ov-file#how-to-use).
 
-> NOTE: Hyperlight-unikraft is not included in this bundle yet.
-
-As an example, the following commands use the
-[`FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS_-v1.13.0_QM-v10.1.1-9a44e`
-release](https://github.com/urunc-dev/monitors-build/releases/tag/FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS_-v1.13.0_QM-v10.1.1-9a44e)
+Each release provides, for every architecture, an archive with all the
+monitors and tools. The archive is named after their versions, followed by the
+architecture. As an example, the following commands use the
+[`v0.2.0` release](https://github.com/urunc-dev/monitors-build/releases/tag/v0.2.0)
 which contains the following monitors and tools in the specified versions:
 
 - Firecracker v1.7.0
 - Cloud Hypervisor v50.0
+- Hyperlight-unikraft v0.18.0
 - Solo5 v0.12.1
 - Virtiofsd v1.13.0
 - Qemu v10.1.1
 
-To download and install the monitors in `/tmp`:
+To download the archive, verify its SHA-256 checksum and install the monitors
+in `/opt/urunc` (the checksum is taken from the GitHub API, using `jq`):
 ```
 ARCH="$(dpkg --print-architecture)"
-VERSION="FC-v1.7.0_CLH-v50.0_S5-v0.12.1_VFS_-v1.13.0_QM-v10.1.1-9a44e"
+RELEASE="v0.2.0"
+MONITORS="FC-v1.7.0_CLH-v50.0_HLUK-v0.18.0_S5-v0.12.1_VFS-v1.13.0_QM-v10.1.1-9a44e"
 release_url="https://github.com/urunc-dev/monitors-build/releases/download"
-wget ${release_url}/${VERSION}/release-${ARCH}-${VERSION}.tar.gz
-sudo tar Cxzvf /opt release-${ARCH}-${VERSION}.tar.gz
-rm release-${ARCH}-${VERSION}.tar.gz
+api_url="https://api.github.com/repos/urunc-dev/monitors-build/releases/tags"
+wget ${release_url}/${RELEASE}/${MONITORS}-${ARCH}.tar.gz
+DIGEST="$(wget -qO- ${api_url}/${RELEASE} | jq -r --arg name ${MONITORS}-${ARCH}.tar.gz '.assets[] | select(.name == $name) | .digest')"
+echo "${DIGEST#sha256:}  ${MONITORS}-${ARCH}.tar.gz" | sha256sum -c && \
+  sudo tar --no-same-owner --no-overwrite-dir -C /opt -xzvf ${MONITORS}-${ARCH}.tar.gz
+rm ${MONITORS}-${ARCH}.tar.gz
 ```
 
 After downloading all the binaries, we need to instruct `urunc` about the
@@ -377,7 +382,8 @@ get updated:
 2. in Qemu, the `data_path` field,
 3. in Virtiofsd, the `path` field needs to get updated.
 
-Therefore, change or append the following lines in `urunc`'s configuration:
+Therefore, change or append the following lines in `urunc`'s configuration
+(on arm64, Qemu's binary is `qemu-system-aarch64`):
 
 ```
 [monitors.qemu]
@@ -389,6 +395,9 @@ path = "/opt/urunc/bin/firecracker"
 
 [monitors.cloud-hypervisor]
 path = "/opt/urunc/bin/cloud-hypervisor"
+
+[monitors.hyperlight-unikraft]
+path = "/opt/urunc/bin/hluk"
 
 [monitors.hvt]
 path = "/opt/urunc/bin/solo5-hvt"
