@@ -150,22 +150,46 @@ func loadSpec(bundleDir string) (*specs.Spec, error) {
 	return &spec, nil
 }
 
+// atomicWriteFile writes data to a file atomically by first writing to a
+// temporary file in the same directory, syncing it, and then renaming it
+// to the target path. This prevents partial/corrupt files if the process
+// is killed mid-write.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmpName := filepath.Join(dir, "."+filepath.Base(path)+".tmp")
+
+	f, err := os.OpenFile(tmpName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	_, writeErr := f.Write(data)
+	syncErr := f.Sync()
+	closeErr := f.Close()
+
+	if writeErr != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to write temp file: %w", writeErr)
+	}
+	if syncErr != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to sync temp file: %w", syncErr)
+	}
+	if closeErr != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to close temp file: %w", closeErr)
+	}
+
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to rename temp file to %s: %w", path, err)
+	}
+	return nil
+}
+
 // writePidFile writes the content of pid to the file defined by path
 func writePidFile(path string, pid int) error {
-	var (
-		tmpDir  = filepath.Dir(path)
-		tmpName = filepath.Join(tmpDir, "."+filepath.Base(path))
-	)
-	f, err := os.OpenFile(tmpName, os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_SYNC, 0o666)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString(strconv.Itoa(pid))
-	f.Close()
-	if err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return atomicWriteFile(path, []byte(strconv.Itoa(pid)), 0o666)
 }
 
 // handleQueueProxy adds a hardcoded IP to the process's environment.
