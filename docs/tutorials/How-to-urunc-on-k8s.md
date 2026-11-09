@@ -298,7 +298,7 @@ replaced by `_`, and prefixed with `URUNC_`:
 | `monitors.<monitor>.default_memory_mb` | `URUNC_MONITORS_<MONITOR>_DEFAULT_MEMORY_MB` | int |
 | `monitors.<monitor>.default_vcpus` | `URUNC_MONITORS_<MONITOR>_DEFAULT_VCPUS` | int |
 | `monitors.<monitor>.path` | `URUNC_MONITORS_<MONITOR>_PATH` | path |
-| `monitors.qemu.data_path` | `URUNC_MONITORS_QEMU_DATA_PATH` | string |
+| `monitors.qemu.data_files` | `URUNC_MONITORS_QEMU_DATA_FILES` | pathlist |
 | `monitors.qemu.vhost` | `URUNC_MONITORS_QEMU_VHOST` | bool |
 | `monitors.<monitor>.socket_path` | `URUNC_MONITORS_<MONITOR>_SOCKET_PATH` | path |
 | `monitors.<monitor>.host_libs` | `URUNC_MONITORS_<MONITOR>_HOST_LIBS` | pathlist |

@@ -83,22 +83,30 @@ default contains no host libraries. However, since the QEMU package is
 dynamically linked, it can not start without its shared libraries. Therefore,
 the host directories with QEMU's libraries need to be listed in the `host_libs`
 field of [`urunc`'s
-configuration](https://urunc.io/configuration#monitor-fields). For example, on
-Debian and Ubuntu (x86_64), a coarse-grained selection of host libraries is:
+configuration](https://urunc.io/configuration#monitor-fields). Moreover,
+QEMU's data files (e.g. BIOS) need to be listed in the `data_files` field. For
+example, on Debian and Ubuntu (x86_64), the following configuration lists the
+data files of Unikraft and Linux guests and a coarse-grained selection of host
+libraries:
 
 ```bash
 sudo mkdir -p /etc/urunc
 sudo tee -a /etc/urunc/config.toml > /dev/null <<'EOF'
 [monitors.qemu]
+data_files = ["/usr/share/seabios/bios-256k.bin",
+              "/usr/share/qemu/kvmvapic.bin",
+              "/usr/share/qemu/multiboot_dma.bin",
+              "/usr/share/qemu/linuxboot_dma.bin",
+              "/usr/lib/ipxe/qemu/efi-virtio.rom"]
 host_libs = ["/lib", "/lib64", "/usr/lib"]
 EOF
 ```
 
-On arm64, leave out `/lib64`, which does not exist there, since every listed
-path must exist on the host.
+On arm64, leave out `/lib64` and `/usr/share/seabios/bios-256k.bin`, which do
+not exist there, since every listed path must exist on the host.
 
-Please use a much more fine-grained list in production. The `ldd` tool can help
-identify the exact paths.
+Please use a much more fine-grained list of libraries in production. The `ldd`
+tool can help identify the exact paths.
 
 Now we are ready to run nginx as a Unikraft unikernel using Docker and `urunc`:
 

@@ -379,7 +379,7 @@ configuration](../configuration), there are three fields that need to
 get updated:
 
 1. in each monitor the `path` field,
-2. in Qemu, the `data_path` field,
+2. in Qemu, the `data_files` field,
 3. in Virtiofsd, the `path` field needs to get updated.
 
 Therefore, change or append the following lines in `urunc`'s configuration
@@ -388,7 +388,7 @@ Therefore, change or append the following lines in `urunc`'s configuration
 ```
 [monitors.qemu]
 path = "/opt/urunc/bin/qemu-system-x86_64"
-data_path = "/opt/urunc/share/qemu"
+data_files = ["/opt/urunc/share/qemu/qemu"]
 
 [monitors.firecracker]
 path = "/opt/urunc/bin/firecracker"
@@ -415,7 +415,9 @@ Alternatively, each monitor can be simply downloaded or built from source.
 
 A monitor that is dynamically linked, like the Qemu package of a distribution or
 Solo5 built from source, needs its shared libraries listed in the `host_libs`
-field of [`urunc`'s configuration](../configuration#monitor-fields).
+field of [`urunc`'s configuration](../configuration#monitor-fields). In
+addition, Qemu needs its data files, or a single directory with all of them,
+listed in the `data_files` field.
 
 #### Solo5
 

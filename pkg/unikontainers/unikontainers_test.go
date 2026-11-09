@@ -221,7 +221,7 @@ func TestGetMonitorResourcesHostLibs(t *testing.T) {
 	lib := t.TempDir()
 	rfs := fakeRootfs{mounts: []specs.Mount{bindMount(t.TempDir(), filepath.Join(share, "rootfs"), true, false)}}
 
-	res, err := getMonitorResources(rfs, hvtVMM{}, "", "", []string{lib}, nil)
+	res, err := getMonitorResources(rfs, hvtVMM{}, hypervisors.HvtVmm, types.MonitorConfig{HostLibs: []string{lib}}, nil)
 	require.NoError(t, err)
 	var got []string
 	for _, m := range res.Mounts {
@@ -244,7 +244,7 @@ func TestGetMonitorResourcesHostLibs(t *testing.T) {
 		{"/" + monitorSpecFilename, "overlaps /" + monitorSpecFilename + ","},
 	}
 	for _, tc := range invalid {
-		_, err = getMonitorResources(rfs, hvtVMM{}, "", "", []string{tc.lib}, nil)
+		_, err = getMonitorResources(rfs, hvtVMM{}, hypervisors.HvtVmm, types.MonitorConfig{HostLibs: []string{tc.lib}}, nil)
 		assert.ErrorContains(t, err, tc.want, tc.lib)
 	}
 }
@@ -279,16 +279,16 @@ func TestGetMonitorResourcesControlSocket(t *testing.T) {
 	socket := filepath.Join(lib, "urunc", "api.sock")
 	rfs := fakeRootfs{}
 
-	_, err := getMonitorResources(rfs, socketVMM{}, "", socket, []string{lib}, nil)
+	_, err := getMonitorResources(rfs, socketVMM{}, hypervisors.FirecrackerVmm, types.MonitorConfig{SocketPath: socket, HostLibs: []string{lib}}, nil)
 	assert.ErrorContains(t, err, "overlaps "+socket+",")
 
 	// The socket's directory is not reserved, which could be / and reject
 	// every library.
-	_, err = getMonitorResources(rfs, socketVMM{}, "", "/api.sock", []string{lib}, nil)
+	_, err = getMonitorResources(rfs, socketVMM{}, hypervisors.FirecrackerVmm, types.MonitorConfig{SocketPath: "/api.sock", HostLibs: []string{lib}}, nil)
 	assert.NoError(t, err)
 
 	// A monitor without a control socket ignores the path.
-	_, err = getMonitorResources(rfs, hvtVMM{}, "", socket, []string{lib}, nil)
+	_, err = getMonitorResources(rfs, hvtVMM{}, hypervisors.HvtVmm, types.MonitorConfig{SocketPath: socket, HostLibs: []string{lib}}, nil)
 	assert.NoError(t, err)
 }
 
@@ -298,7 +298,7 @@ func TestGetMonitorResourcesSkipsBlockDevices(t *testing.T) {
 	t.Parallel()
 
 	rfs := fakeRootfs{blockErr: errors.New("block volumes unmounted")}
-	res, err := getMonitorResources(rfs, hvtVMM{}, "", "", nil, nil)
+	res, err := getMonitorResources(rfs, hvtVMM{}, hypervisors.HvtVmm, types.MonitorConfig{}, nil)
 	require.NoError(t, err)
 	assert.Empty(t, res.BlockArgs)
 }

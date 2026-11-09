@@ -220,9 +220,12 @@ func (u *Unikontainer) InitialSetup() error {
 	}
 
 	// Collect the resources of the monitor before preSetup changes the host,
-	// so that a bad configuration fails early.
-	monLibs := monitorHostLibs(u.UruncCfg, vmmType, rootfsParams.Type)
-	monRes, err := getMonitorResources(rfsBuilder, vmm, monCfg.DataPath, monCfg.SocketPath, monLibs, u.Spec.Mounts)
+	// so that a bad configuration fails early. The monitor rootfs also needs
+	// the host libraries of the extra binaries. They are added to a copy of
+	// the monitor's configuration, which is not stored.
+	monRootfsCfg := monCfg
+	monRootfsCfg.HostLibs = monitorHostLibs(u.UruncCfg, vmmType, rootfsParams.Type)
+	monRes, err := getMonitorResources(rfsBuilder, vmm, hypervisors.VmmType(vmmType), monRootfsCfg, u.Spec.Mounts)
 	if err != nil {
 		return err
 	}
@@ -457,7 +460,7 @@ func monitorHostLibs(cfg *UruncConfig, vmmType string, rootfsType string) []stri
 
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, apart from the block devices.
-func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, monitorDataPath string, socketPath string, monitorLibs []string, cntrMounts []specs.Mount) (monitorResources, error) {
+func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, vmmType hypervisors.VmmType, monCfg types.MonitorConfig, cntrMounts []specs.Mount) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -494,9 +497,9 @@ func getMonitorResources(rfs rootfsBuilder, vmm types.VMM, monitorDataPath strin
 	//
 	// Only a monitor with a control socket creates it in its rootfs.
 	if !vmm.SupportsControlSocket() {
-		socketPath = ""
+		monCfg.SocketPath = ""
 	}
-	monMounts, err := mountsForMonitor(vmm.Path(), monitorDataPath, socketPath, monitorLibs, res.Mounts)
+	monMounts, err := mountsForMonitor(vmmType, vmm.Path(), monCfg, res.Mounts)
 	if err != nil {
 		return res, err
 	}

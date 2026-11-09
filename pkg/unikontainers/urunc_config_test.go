@@ -32,7 +32,6 @@ const (
 	testQemuMemoryKey    = "urunc_config.monitors.qemu.default_memory_mb"
 	testQemuVCPUsKey     = "urunc_config.monitors.qemu.default_vcpus"
 	testQemuBinaryKey    = "urunc_config.monitors.qemu.binary_path"
-	testQemuDataKey      = "urunc_config.monitors.qemu.data_path"
 	testQemuVhostKey     = "urunc_config.monitors.qemu.vhost"
 	testHvtMemoryKey     = "urunc_config.monitors.hvt.default_memory_mb"
 	testVirtiofsdPathKey = "urunc_config.extra_binaries.virtiofsd.path"
@@ -40,7 +39,6 @@ const (
 	testVirtiofsdDefOpts = "--cache always --sandbox none"
 	testBinOpts          = "opt1 opt2"
 	testQemuBinaryPath   = "/usr/bin/qemu"
-	testQemuDataPath     = "/usr/local/share/qemu"
 	testTimestampsPath   = "/var/log/urunc/timestamps.log"
 )
 
@@ -62,7 +60,6 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuMemoryKey: "512",
 			testQemuVCPUsKey:  "2",
 			testQemuBinaryKey: testQemuBinaryPath,
-			testQemuDataKey:   testQemuDataPath,
 			testQemuVhostKey:  "true",
 		}
 
@@ -74,7 +71,6 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, uint(512), qemuConfig.DefaultMemoryMB)
 		assert.Equal(t, uint(2), qemuConfig.DefaultVCPUs)
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
-		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
 		assert.True(t, qemuConfig.Vhost)
 	})
 
@@ -124,7 +120,6 @@ func TestUruncConfigFromMap(t *testing.T) {
 			testQemuMemoryKey: "invalid",
 			testQemuVCPUsKey:  "-5",
 			testQemuBinaryKey: testQemuBinaryPath,
-			testQemuDataKey:   testQemuDataPath,
 			"urunc_config.monitors.qemu.field.extra.parts": "invalid",
 			testHvtMemoryKey: "512",
 		}
@@ -137,7 +132,6 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.Equal(t, uint(256), qemuConfig.DefaultMemoryMB) // Default value for invalid input
 		assert.Equal(t, uint(1), qemuConfig.DefaultVCPUs)      // Default value for negative input
 		assert.Equal(t, testQemuBinaryPath, qemuConfig.BinaryPath)
-		assert.Equal(t, testQemuDataPath, qemuConfig.DataPath)
 		assert.Contains(t, config.Monitors, "hvt")
 		hvtConfig := config.Monitors["hvt"]
 		assert.Equal(t, uint(512), hvtConfig.DefaultMemoryMB)
@@ -563,7 +557,7 @@ func TestLoadUruncConfig(t *testing.T) {
 		path := writeTestConfig(t, `
 [monitors.qemu]
 path = "/opt/urunc/bin/qemu-system-x86_64"
-data_path = "/opt/urunc"
+data_files = ["/opt/urunc/share/qemu"]
 `)
 		config, err := LoadUruncConfig(path)
 		assert.NoError(t, err)
@@ -572,7 +566,7 @@ data_path = "/opt/urunc"
 		assert.Equal(t, defaultMonitorMemoryMB, qemu.DefaultMemoryMB)
 		assert.Equal(t, defaultMonitorVCPUs, qemu.DefaultVCPUs)
 		assert.Equal(t, "/opt/urunc/bin/qemu-system-x86_64", qemu.BinaryPath)
-		assert.Equal(t, "/opt/urunc", qemu.DataPath)
+		assert.Equal(t, []string{"/opt/urunc/share/qemu"}, qemu.DataFiles)
 	})
 
 	t.Run("explicit values are honored", func(t *testing.T) {
@@ -649,6 +643,8 @@ host_libs = ["/usr/lib"]
 			"host library with a /":   "[monitors.qemu]\nhost_libs = [\"/usr/lib/\"]\n",
 			"empty host library":      "[monitors.qemu]\nhost_libs = [\"\"]\n",
 			"virtiofsd host library":  "[extra_binaries.virtiofsd]\nhost_libs = [\"/usr//lib\"]\n",
+			"relative data file":      "[monitors.qemu]\ndata_files = [\"bios-256k.bin\"]\n",
+			"unclean data file":       "[monitors.qemu]\ndata_files = [\"/usr/share/qemu/../qemu\"]\n",
 			// A monitor that no container uses is checked too.
 			"unused monitor": "[monitors.spt]\npath = \"solo5-spt\"\n",
 		}
@@ -765,6 +761,25 @@ host_libs = ["/usr/lib"]
 		binJSON, err := json.Marshal(config.ExtraBins["virtiofsd"])
 		require.NoError(t, err)
 		assert.NotContains(t, string(binJSON), "HostLibs")
+	})
+	t.Run("qemu data files are loaded but not stored", func(t *testing.T) {
+		t.Parallel()
+		path := writeTestConfig(t, `
+[monitors.qemu]
+data_files = ["/usr/share/qemu/bios-256k.bin", "/usr/share/qemu/kvmvapic.bin"]
+`)
+		config, err := LoadUruncConfig(path)
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"/usr/share/qemu/bios-256k.bin", "/usr/share/qemu/kvmvapic.bin"}, config.Monitors["qemu"].DataFiles)
+		assert.Nil(t, config.Monitors["hvt"].DataFiles)
+
+		// Only create uses them, like the host libraries.
+		for key := range config.Map() {
+			assert.NotContains(t, key, "data_files")
+		}
+		monJSON, err := json.Marshal(config.Monitors["qemu"])
+		require.NoError(t, err)
+		assert.NotContains(t, string(monJSON), "DataFiles")
 	})
 }
 

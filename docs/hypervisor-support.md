@@ -56,7 +56,9 @@ sudo apt-get install qemu-system
 
 With the above installation process, the Qemu binary is dynamically linked, so
 its shared libraries need to be listed in the `host_libs` field of [`urunc`'s
-configuration](../configuration#monitor-fields).
+configuration](../configuration#monitor-fields). Moreover, regardless of how it
+was built, Qemu needs its data files (e.g. BIOS), listed one by one or as the
+single directory with all of them, in the `data_files` field.
 
 #### Qemu and `urunc`
 

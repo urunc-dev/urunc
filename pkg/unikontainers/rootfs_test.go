@@ -17,6 +17,7 @@ package unikontainers
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -377,4 +378,124 @@ func TestHostLibMountsOnlyCheckReservedPaths(t *testing.T) {
 	mounts, err := hostLibMounts([]string{share}, nil)
 	require.NoError(t, err)
 	assert.Len(t, mounts, 1)
+}
+
+// Qemu's data files reach the monitor rootfs only from the configured
+// data_files; urunc does not search the host for them. Each listed file is
+// mounted in Qemu's data directory under its own name, while a single listed
+// directory is mounted as the whole data directory. A file that is a symlink
+// is mounted with its target's content. Every listed path must exist and be
+// listed once.
+func TestMountsForMonitorQemuDataFiles(t *testing.T) {
+	t.Parallel()
+
+	share := t.TempDir()
+	qemuDir := filepath.Join(share, "qemu")
+	seabiosDir := filepath.Join(share, "seabios")
+	require.NoError(t, os.Mkdir(qemuDir, 0o755))
+	require.NoError(t, os.Mkdir(seabiosDir, 0o755))
+	kvmvapic := filepath.Join(qemuDir, "kvmvapic.bin")
+	require.NoError(t, os.WriteFile(kvmvapic, nil, 0o600))
+	seabiosBios := filepath.Join(seabiosDir, "bios-256k.bin")
+	require.NoError(t, os.WriteFile(seabiosBios, nil, 0o600))
+	bios := filepath.Join(qemuDir, "bios-256k.bin")
+	require.NoError(t, os.Symlink("../seabios/bios-256k.bin", bios))
+	missing := filepath.Join(qemuDir, "missing.rom")
+
+	tests := []struct {
+		name  string
+		files []string
+		want  map[string]string
+	}{
+		{"none", nil, map[string]string{}},
+		{"files", []string{kvmvapic, bios}, map[string]string{
+			"/usr/share/qemu/kvmvapic.bin":  kvmvapic,
+			"/usr/share/qemu/bios-256k.bin": bios,
+		}},
+		{"directory", []string{qemuDir}, map[string]string{
+			"/usr/share/qemu": qemuDir,
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mounts, err := mountsForMonitor(hypervisors.QemuVmm, "/usr/bin/qemu-system-x86_64", types.MonitorConfig{DataFiles: tc.files}, nil)
+			require.NoError(t, err)
+
+			got := map[string]string{}
+			for _, m := range mounts {
+				if strings.HasPrefix(m.Destination, "/usr/share/") {
+					assert.Subset(t, m.Options, []string{"ro", "nodev", "nosuid", "noexec"})
+					got[m.Destination] = m.Source
+				}
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+
+	invalid := []struct {
+		name  string
+		files []string
+	}{
+		{"missing", []string{missing, kvmvapic}},
+		{"directory and missing file", []string{qemuDir, missing}},
+		{"duplicate", []string{kvmvapic, kvmvapic}},
+		{"duplicate directory", []string{qemuDir, qemuDir}},
+		{"directory and file", []string{qemuDir, seabiosBios}},
+		{"two directories", []string{qemuDir, seabiosDir}},
+		{"same name", []string{bios, seabiosBios}},
+	}
+	for _, tc := range invalid {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := mountsForMonitor(hypervisors.QemuVmm, "/usr/bin/qemu-system-x86_64", types.MonitorConfig{DataFiles: tc.files}, nil)
+			assert.Error(t, err)
+		})
+	}
+}
+
+// Only Qemu gets data files. Its type decides that, not the name of its
+// binary, which can be anything.
+func TestMountsForMonitorQemuDataFilesByType(t *testing.T) {
+	t.Parallel()
+
+	dataFile := filepath.Join(t.TempDir(), "bios-256k.bin")
+	require.NoError(t, os.WriteFile(dataFile, nil, 0o600))
+	cfg := types.MonitorConfig{DataFiles: []string{dataFile}}
+
+	mounts, err := mountsForMonitor(hypervisors.QemuVmm, "/usr/local/bin/urunc-qemu", cfg, nil)
+	require.NoError(t, err)
+	assert.Contains(t, mountDestinations(mounts), "/usr/share/qemu/bios-256k.bin")
+
+	mounts, err = mountsForMonitor(hypervisors.HvtVmm, "/usr/local/bin/qemu-hvt", cfg, nil)
+	require.NoError(t, err)
+	assert.NotContains(t, mountDestinations(mounts), "/usr/share/qemu/bios-256k.bin")
+}
+
+// mountDestinations returns the destinations of mounts.
+func mountDestinations(mounts []specs.Mount) []string {
+	var destinations []string
+	for _, m := range mounts {
+		destinations = append(destinations, m.Destination)
+	}
+	return destinations
+}
+
+// The host libraries can not overlap Qemu's data files, which are mounted in
+// /usr/share/qemu.
+func TestMountsForMonitorHostLibsAndQemuDataFiles(t *testing.T) {
+	t.Parallel()
+
+	dataFile := filepath.Join(t.TempDir(), "kvmvapic.bin")
+	require.NoError(t, os.WriteFile(dataFile, nil, 0o600))
+	share := t.TempDir()
+
+	cfg := types.MonitorConfig{DataFiles: []string{dataFile}, HostLibs: []string{"/usr/share"}}
+	_, err := mountsForMonitor(hypervisors.QemuVmm, "/usr/bin/qemu-system-x86_64", cfg, nil)
+	assert.ErrorContains(t, err, "overlaps /usr/share/qemu/kvmvapic.bin,")
+
+	cfg = types.MonitorConfig{DataFiles: []string{dataFile}, HostLibs: []string{share}}
+	mounts, err := mountsForMonitor(hypervisors.QemuVmm, "/usr/bin/qemu-system-x86_64", cfg, nil)
+	require.NoError(t, err)
+	assert.Equal(t, share, mounts[0].Destination, "the host libraries are mounted first")
 }

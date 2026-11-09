@@ -2,7 +2,7 @@
 
 ## Configuration File Location
 
-`urunc` looks for its configuration file at `/etc/urunc/config.toml` by default. The location can be overridden with the `URUNC_CONFIG_FILE` environment variable, for example `URUNC_CONFIG_FILE=/var/etc/urunc/config.toml`. If the file doesn't exist, `urunc` will use sensible defaults and continue to operate normally. If it can not be read or decoded, every `urunc create` fails.
+`urunc` looks for its configuration file at `/etc/urunc/config.toml` by default. The location can be overridden with the `URUNC_CONFIG_FILE` environment variable, for example `URUNC_CONFIG_FILE=/var/etc/urunc/config.toml`. If the file doesn't exist, `urunc` uses the [default values](#default-values). If it can not be read or decoded, every `urunc create` fails. The default values give Qemu no data files, which might fail Qemu execution.
 
 One way to set the variable is to replace the `containerd-shim-urunc-v2` binary that containerd invokes with a small wrapper script that sets it and execs the real shim. For example, move the real shim aside (e.g. to `containerd-shim-urunc-v2.real`) and save the following as `/usr/local/bin/containerd-shim-urunc-v2`:
 
@@ -34,6 +34,11 @@ destination = "/var/log/urunc/timestamps.log"
 default_memory_mb = 512
 default_vcpus = 2
 path = "/usr/bin/qemu-system-x86_64"
+data_files = ["/usr/share/seabios/bios-256k.bin",
+              "/usr/share/qemu/kvmvapic.bin",
+              "/usr/share/qemu/multiboot_dma.bin",
+              "/usr/share/qemu/linuxboot_dma.bin",
+              "/usr/lib/ipxe/qemu/efi-virtio.rom"]
 host_libs = ["/lib", "/lib64", "/usr/lib"]
 
 [monitors.firecracker]
@@ -166,15 +171,15 @@ Each monitor subsection supports the following fields:
 | `default_memory_mb` | integer | `256` | Default memory allocation in megabytes |
 | `default_vcpus` | integer | `1` | Default number of virtual CPUs |
 | `path` | string | (empty) | Optional custom path to the monitor binary. If not specified, urunc will search for the binary in PATH |
-| `data_path` | string | (empty) | Optional custom path for the monitor's data file directory |
+| `data_files` | list of strings | (empty) | Optional host paths of the monitor's data files, or of a single directory with them. Currently only used by the `qemu` monitor |
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
 | `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
 | `host_libs` | list of strings | (empty) | Optional host paths with the shared libraries the monitor needs. Each one is mounted read-only at the same path in the monitor's execution environment |
 
-The `path`, `socket_path` and `host_libs` fields must hold absolute and clean
-paths, e.g. without `..` or a trailing `/`. This applies to every monitor in the
-file, even one that no container uses. Otherwise, every `urunc create` fails,
-also for the containers that `urunc` hands to `runc`.
+The `path`, `socket_path`, `host_libs` and `data_files` fields must hold
+absolute and clean paths, e.g. without `..` or a trailing `/`. This applies to
+every monitor in the file, even one that no container uses. Otherwise, every
+`urunc create` fails, also for the containers that `urunc` hands to `runc`.
 
 `urunc` creates a minimal execution environment for each monitor, which by
 default contains no host libraries. Therefore, we strongly recommend
@@ -192,16 +197,19 @@ from the host are added with the following fields:
   monitor's execution environment, like `/proc`, `/dev`, `/tmp`, the monitor
   binary, its control socket or, for Qemu, its data files in `/usr/share/qemu`.
   For example, `/` can never be listed, while `/usr/share` can not be listed for
-  Qemu. A path can also not contain or be inside another
+  Qemu with `data_files`. A path can also not contain or be inside another
   listed one, including the ones in the `host_libs` of an extra binary that the
   container uses, like `virtiofsd`, but the same path can be listed in both. A
   directory is mounted with everything inside it, so list only the directories
   with the libraries. For instance, the monitor can connect to any host socket
   inside a listed directory, even though the mount is read-only.
-- `data_path`: The directory with the monitor's data files. For instance, for
-  Qemu, `urunc` mounts its `qemu` subdirectory at `/usr/share/qemu` and, if it
-  exists, its `seabios` subdirectory at `/usr/share/seabios`. If it is not set,
-  `urunc` checks `/usr/local/share` and then `/usr/share`.
+- `data_files`: Qemu's data files (e.g. BIOS and option ROMs), either as files
+  or as a single directory with all of them. It applies only to Qemu, and the
+  other monitors ignore it. Each listed file is mounted under its own name in
+  `/usr/share/qemu`, where Qemu looks for its data files, so two files can not
+  have the same name. A listed directory is mounted as a whole at the same
+  place, so it must be the only entry. Every path must exist on the host,
+  otherwise the container fails to start.
 
 A good starting point to find the libraries needed by a dynamically linked
 monitor is `ldd <monitor binary>`. For example, for a `solo5-spt` built from
@@ -236,13 +244,40 @@ When listing `host_libs`, keep in mind that:
 - `ldd` does not show the libraries loaded at run time with `dlopen()`, like the
   modules of Qemu (e.g. in `/usr/lib/x86_64-linux-gnu/qemu` on Debian and
   Ubuntu), and its output can change after an upgrade of the monitor.
-- Qemu also looks for firmware outside of `/usr/share/qemu`, in the directories
-  that `qemu-system-x86_64 -L help` shows. On Debian and Ubuntu (x86_64), its
-  network boot ROM is `/usr/lib/ipxe/qemu/efi-virtio.rom`. Without it, Qemu
-  fails to start a container that has a network.
 - A dynamically linked `virtiofsd` needs its libraries listed too. So does a
   dynamically linked `urunc` in libcontainer mode, since it runs in the
   monitor's execution environment.
+
+The data files that Qemu needs depend on the guest and its devices, and Qemu
+names the one it misses (e.g. `failed to find romfile "efi-virtio.rom"`). For
+example, the Qemu package of Ubuntu 24.04 (x86_64) needs the following files to
+boot a Unikraft unikernel with a network interface:
+
+```toml
+[monitors.qemu]
+data_files = ["/usr/share/seabios/bios-256k.bin",
+              "/usr/share/qemu/kvmvapic.bin",
+              "/usr/share/qemu/multiboot_dma.bin",
+              "/usr/lib/ipxe/qemu/efi-virtio.rom"]
+```
+
+A Linux guest needs `linuxboot_dma.bin` instead of `multiboot_dma.bin`. If it
+is missing, Qemu only warns `Could not open option rom 'linuxboot_dma.bin'` and
+the guest does not start. Both of them can be listed to boot either kind of
+guest.
+
+When all the data files are in a single directory, like in the [monitors-build
+releases](https://github.com/urunc-dev/monitors-build/releases), that directory
+can be listed on its own instead:
+
+```toml
+[monitors.qemu]
+data_files = ["/opt/urunc/share/qemu/qemu"]
+```
+
+This is not possible with the Qemu package of Debian and Ubuntu, whose data
+files are spread across `/usr/share/qemu`, `/usr/share/seabios` and
+`/usr/lib/ipxe/qemu`.
 
 The `socket_path` field applies to the monitors that expose a control socket:
 Firecracker (its API socket), Qemu (a QMP socket) and Cloud Hypervisor (its REST
@@ -273,7 +308,7 @@ does not find a stale socket.
 default_memory_mb = 1024
 default_vcpus = 4
 path = "/usr/local/bin/qemu-system-x86_64"
-data_path = "/usr/local/share/"
+data_files = ["/usr/local/share/qemu"]
 vhost = false
 
 [monitors.firecracker]
@@ -361,13 +396,16 @@ To create a configuration file, you can:
    EOF
    ```
 
+   For Qemu, also add its `data_files` to `[monitors.qemu]`, as described in
+   [Monitor Configuration](#monitor-configuration).
+
 ## Configuration Validation
 
 `urunc` will validate the configuration file when it starts. If the configuration file:
 
 - **Does not exist**: `urunc` uses default values and logs a warning
 - **Can not be read or decoded** (e.g. no read permission, a syntax error, a table defined twice or a field of the wrong type): every `urunc create` fails with the error, also for the containers that `urunc` hands to `runc`, since the default values would silently replace every field of the file
-- **Contains an invalid path**: a `path`, `socket_path` or `host_libs` field of a monitor, or a `path` or `host_libs` field of an extra binary, that is not absolute and clean makes every `urunc create` fail in the same way
+- **Contains an invalid path**: a `path`, `socket_path`, `host_libs` or `data_files` field of a monitor, or a `path` or `host_libs` field of an extra binary, that is not absolute and clean makes every `urunc create` fail in the same way
 - **Contains other invalid values**: `urunc` will either use default values for invalid fields, e.g. for a zero `default_vcpus` or an unknown log `level`, or fail to start if critical errors are found
 
 ## Default Values
@@ -387,6 +425,7 @@ destination = "/var/log/urunc/timestamps.log"
 default_memory_mb = 256
 default_vcpus = 1
 # path is not set by default - urunc will search in PATH
+# data_files is not set by default - Qemu gets no data files
 
 [monitors.firecracker]
 default_memory_mb = 256

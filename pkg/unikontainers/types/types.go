@@ -163,9 +163,9 @@ type ExtraBinConfig struct {
 type MonitorConfig struct {
 	DefaultMemoryMB uint     `toml:"default_memory_mb"`
 	DefaultVCPUs    uint     `toml:"default_vcpus"`
-	BinaryPath      string   `toml:"path,omitempty"`               // Optional path to the hypervisor binary
-	DataPath        string   `toml:"data_path,omitempty"`          // Optional path to the hypervisor data files (e.g. qemu bios stuff)
-	Vhost           bool     `toml:"vhost,omitempty"`              // Optional: enable vhost for network performance optimization
-	SocketPath      string   `toml:"socket_path,omitempty"`        // Optional path for the monitor's control socket (unset means no control socket)
-	HostLibs        []string `toml:"host_libs,omitempty" json:"-"` // Optional host library paths the monitor needs (only used by create)
+	BinaryPath      string   `toml:"path,omitempty"`                // Optional path to the hypervisor binary
+	DataFiles       []string `toml:"data_files,omitempty" json:"-"` // Optional host paths of the data files (e.g. Qemu's BIOS), or of a single directory with them (only used by create)
+	Vhost           bool     `toml:"vhost,omitempty"`               // Optional: enable vhost for network performance optimization
+	SocketPath      string   `toml:"socket_path,omitempty"`         // Optional path for the monitor's control socket (unset means no control socket)
+	HostLibs        []string `toml:"host_libs,omitempty" json:"-"`  // Optional host library paths the monitor needs (only used by create)
 }
