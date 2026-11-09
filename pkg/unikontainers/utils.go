@@ -54,6 +54,11 @@ type monitorResources struct {
 	PreStartCmds    [][]string             `json:"preStartCmds,omitempty"`
 	VirtiofsExports []types.VirtiofsExport `json:"virtiofsExports,omitempty"`
 	InitrdFiles     []types.InitrdFile     `json:"initrdFiles,omitempty"`
+	// GatewayNet is the network of a guest on a user-mode network gateway,
+	// nil for any other, and GatewaySocket the gateway's socket on the host,
+	// which the monitor gets at constants.NetGatewaySocketPath.
+	GatewayNet    *types.NetDevParams `json:"gatewayNet,omitempty"`
+	GatewaySocket string              `json:"gatewaySocket,omitempty"`
 }
 
 // saveMonitorResources stores the monitorResources passed as an argument in a JSON

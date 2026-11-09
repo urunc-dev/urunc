@@ -18,12 +18,14 @@ package unikontainers
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -230,11 +232,22 @@ func (u *Unikontainer) InitialSetup() error {
 		return fmt.Errorf("pre setup step for rootfs failed: %w", err)
 	}
 
-	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts)
+	// A guest on a gateway gets no tap, so its monitor gets neither the
+	// tun device nor the capability a tap needs.
+	gateway, err := u.gatewayNet()
+	if err != nil {
+		return err
+	}
+	tuntap := vmm.UsesTUNTAP() && gateway == nil
+	monRes, err := getMonitorResources(rfsBuilder, rootfsParams, vmm, u.UruncCfg.Monitors[vmmType].DataPath, u.Spec.Mounts, tuntap)
 	if err != nil {
 		return err
 	}
 	monRes.Rootfs = rootfsParams
+	if gateway != nil {
+		monRes.GatewayNet = gateway
+		monRes.GatewaySocket = u.State.Annotations[annotNetSocket]
+	}
 
 	if u.isContainerBoot() {
 		// qemu opens /dev/vhost-vsock to back the guest's vhost-vsock device,
@@ -384,9 +397,133 @@ func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevPar
 	return netArgs, nil
 }
 
+// guestNet gives the guest its network: the user-mode gateway's when gateway
+// describes one, and SetupNet's otherwise. A guest on a gateway leaves the
+// container's network namespace alone: urunc creates no tap there, and
+// redirects the traffic of no interface.
+func guestNet(gateway *types.NetDevParams, tuntap bool, networkType string, uid, gid uint32) (types.NetDevParams, error) {
+	if gateway != nil {
+		// An engine that attached the container to a network of its own,
+		// through CNI for instance, reports an address and ports the guest
+		// does not have.
+		iface, err := containerIface()
+		if err == nil {
+			uniklog.Warnf("the guest is on the network gateway %s, and does not use %s, the interface of the "+
+				"container's network namespace, with address %s", gateway.UnixSocket, iface.Interface, iface.IP)
+		}
+		return *gateway, nil
+	}
+	return SetupNet(tuntap, networkType, uid, gid)
+}
+
+// containerIface describes the interface of the container's network
+// namespace. Tests replace it.
+var containerIface = network.ContainerIface
+
+// warnGatewayAccess warns when the monitor, now running as user, cannot
+// connect to the gateway's socket. Connecting to a unix socket takes write
+// permission on it, which its owner decides, and hvi does not fail on a
+// socket it cannot reach: it boots the guest on a stub network with no way
+// out. A guest whose image runs as a user other than root is the usual case,
+// since the gateway's owner rarely gives others write permission on its
+// socket.
+func warnGatewayAccess(gateway *types.NetDevParams, user specs.User) {
+	if gateway == nil {
+		return
+	}
+	err := unix.Access(constants.NetGatewaySocketPath, unix.W_OK)
+	if err != nil {
+		uniklog.Warnf("the monitor runs as uid %d and cannot connect to the network gateway's socket: %v. "+
+			"The guest boots with no network", user.UID, err)
+	}
+}
+
+// gatewaySocketMount is the bind mount of the gateway's socket into the
+// monitor rootfs. It is read-only, which does not stop a connect, since the
+// kernel's read-only check skips sockets, and so a source that is no socket
+// cannot be written through it.
+func gatewaySocketMount(source string) specs.Mount {
+	return bindMount(source, constants.NetGatewaySocketPath, true, true, "nosuid", "nodev", "noexec")
+}
+
+// mountGatewaySocket binds the gateway's socket into the monitor rootfs. The
+// socket's directory is usually its user's, and urunc runs as root, so the
+// socket is opened without following a symlink in its place and checked to
+// be a socket, and the mount takes what was opened, through /proc/self/fd.
+// A symlink swapped in after gatewayNet's check then fails here instead of
+// binding whatever file it names.
+func mountGatewaySocket(monRootfs, socket string) error {
+	fd, err := unix.Open(socket, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("%s: %w", annotNetSocket, &os.PathError{Op: "open", Path: socket, Err: err})
+	}
+	defer unix.Close(fd)
+	var st unix.Stat_t
+	err = unix.Fstat(fd, &st)
+	if err != nil {
+		return fmt.Errorf("%s: %w", annotNetSocket, &os.PathError{Op: "fstat", Path: socket, Err: err})
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFSOCK {
+		return fmt.Errorf("%s: %s is not a socket", annotNetSocket, socket)
+	}
+	return applyMount(monRootfs, gatewaySocketMount(fmt.Sprintf("/proc/self/fd/%d", fd)))
+}
+
+// gatewayNet returns the network of a guest the netSocket annotation puts on
+// a user-mode network gateway, or nil when it names none. The address and
+// gateway come from the netAddress and netGateway annotations, since no
+// interface of the container's network namespace takes part, and the socket
+// is the path the monitor reaches it at in its rootfs.
+//
+// hvi warns about a socket it cannot reach and boots the guest on a stub
+// network of its own, with no way out. A socket that is not there when the
+// container is created fails the create instead. So does a symlink in its
+// place, which mountGatewaySocket would refuse anyway. The check cannot
+// tell a live gateway from the socket file a dead one left, or see the
+// gateway stop between create and start: hvi then falls back the same way.
+func (u *Unikontainer) gatewayNet() (*types.NetDevParams, error) {
+	sock := u.State.Annotations[annotNetSocket]
+	if sock == "" {
+		return nil, nil
+	}
+	info, err := os.Lstat(sock)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", annotNetSocket, err)
+	}
+	if info.Mode().Type() != os.ModeSocket {
+		return nil, fmt.Errorf("%s: %s is not a socket", annotNetSocket, sock)
+	}
+	prefix, err := netip.ParsePrefix(u.State.Annotations[annotNetAddress])
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", annotNetAddress, err)
+	}
+	return &types.NetDevParams{
+		IP:         prefix.Addr().String(),
+		Mask:       net.IP(net.CIDRMask(prefix.Bits(), 32)).String(),
+		Gateway:    u.State.Annotations[annotNetGateway],
+		MAC:        gatewayMAC(u.State.ID),
+		UnixSocket: constants.NetGatewaySocketPath,
+	}, nil
+}
+
+// gatewayMAC derives the MAC of a guest on a user-mode network gateway from
+// its container ID. Every member of the gateway's switch needs an address of
+// its own, and a monitor left to itself gives every guest the same one. The
+// ID is unique on the host, and so, short of a hash collision, is the
+// address. The first byte marks it locally administered and unicast.
+func gatewayMAC(containerID string) string {
+	sum := sha256.Sum256([]byte(containerID))
+	sum[0] = sum[0]&0xfe | 0x02
+	return net.HardwareAddr(sum[:6]).String()
+}
+
 // getMonitorResources collects every mount and device required for the monitor's
 // execution environment, plus the block parameters passed to the guest.
-func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount) (monitorResources, error) {
+//
+// tuntap says whether the monitor gets a tap, and so the tun device and the
+// capability to attach it: one that uses taps gets none when its guest is on
+// a user-mode network gateway.
+func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm types.VMM, monitorDataPath string, cntrMounts []specs.Mount, tuntap bool) (monitorResources, error) {
 	var res monitorResources
 	var err error
 
@@ -405,7 +542,7 @@ func getMonitorResources(rfs rootfsBuilder, rootfsParams types.RootfsParams, vmm
 
 	// Whether the monitor gets a tap is decided here, once, for its devices
 	// and for its capabilities.
-	res.TUNTAP = vmm.UsesTUNTAP()
+	res.TUNTAP = tuntap
 	res.Devices, err = getMonitorDevices(vmm.UsesKVM(), res.TUNTAP)
 	if err != nil {
 		return res, fmt.Errorf("failed to get host devices for monitor: %w", err)
@@ -697,6 +834,8 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		mSpec.DNSServer = getDNSServer(u.Spec.Mounts)
 	}
 
+	mSpec.GatewayNet = monRes.GatewayNet
+
 	return mSpec
 }
 
@@ -720,6 +859,13 @@ func (u *Unikontainer) setupMonitorRootfs(monRootfs string, monRes monitorResour
 	err = applyMounts(monRootfs, monRes.Mounts)
 	if err != nil {
 		return fmt.Errorf("failed to apply rootfs mounts: %w", err)
+	}
+
+	if monRes.GatewaySocket != "" {
+		err = mountGatewaySocket(monRootfs, monRes.GatewaySocket)
+		if err != nil {
+			return err
+		}
 	}
 
 	// setupDevices decides whether to create the TUN/TAP device based on the
@@ -775,7 +921,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(vmm.UsesTUNTAP(), u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	netArgs, err := guestNet(ms.GatewayNet, vmm.UsesTUNTAP(), u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
@@ -906,6 +1052,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	if err != nil {
 		return err
 	}
+	warnGatewayAccess(ms.GatewayNet, u.Spec.Process.User)
 
 	// Create the socket directory after setupUser, so the monitor's user owns
 	// it and a non-root monitor can bind there. The monitor creates the socket.

@@ -272,3 +272,21 @@ func TestHviBuildExecCmdRefuses(t *testing.T) {
 	}, &fakeUnikernel{})
 	assert.ErrorContains(t, err, "vAccel")
 }
+
+// A guest on a user-mode network gateway joins it over the socket, with its
+// MAC, and gets no tap.
+func TestHviBuildExecCmdNetGateway(t *testing.T) {
+	t.Parallel()
+
+	argv, err := newTestHvi().BuildExecCmd(types.ExecArgs{
+		UnikernelPath: testKernelPath,
+		Net:           types.NetDevParams{UnixSocket: "/urunc-net/gateway.sock", MAC: "02:aa:bb:cc:dd:ee", TapDev: "tap0_urunc"},
+	}, &fakeUnikernel{})
+	require.NoError(t, err)
+	got, ok := flagValue(argv, "--net-gateway")
+	assert.True(t, ok, "expected --net-gateway in %v", argv)
+	assert.Equal(t, "/urunc-net/gateway.sock", got)
+	got, _ = flagValue(argv, "--net-mac")
+	assert.Equal(t, "02:aa:bb:cc:dd:ee", got)
+	assert.Zero(t, countFlag(argv, "--net-tap"), "--net-tap in %v", argv)
+}

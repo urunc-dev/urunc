@@ -20,11 +20,13 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
 )
@@ -921,4 +923,128 @@ func TestValidateValuesHyperlightPorts(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+// The gateway annotations come together, on hvi alone, with a clean host
+// socket path, an IPv4 address with its prefix, and another address on that
+// prefix for the gateway.
+func TestValidateValuesNetGateway(t *testing.T) {
+	t.Parallel()
+
+	hvi := map[string]string{
+		annotType:       unikernels.LinuxUnikernel,
+		annotHypervisor: string(hypervisors.HviVmm),
+		annotBinary:     "/kernel",
+		annotNetSocket:  "/run/user/1000/gw.sock",
+		annotNetAddress: "10.87.0.10/24",
+		annotNetGateway: "10.87.0.1",
+	}
+	with := func(changes map[string]string) map[string]string {
+		annots := maps.Clone(hvi)
+		for k, v := range changes {
+			if v == "" {
+				delete(annots, k)
+				continue
+			}
+			annots[k] = v
+		}
+		return annots
+	}
+	testCases := []struct {
+		name    string
+		annots  map[string]string
+		wantErr string
+	}{
+		{name: "all three on hvi", annots: hvi},
+		{name: "none", annots: with(map[string]string{annotNetSocket: "", annotNetAddress: "", annotNetGateway: ""})},
+		{name: "no gateway", annots: with(map[string]string{annotNetGateway: ""}), wantErr: "must be set together"},
+		{name: "no address", annots: with(map[string]string{annotNetAddress: ""}), wantErr: "must be set together"},
+		{name: "no socket", annots: with(map[string]string{annotNetSocket: ""}), wantErr: "must be set together"},
+		{name: "on cloud-hypervisor", annots: with(map[string]string{annotHypervisor: string(hypervisors.CloudHypervisorVmm)}),
+			wantErr: "needs " + annotHypervisor + " to be \"hvi\""},
+		{name: "a relative socket", annots: with(map[string]string{annotNetSocket: "gw.sock"}), wantErr: annotNetSocket},
+		{name: "a socket path not clean", annots: with(map[string]string{annotNetSocket: "/run/../gw.sock"}), wantErr: annotNetSocket},
+		{name: "an address with no prefix", annots: with(map[string]string{annotNetAddress: "10.87.0.10"}), wantErr: annotNetAddress},
+		{name: "an IPv6 address", annots: with(map[string]string{annotNetAddress: "fd00::10/64"}), wantErr: annotNetAddress},
+		{name: "a gateway that is a name", annots: with(map[string]string{annotNetGateway: "gw"}), wantErr: annotNetGateway},
+		{name: "a gateway off the prefix", annots: with(map[string]string{annotNetGateway: "10.88.0.1"}), wantErr: "is not another address"},
+		{name: "the gateway at the guest's address", annots: with(map[string]string{annotNetGateway: "10.87.0.10"}), wantErr: "is not another address"},
+		{name: "the guest at the network address", annots: with(map[string]string{annotNetAddress: "10.87.0.0/24"}), wantErr: "network or broadcast"},
+		{name: "the guest at the broadcast address", annots: with(map[string]string{annotNetAddress: "10.87.0.255/24"}), wantErr: "network or broadcast"},
+		{name: "the gateway at the broadcast address", annots: with(map[string]string{annotNetGateway: "10.87.0.255"}), wantErr: "network or broadcast"},
+		{name: "a /20 broadcast", annots: with(map[string]string{annotNetAddress: "10.87.15.255/20"}), wantErr: "network or broadcast"},
+		{name: "a /20 host whose last byte is 255", annots: with(map[string]string{annotNetAddress: "10.87.3.255/20"})},
+		{name: "a /31", annots: with(map[string]string{annotNetAddress: "10.87.0.0/31", annotNetGateway: "10.87.0.1"})},
+		{name: "a /32", annots: with(map[string]string{annotNetAddress: "10.87.0.10/32"}), wantErr: "no room for the gateway"},
+		{name: "a /0", annots: with(map[string]string{annotNetAddress: "10.87.0.10/0"}), wantErr: annotNetAddress},
+		{name: "a loopback guest", annots: with(map[string]string{annotNetAddress: "127.0.0.2/8", annotNetGateway: "127.0.0.1"}), wantErr: annotNetAddress},
+		{name: "a multicast gateway", annots: with(map[string]string{annotNetAddress: "224.0.0.10/24", annotNetGateway: "224.0.0.1"}), wantErr: annotNetAddress},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateAnnots(tc.annots)
+			if tc.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+// The gateway annotations are host settings: urunc.json cannot set them, and
+// the spec's reach a config read from urunc.json.
+func TestGetUnikernelConfigNetGatewayFromSpecOnly(t *testing.T) {
+	t.Parallel()
+
+	var conf UnikernelConfig
+	err := json.Unmarshal([]byte(`{"com.urunc.unikernel.netSocket": "/evil.sock", "NetSocket": "/evil.sock"}`), &conf)
+	assert.NoError(t, err)
+	assert.Empty(t, conf.NetSocket, "urunc.json must not set the gateway socket")
+
+	conf = *getConfigFromSpec(&specs.Spec{Annotations: map[string]string{
+		annotNetSocket:  "/run/gw.sock",
+		annotNetAddress: "10.87.0.10/24",
+		annotNetGateway: "10.87.0.1",
+	}})
+	assert.Equal(t, "/run/gw.sock", conf.NetSocket)
+	assert.Equal(t, map[string]string{
+		annotNetSocket:  "/run/gw.sock",
+		annotNetAddress: "10.87.0.10/24",
+		annotNetGateway: "10.87.0.1",
+	}, conf.Map())
+}
+
+// The host annotations are exactly those urunc reads from the spec alone,
+// which UnikernelConfig marks with the json tag "-", so the shim's list of
+// keys an image may not set cannot drift from them.
+func TestHostAnnotationsAreTheSpecOnlyKeys(t *testing.T) {
+	t.Parallel()
+
+	keyOf := map[string]string{
+		"VAccel":     annotVAccel,
+		"RPCAddress": annotRPCAddress,
+		"BootKernel": annotBootKernel,
+		"BootInitrd": annotBootInitrd,
+		"RootfsMode": annotRootfsMode,
+		"NetSocket":  annotNetSocket,
+		"NetAddress": annotNetAddress,
+		"NetGateway": annotNetGateway,
+	}
+	var specOnly []string
+	config := reflect.TypeFor[UnikernelConfig]()
+	for i := range config.NumField() {
+		field := config.Field(i)
+		if field.Tag.Get("json") != "-" {
+			continue
+		}
+		key, ok := keyOf[field.Name]
+		if !assert.True(t, ok, "urunc reads %s from the spec only, and this test does not know its key", field.Name) {
+			continue
+		}
+		specOnly = append(specOnly, key)
+	}
+	assert.ElementsMatch(t, specOnly, constants.HostAnnotations)
 }

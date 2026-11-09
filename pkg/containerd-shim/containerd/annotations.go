@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	contentapi "github.com/containerd/containerd/api/services/content/v1"
@@ -32,6 +33,8 @@ import (
 
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
 	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
+
+	"github.com/urunc-dev/urunc/internal/constants"
 )
 
 const uruncPrefix = "com.urunc.unikernel."
@@ -91,12 +94,23 @@ func InjectUruncAnnotations(ctx context.Context, session *Session, bundlePath st
 	return patchConfigJSON(bundlePath, annotations)
 }
 
+// isImageAnnotation reports whether the shim may take key from the image: a
+// urunc annotation that is not a host one. The host annotations name host
+// paths, a host service and a host socket, so an image that set them could
+// boot any host file as the guest's kernel, or join the guest to another
+// container's network gateway. The container's labels count as the image's,
+// since nerdctl and ctr copy the image's config labels onto them. A client
+// sets a host annotation in the spec, as nerdctl does with --annotation.
+func isImageAnnotation(key string) bool {
+	return strings.HasPrefix(key, uruncPrefix) && !slices.Contains(constants.HostAnnotations, key)
+}
+
 func (f *annotationFetcher) fetchUruncAnnotations(ctx context.Context) (map[string]string, error) {
 	filtered := make(map[string]string)
 
 	// Collect urunc annotations from container labels.
 	for k, v := range f.containerLabels {
-		if strings.HasPrefix(k, uruncPrefix) {
+		if isImageAnnotation(k) {
 			filtered[k] = v
 		}
 	}
@@ -120,7 +134,7 @@ func (f *annotationFetcher) fetchUruncAnnotations(ctx context.Context) (map[stri
 
 	// Manifest annotations override config labels on duplicate keys.
 	for k, v := range manifest.Annotations {
-		if strings.HasPrefix(k, uruncPrefix) {
+		if isImageAnnotation(k) {
 			filtered[k] = v
 		}
 	}

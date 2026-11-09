@@ -85,7 +85,7 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 		return err
 	}
 
-	netArgs, err := SetupNet(vmm.UsesTUNTAP(), ms.NetworkType, ms.User.UID, ms.User.GID)
+	netArgs, err := guestNet(ms.GatewayNet, vmm.UsesTUNTAP(), ms.NetworkType, ms.User.UID, ms.User.GID)
 	if err != nil {
 		return fmt.Errorf("failed to setup network: %w", err)
 	}
@@ -153,6 +153,7 @@ func runMonitor(metrics m.Writer, ms monitorSpec) error {
 	if err != nil {
 		return err
 	}
+	warnGatewayAccess(ms.GatewayNet, ms.User)
 	metrics.Capture(m.TS17)
 
 	// Create the socket directory after setupUser, so the monitor's user owns

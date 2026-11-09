@@ -39,6 +39,13 @@ func monitorOCISpec(spec *specs.Spec, monRes monitorResources, rootfsParams type
 	monSpec := *spec
 	monSpec.Root = &specs.Root{Path: rootfsParams.MonRootfs, Readonly: false}
 	monSpec.Mounts = monRes.Mounts
+	if monRes.GatewaySocket != "" {
+		// libcontainer resolves the source itself, following symlinks, so
+		// on this path urunc checks the socket only when the container is
+		// created (gatewayNet). The direct path mounts the socket it opened;
+		// see mountGatewaySocket.
+		monSpec.Mounts = append(slices.Clone(monSpec.Mounts), gatewaySocketMount(monRes.GatewaySocket))
+	}
 
 	process := *spec.Process
 	process.Cwd = "/"

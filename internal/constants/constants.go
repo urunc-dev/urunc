@@ -63,3 +63,28 @@ const MonitorSockDir = "/urunc"
 // port with no handshake. The path is relative to the pivoted monitor rootfs,
 // so the host path is <monRootfs>/urunc/urunc-agent.vsock.
 const AgentVsockUDSPath = MonitorSockDir + "/urunc-agent.vsock"
+
+// NetGatewaySocketPath is where, inside the monitor rootfs, urunc binds the
+// host socket of the user-mode network gateway the netSocket annotation
+// names. The monitor runs in that rootfs, so it reaches the socket only
+// there.
+const NetGatewaySocketPath = "/urunc-net/gateway.sock"
+
+// HostAnnotations are the urunc annotations that name things on the host
+// rather than in the image: the host kernel and initrd of a container boot,
+// the host service vAccel reaches, how the host builds the guest's root, and
+// the user-mode network gateway the host runs. Only whoever creates the
+// container may set them. urunc reads them from the spec alone, never from
+// urunc.json, and the shim never copies them into the spec from the image's
+// manifest annotations or the container's labels, which a client such as
+// nerdctl or ctr fills from the image's config.
+var HostAnnotations = []string{
+	"com.urunc.unikernel.bootKernel",
+	"com.urunc.unikernel.bootInitrd",
+	"com.urunc.unikernel.rootfsMode",
+	"com.urunc.unikernel.vAccel",
+	"com.urunc.unikernel.RPCAddress",
+	"com.urunc.unikernel.netSocket",
+	"com.urunc.unikernel.netAddress",
+	"com.urunc.unikernel.netGateway",
+}

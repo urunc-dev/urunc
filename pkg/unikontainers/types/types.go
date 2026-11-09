@@ -71,8 +71,10 @@ type NetDevParams struct {
 	TapDev    string // The tap device name
 	MTU       int    // The MTU value of the tap device
 	DNSServer string // The nameserver of the container, empty if there is none
-	// UnixSocket is a host unix socket that carries the guest's network
-	// traffic on darwin (a QEMU stream netdev, or hvi's --net-gateway).
+	// UnixSocket is a unix socket that carries the guest's network traffic
+	// to a user-mode network gateway: on darwin a QEMU stream netdev or hvi's
+	// --net-gateway, and on Linux hvi's --net-gateway, at the path the
+	// monitor reaches it in its rootfs.
 	UnixSocket string
 }
 

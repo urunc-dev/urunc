@@ -59,7 +59,10 @@ func (h *Hvi) UsesKVM() bool {
 }
 
 // UsesTUNTAP reports that the guest gets its network through a tap device:
-// hvi's built-in stack forwards no traffic, so urunc hands it the tap.
+// hvi's built-in stack forwards no traffic, so urunc hands it the tap. A
+// guest on a user-mode network gateway is the exception, which urunc
+// decides from the container's annotations: hvi joins the gateway's socket
+// instead, and gets no tap.
 func (h *Hvi) UsesTUNTAP() bool {
 	return true
 }
@@ -155,9 +158,14 @@ func (h *Hvi) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]stri
 		cmd = append(cmd, "--fs", spec)
 	}
 
-	// The guest attaches to the tap urunc created in the container's network
-	// namespace, with the MAC the boot line's ip= was derived for.
-	if args.Net.TapDev != "" {
+	switch {
+	case args.Net.UnixSocket != "":
+		// The guest joins a user-mode network gateway: hvi relays its frames
+		// over the gateway's socket, and there is no tap.
+		cmd = append(cmd, "--net-gateway", args.Net.UnixSocket, "--net-mac", args.Net.MAC)
+	case args.Net.TapDev != "":
+		// The guest attaches to the tap urunc created in the container's
+		// network namespace, with the MAC the boot line's ip= was derived for.
 		cmd = append(cmd, "--net-tap", args.Net.TapDev)
 		if args.Net.MAC != "" {
 			cmd = append(cmd, "--net-mac", args.Net.MAC)

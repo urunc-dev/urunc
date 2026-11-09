@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -58,6 +59,9 @@ const (
 	annotVAccel          = "com.urunc.unikernel.vAccel"
 	annotRPCAddress      = "com.urunc.unikernel.RPCAddress"
 	annotHyperlightPorts = "com.urunc.unikernel.hyperlightPorts"
+	annotNetSocket       = "com.urunc.unikernel.netSocket"
+	annotNetAddress      = "com.urunc.unikernel.netAddress"
+	annotNetGateway      = "com.urunc.unikernel.netGateway"
 )
 
 // Annotations that other runtimes set and urunc only reads.
@@ -127,6 +131,16 @@ type UnikernelConfig struct {
 	// block device. RootfsModeOverlayBlock boots it from a read-only ext4
 	// image of the container image and a writable ext4 upper, as two disks.
 	RootfsMode string `json:"-"`
+	// NetSocket, NetAddress and NetGateway put the guest on a user-mode
+	// network gateway instead of the container's network namespace: the
+	// monitor joins the gateway through the host socket NetSocket names, and
+	// the guest takes the address NetAddress names, with its prefix, and
+	// routes through NetGateway. The socket is a host path and the address
+	// one the host hands out, so, like the boot annotations, they come only
+	// from the spec and never from urunc.json.
+	NetSocket  string `json:"-"`
+	NetAddress string `json:"-"`
+	NetGateway string `json:"-"`
 }
 
 // RootfsModeOverlayBlock is the rootfsMode annotation value of an overlay
@@ -228,6 +242,10 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 	jsonConf.BootKernel = spec.Annotations[annotBootKernel]
 	jsonConf.BootInitrd = spec.Annotations[annotBootInitrd]
 	jsonConf.RootfsMode = spec.Annotations[annotRootfsMode]
+	// The gateway annotations are host settings too.
+	jsonConf.NetSocket = spec.Annotations[annotNetSocket]
+	jsonConf.NetAddress = spec.Annotations[annotNetAddress]
+	jsonConf.NetGateway = spec.Annotations[annotNetGateway]
 
 	return jsonConf, nil
 }
@@ -251,6 +269,9 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	hyperlightPorts := spec.Annotations[annotHyperlightPorts]
 	vAccel := spec.Annotations[annotVAccel]
 	rpcAddress := spec.Annotations[annotRPCAddress]
+	netSocket := spec.Annotations[annotNetSocket]
+	netAddress := spec.Annotations[annotNetAddress]
+	netGateway := spec.Annotations[annotNetGateway]
 
 	// Generic container boot: the image ships no unikernel, so the host kernel
 	// and boot initrd stand in for it. The rest of the contract is the same for
@@ -310,6 +331,9 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		HyperlightPorts:  hyperlightPorts,
 		VAccel:           vAccel,
 		RPCAddress:       rpcAddress,
+		NetSocket:        netSocket,
+		NetAddress:       netAddress,
+		NetGateway:       netGateway,
 	}
 }
 
@@ -496,6 +520,15 @@ func (c *UnikernelConfig) Map() map[string]string {
 	if c.RootfsMode != "" {
 		myMap[annotRootfsMode] = c.RootfsMode
 	}
+	if c.NetSocket != "" {
+		myMap[annotNetSocket] = c.NetSocket
+	}
+	if c.NetAddress != "" {
+		myMap[annotNetAddress] = c.NetAddress
+	}
+	if c.NetGateway != "" {
+		myMap[annotNetGateway] = c.NetGateway
+	}
 
 	return myMap
 }
@@ -581,6 +614,11 @@ func (c *UnikernelConfig) validateValues() error {
 	}
 
 	err = c.validateRootfsMode()
+	if err != nil {
+		return err
+	}
+
+	err = c.validateNetGateway()
 	if err != nil {
 		return err
 	}
@@ -701,6 +739,73 @@ func (c *UnikernelConfig) validateRootfsMode() error {
 			annotHypervisor, hypervisors.HviVmm, hypervisors.CloudHypervisorVmm, hypervisors.QemuVmm, c.Hypervisor)
 	}
 	return nil
+}
+
+// validateNetGateway checks the annotations that put the guest on a
+// user-mode network gateway. They come together: the socket is a clean
+// absolute host path, the address a unicast IPv4 address with its prefix,
+// and the gateway another unicast address on that prefix. Neither may be
+// the prefix's network or broadcast address, and a /32 leaves no room for a
+// gateway. Only hvi joins such a gateway, through its --net-gateway. Every
+// other monitor takes its network from a tap in the container's network
+// namespace.
+func (c *UnikernelConfig) validateNetGateway() error {
+	if c.NetSocket == "" && c.NetAddress == "" && c.NetGateway == "" {
+		return nil
+	}
+	if c.NetSocket == "" || c.NetAddress == "" || c.NetGateway == "" {
+		return fmt.Errorf("%s, %s and %s must be set together", annotNetSocket, annotNetAddress, annotNetGateway)
+	}
+	if hypervisors.VmmType(c.Hypervisor) != hypervisors.HviVmm {
+		return fmt.Errorf("%s needs %s to be %q, got %q", annotNetSocket, annotHypervisor, hypervisors.HviVmm, c.Hypervisor)
+	}
+	err := validateAnnotationHostPath(annotNetSocket, c.NetSocket)
+	if err != nil {
+		return err
+	}
+	prefix, err := netip.ParsePrefix(c.NetAddress)
+	if err != nil || !prefix.Addr().Is4() || !prefix.Addr().IsGlobalUnicast() || prefix.Bits() == 0 {
+		return fmt.Errorf("invalid value %q for %s: expected a unicast IPv4 address with its prefix, such as 10.87.0.10/24",
+			c.NetAddress, annotNetAddress)
+	}
+	if prefix.Bits() == 32 {
+		return fmt.Errorf("invalid value %q for %s: a /32 has no room for the gateway", c.NetAddress, annotNetAddress)
+	}
+	gateway, err := netip.ParseAddr(c.NetGateway)
+	if err != nil || !gateway.Is4() || !gateway.IsGlobalUnicast() {
+		return fmt.Errorf("invalid value %q for %s: expected a unicast IPv4 address", c.NetGateway, annotNetGateway)
+	}
+	if !prefix.Contains(gateway) || gateway == prefix.Addr() {
+		return fmt.Errorf("%s %s is not another address on %s %s", annotNetGateway, c.NetGateway, annotNetAddress, c.NetAddress)
+	}
+	for _, a := range []struct {
+		key  string
+		addr netip.Addr
+	}{{annotNetAddress, prefix.Addr()}, {annotNetGateway, gateway}} {
+		if isNetworkOrBroadcast(prefix, a.addr) {
+			return fmt.Errorf("%s %s is the network or broadcast address of %s", a.key, a.addr, prefix.Masked())
+		}
+	}
+	return nil
+}
+
+// isNetworkOrBroadcast reports whether addr is the first or the last address
+// of prefix, which name the network and its broadcast on any prefix shorter
+// than /31. A /31 has no broadcast: its two addresses are its two hosts.
+func isNetworkOrBroadcast(prefix netip.Prefix, addr netip.Addr) bool {
+	if prefix.Bits() >= 31 {
+		return false
+	}
+	network := prefix.Masked().Addr().As4()
+	broadcast := network
+	hostBits := 32 - prefix.Bits()
+	for i := 3; i >= 0 && hostBits > 0; i-- {
+		n := min(hostBits, 8)
+		broadcast[i] |= byte(1<<n - 1)
+		hostBits -= n
+	}
+	a := addr.As4()
+	return a == network || a == broadcast
 }
 
 // validateAnnotationHostPath verifies that val is a clean, absolute path in the

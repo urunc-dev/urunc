@@ -93,7 +93,8 @@ Apart from the above, `urunc` accepts the following optional annotations:
   `packaging/container-initrd/urunit.pin` names. With the
   two boot annotations set, `unikernelType` defaults to `linux`, `hypervisor`
   to `qemu` and `mountRootfs` to `true`, and `binary` is not required; the
-  boot annotations are accepted only at runtime (never from `urunc.json`) and
+  boot annotations are accepted only at runtime (never from `urunc.json`, and
+  the shim does not copy them from an image's annotations or labels) and
   are mutually exclusive with `binary`, `initrd` and `block`. The kernel and
   initrd are mounted read-only inside the monitor's rootfs; the guest boots a
   private copy of the initrd with only the `urunit` configuration appended.
@@ -128,6 +129,28 @@ Apart from the above, `urunc` accepts the following optional annotations:
   `/etc/hosts` and `/etc/hostname` go in as initrd files. Any other file
   volume is left out with a warning. A failure to build or attach either
   disk fails the container. There is no fallback to another rootfs.
+- `com.urunc.unikernel.netSocket`, `com.urunc.unikernel.netAddress` and
+  `com.urunc.unikernel.netGateway`: Put the guest on a user-mode network
+  gateway, such as `hull network-gateway`, instead of the network of the
+  container's network namespace. Only hvi supports them, and they come
+  together. `netSocket` is the absolute host path of the gateway's QEMU
+  stream socket, in the same character set as every other path annotation.
+  `netAddress` is the guest's unicast IPv4 address with its prefix, such as
+  `10.87.0.10/24`, and `netGateway` another address on that prefix, which
+  the guest routes through. Neither may be the network or broadcast address
+  of the prefix, and a `/32` leaves no room for the gateway. urunc creates
+  no tap and redirects no interface of the container's network namespace:
+  hvi joins the gateway with `--net-gateway`, the guest takes its `ip=`
+  from the two addresses, and its MAC is derived from the container ID. The
+  socket is bind-mounted read-only into the monitor's rootfs, and urunc
+  refuses a path that is not a socket, a symlink included, when the
+  container is created and again when it mounts it. hvi connects as the
+  container's user, which needs write permission on the socket: urunc warns
+  when it has none. hvi does not fail on a gateway it cannot reach, but
+  boots the guest on a stub network with no way out, which is what a socket
+  left by a gateway that has stopped leads to. Like the boot annotations,
+  these are accepted only at runtime, never from `urunc.json`, and the shim
+  never copies them from an image's annotations or labels.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container
