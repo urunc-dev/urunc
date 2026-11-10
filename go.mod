@@ -18,10 +18,10 @@ require (
 	github.com/cyphar/filepath-securejoin v0.7.0
 	github.com/hashicorp/go-version v1.9.0
 	github.com/jackpal/gateway v1.2.0
-	github.com/moby/sys/mountinfo v0.7.2
+	github.com/moby/sys/mountinfo v0.7.3
 	github.com/moby/sys/userns v0.2.1
 	github.com/nubificus/hedge_cli v0.0.3
-	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	github.com/opencontainers/cgroups v0.1.0
 	github.com/opencontainers/image-spec v1.1.1
@@ -35,9 +35,9 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.49.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
-	k8s.io/cri-api v0.37.1
+	k8s.io/cri-api v0.37.2
 )
 
 require (
