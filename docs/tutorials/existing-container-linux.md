@@ -77,11 +77,13 @@ designed specifically for `urunc`. It performs the following actions:
    the container in a Kubernetes cluster, where there is a high chance that
    the gateway of the container might be in a different subnet than the IP.
    As a result, the Linux kernel will fail to set the gateway.
-2. Groups multi-word arguments correctly.
+2. Reads the application command and its arguments from the configuration.
 3. Mounts `/proc` and `/sys`.
 4. Reads and sets the environment variables for the application execution
 5. Reads and sets the uid,gid and working directory for the application execution
-6. Acts as a reaper, cleaning up zombie processes.
+6. Gives the application `/dev/null` as stdin when the container has no stdin
+   attached, instead of the console of the guest.
+7. Acts as a reaper, cleaning up zombie processes.
 
 To pass the necessary information to
 [urunit](https://github.com/nubificus/urunit), `urunc` uses a configuration
@@ -95,6 +97,9 @@ UCS
 UID:<uid>
 GID:<gid>
 WD:<working_dir>
+STDIN:0 /* only when the container has no stdin attached */
+ARC:<number of arguments>
+ARV:<argument> /* one line per argument */
 UCE
 ```
 

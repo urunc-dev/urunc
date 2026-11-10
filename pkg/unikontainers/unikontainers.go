@@ -613,6 +613,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 
 	guest := types.UnikernelParams{
 		CmdLine: u.Spec.Process.Args,
+		Init:    u.State.Annotations[annotInit],
 		EnvVars: u.Spec.Process.Env,
 		Monitor: vmmType,
 		Version: unikernelVersion,
@@ -811,6 +812,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	// Initialize the unikernel after the pivot so that any file setup it performs
 	// (e.g. writing the urunit config into the initrd) operates within the monitor
 	// rootfs.
+	unikernelParams.ProcConf.NoStdin = isNullDevice(os.Stdin)
 	vmmArgs.Command, err = buildUnikernelCommand(unikernel, unikernelParams)
 	if err != nil {
 		return err
@@ -890,6 +892,18 @@ func confineToContainerRootfs(path string) (string, error) {
 	}
 
 	return confined, nil
+}
+
+// isNullDevice reports whether f is /dev/null. The shim hands that as stdin to
+// a container with neither a terminal nor a stdin attached.
+func isNullDevice(f *os.File) bool {
+	var st unix.Stat_t
+	err := unix.Fstat(int(f.Fd()), &st)
+	if err != nil {
+		return false
+	}
+
+	return st.Mode&unix.S_IFMT == unix.S_IFCHR && unix.Major(st.Rdev) == 1 && unix.Minor(st.Rdev) == 3
 }
 
 // buildUnikernelCommand initializes the unikernel with the collected parameters

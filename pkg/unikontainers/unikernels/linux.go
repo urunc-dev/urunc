@@ -17,6 +17,7 @@ package unikernels
 import (
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -42,6 +43,7 @@ const (
 type Linux struct {
 	App        string
 	Command    string
+	Args       []string // application command, verbatim, for urunit
 	Monitor    string
 	Env        []string
 	Net        LinuxNet
@@ -123,7 +125,11 @@ func (l *Linux) CommandString() (string, error) {
 		bootParams += " URUNIT_DEFROUTE=1"
 	}
 	if l.App != "" {
-		initParams := rdinit + "init=" + l.App + " -- " + l.Command
+		initParams := rdinit + "init=" + l.App
+		// urunit takes the application command from its configuration
+		if !l.InitrdConf {
+			initParams += " -- " + l.Command
+		}
 		bootParams += " " + initParams
 	}
 
@@ -229,7 +235,12 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 }
 
 func (l *Linux) Init(data types.UnikernelParams) error {
-	err := l.parseCmdLine(data.CmdLine)
+	cmdLine, err := cmdLineWithInit(data)
+	if err != nil {
+		return err
+	}
+
+	err = l.parseCmdLine(cmdLine)
 	if err != nil {
 		return err
 	}
@@ -256,6 +267,27 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	return nil
 }
 
+// cmdLineWithInit returns the command line to boot. A container that sets an
+// init runs its command under it, unless the command already starts urunit.
+func cmdLineWithInit(data types.UnikernelParams) ([]string, error) {
+	if data.Init == "" || (len(data.CmdLine) > 0 && strings.Contains(data.CmdLine[0], "urunit")) {
+		return data.CmdLine, nil
+	}
+
+	if data.Rootfs.Type == "virtiofs" || data.Rootfs.Type == "9pfs" {
+		initPath, err := securejoin.SecureJoin(constants.ContainerRootfsMountPath, data.Init)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find init %s: %w", data.Init, err)
+		}
+		_, err = os.Stat(initPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find init %s in the container rootfs: %w", data.Init, err)
+		}
+	}
+
+	return append([]string{data.Init}, data.CmdLine...), nil
+}
+
 // parseCmdLine extracts the application and command from command line arguments.
 // Multi-word arguments are wrapped in single quotes for urunit compatibility.
 func (l *Linux) parseCmdLine(cmdLine []string) error {
@@ -275,6 +307,7 @@ func (l *Linux) parseCmdLine(cmdLine []string) error {
 	}
 
 	l.App = normalizedArgs[0]
+	l.Args = cmdLine[1:]
 	if len(normalizedArgs) > 1 {
 		l.Command = strings.Join(normalizedArgs[1:], " ")
 	} else {
@@ -337,6 +370,17 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString("WD:")
 	sb.WriteString(l.ProcConfig.WorkDir)
 	sb.WriteString("\n")
+	if l.ProcConfig.NoStdin {
+		sb.WriteString("STDIN:0\n")
+	}
+	sb.WriteString("ARC:")
+	sb.WriteString(strconv.Itoa(len(l.Args)))
+	sb.WriteString("\n")
+	for _, arg := range l.Args {
+		sb.WriteString("ARV:")
+		sb.WriteString(arg)
+		sb.WriteString("\n")
+	}
 	sb.WriteString(lpcEndMarker)
 	sb.WriteString("\n")
 	sb.WriteString(blkStartMarker)
