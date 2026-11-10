@@ -100,7 +100,7 @@ func runcExec() error {
 		return err
 	}
 	args[0] = binPath
-	return syscall.Exec(binPath, args, os.Environ())
+	return syscall.Exec(binPath, args, os.Environ()) //nolint:gosec // runc gets urunc's own arguments
 }
 
 // newSockPair returns a new SOCK_STREAM unix socket pair.
@@ -154,10 +154,10 @@ func ShouldHonorXDGRuntimeDir() bool {
 // prepareXDGRuntimeDir prepares the XDG_RUNTIME_DIR directory according to the XDG specification.
 // It creates the directory with proper permissions and sets the sticky bit to prevent auto-pruning.
 func prepareXDGRuntimeDir(root string) error {
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	if err := os.MkdirAll(root, 0o700); err != nil { //nolint:gosec // root is $XDG_RUNTIME_DIR/urunc, the user's own dir
 		return fmt.Errorf("the path in $XDG_RUNTIME_DIR must be writable by the user: %w", err)
 	}
-	if err := os.Chmod(root, os.FileMode(0o700)|os.ModeSticky); err != nil {
+	if err := os.Chmod(root, os.FileMode(0o700)|os.ModeSticky); err != nil { //nolint:gosec // as above
 		return fmt.Errorf("you should check permission of the path in $XDG_RUNTIME_DIR: %w", err)
 	}
 	return nil
