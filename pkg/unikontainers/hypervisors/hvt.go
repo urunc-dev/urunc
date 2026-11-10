@@ -24,8 +24,6 @@ import (
 const (
 	HvtVmm    VmmType = "hvt"
 	HvtBinary string  = "solo5-hvt"
-	// solo5ArgsSeparator terminates the tender options in a solo5 cli
-	solo5ArgsSeparator = "--"
 )
 
 type HVT struct {
@@ -76,25 +74,7 @@ func (h *HVT) Ok() error {
 }
 
 func (h *HVT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
-	hvtMem := BytesToStringMB(args.MemSizeB)
-	exArgs := []string{h.binaryPath, "--mem=" + hvtMem}
-	if args.Net.TapDev != "" {
-		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
-		exArgs = append(exArgs, netCli...)
-	}
-	bArgs := ukernel.MonitorBlockCli()
-	for _, blockArg := range bArgs {
-		if blockArg.Path != "" {
-			exArgs = append(exArgs, "--block:"+blockArg.ID+"="+blockArg.Path)
-		}
-	}
-	extraMonArgs := ukernel.MonitorCli()
-	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
-	exArgs = append(exArgs, solo5ArgsSeparator, args.UnikernelPath)
-	if args.Command != "" {
-		exArgs = append(exArgs, args.Command)
-	}
-	return exArgs, nil
+	return solo5ExecCmd(h.binaryPath, args, ukernel), nil
 }
 
 // PreExec performs pre-execution setup for HVT.
