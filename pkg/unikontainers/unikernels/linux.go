@@ -370,6 +370,9 @@ func (l *Linux) buildUrunitConfig() string {
 	sb.WriteString("WD:")
 	sb.WriteString(l.ProcConfig.WorkDir)
 	sb.WriteString("\n")
+	if l.ProcConfig.NoStdin {
+		sb.WriteString("STDIN:0\n")
+	}
 	sb.WriteString("ARC:")
 	sb.WriteString(strconv.Itoa(len(l.Args)))
 	sb.WriteString("\n")

@@ -1173,3 +1173,23 @@ func TestGetUnikernelConfigInitFromJSONFallback(t *testing.T) {
 		assert.ErrorIs(t, err, ErrNotUnikernel)
 	})
 }
+
+func TestIsNullDevice(t *testing.T) {
+	t.Parallel()
+
+	null, err := os.Open(os.DevNull)
+	assert.NoError(t, err)
+	defer null.Close()
+	assert.True(t, isNullDevice(null), "Expected /dev/null to be detected")
+
+	reader, writer, err := os.Pipe()
+	assert.NoError(t, err)
+	defer reader.Close()
+	defer writer.Close()
+	assert.False(t, isNullDevice(reader), "Expected a pipe not to be /dev/null")
+
+	file, err := os.Create(filepath.Join(t.TempDir(), "stdin"))
+	assert.NoError(t, err)
+	defer file.Close()
+	assert.False(t, isNullDevice(file), "Expected a file not to be /dev/null")
+}

@@ -100,6 +100,7 @@ type ProcessConfig struct {
 	UID     uint32 // The uid of the process inside the guest
 	GID     uint32 // The gid of the process inside the guest
 	WorkDir string // The workdir of the process inside the guest
+	NoStdin bool   // The process has no stdin attached, so it must not read the console
 }
 
 // UnikernelParams holds the data required by the unikernels commandline
