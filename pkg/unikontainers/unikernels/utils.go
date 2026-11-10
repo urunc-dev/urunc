@@ -56,3 +56,16 @@ func createFile(path string, content string) error {
 
 	return nil
 }
+
+// validateUrunitValue rejects values that would break the NUL-separated
+// urunit configuration file (/urunit.conf). Every section marker and value
+// record is NUL-terminated, so a value containing a newline stays data and
+// cannot corrupt framing (see #1068).
+// NUL itself cannot appear in env vars, paths or args (execve forbids it),
+// so it is a separator that cannot occur inside a value.
+func validateUrunitValue(field string, value string) error {
+	if strings.Contains(value, "\x00") {
+		return fmt.Errorf("invalid %s %q: value must not contain NUL", field, value)
+	}
+	return nil
+}
