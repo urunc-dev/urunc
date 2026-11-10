@@ -276,7 +276,8 @@ func getUnprivilegedMountFlags(path string) (uintptr, error) {
 	// so map each ST_* bit that statfs reports to the MS_* flag used for the
 	// remount explicitly.
 	lockedFlags := []struct {
-		st, ms uintptr
+		st int64
+		ms uintptr
 	}{
 		{unix.ST_RDONLY, unix.MS_RDONLY},
 		{unix.ST_NODEV, unix.MS_NODEV},
@@ -289,7 +290,7 @@ func getUnprivilegedMountFlags(path string) (uintptr, error) {
 
 	var flags uintptr
 	for _, f := range lockedFlags {
-		if uintptr(st.Flags)&f.st == f.st {
+		if st.Flags&f.st == f.st {
 			flags |= f.ms
 		}
 	}
