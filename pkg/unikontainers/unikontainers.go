@@ -613,6 +613,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 
 	guest := types.UnikernelParams{
 		CmdLine: u.Spec.Process.Args,
+		Init:    u.State.Annotations[annotInit],
 		EnvVars: u.Spec.Process.Env,
 		Monitor: vmmType,
 		Version: unikernelVersion,

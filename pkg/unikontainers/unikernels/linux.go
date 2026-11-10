@@ -17,6 +17,7 @@ package unikernels
 import (
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -234,7 +235,12 @@ func (l *Linux) MonitorCli() types.MonitorCliArgs {
 }
 
 func (l *Linux) Init(data types.UnikernelParams) error {
-	err := l.parseCmdLine(data.CmdLine)
+	cmdLine, err := cmdLineWithInit(data)
+	if err != nil {
+		return err
+	}
+
+	err = l.parseCmdLine(cmdLine)
 	if err != nil {
 		return err
 	}
@@ -259,6 +265,27 @@ func (l *Linux) Init(data types.UnikernelParams) error {
 	}
 
 	return nil
+}
+
+// cmdLineWithInit returns the command line to boot. A container that sets an
+// init runs its command under it, unless the command already starts urunit.
+func cmdLineWithInit(data types.UnikernelParams) ([]string, error) {
+	if data.Init == "" || (len(data.CmdLine) > 0 && strings.Contains(data.CmdLine[0], "urunit")) {
+		return data.CmdLine, nil
+	}
+
+	if data.Rootfs.Type == "virtiofs" || data.Rootfs.Type == "9pfs" {
+		initPath, err := securejoin.SecureJoin(constants.ContainerRootfsMountPath, data.Init)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find init %s: %w", data.Init, err)
+		}
+		_, err = os.Stat(initPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find init %s in the container rootfs: %w", data.Init, err)
+		}
+	}
+
+	return append([]string{data.Init}, data.CmdLine...), nil
 }
 
 // parseCmdLine extracts the application and command from command line arguments.

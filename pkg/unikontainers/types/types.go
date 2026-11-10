@@ -105,6 +105,7 @@ type ProcessConfig struct {
 // UnikernelParams holds the data required by the unikernels commandline
 type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
+	Init       string   // The init to start the cmdline under, if any
 	EnvVars    []string // The environment variables provided by the image
 	Monitor    string   // The monitor where guest will execute
 	Version    string   // The version of the unikernel

@@ -55,6 +55,7 @@ const (
 	annotVAccel          = "com.urunc.unikernel.vAccel"
 	annotRPCAddress      = "com.urunc.unikernel.RPCAddress"
 	annotHyperlightPorts = "com.urunc.unikernel.hyperlightPorts"
+	annotInit            = "com.urunc.unikernel.init"
 )
 
 // Annotations that other runtimes set and urunc only reads.
@@ -107,6 +108,7 @@ type UnikernelConfig struct {
 	NetDev           string `json:"com.urunc.unikernel.solo5NetDev,omitempty"`
 	BlkDev           string `json:"com.urunc.unikernel.solo5BlkDev,omitempty"`
 	HyperlightPorts  string `json:"com.urunc.unikernel.hyperlightPorts,omitempty"`
+	Init             string `json:"com.urunc.unikernel.init,omitempty"`
 	// The vAccel annotations are deliberately not part of urunc.json, since their
 	// values are runtime specific and therefore we should only reach them
 	// through the annotations of the spec.
@@ -194,6 +196,10 @@ func GetUnikernelConfig(bundleDir string, spec *specs.Spec) (*UnikernelConfig, e
 	if ports := spec.Annotations[annotHyperlightPorts]; ports != "" {
 		jsonConf.HyperlightPorts = ports
 	}
+	// init set in the spec annotations overrides urunc.json.
+	if initPath := spec.Annotations[annotInit]; initPath != "" {
+		jsonConf.Init = initPath
+	}
 
 	return jsonConf, nil
 }
@@ -212,6 +218,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 	netDev := spec.Annotations[annotNetDev]
 	blkDev := spec.Annotations[annotBlkDev]
 	hyperlightPorts := spec.Annotations[annotHyperlightPorts]
+	initPath := spec.Annotations[annotInit]
 	vAccel := spec.Annotations[annotVAccel]
 	rpcAddress := spec.Annotations[annotRPCAddress]
 	uniklog.WithFields(logrus.Fields{
@@ -227,6 +234,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		"netDev":           netDev,
 		"blkDev":           blkDev,
 		"hyperlightPorts":  hyperlightPorts,
+		"init":             initPath,
 		"vAccel":           vAccel,
 		"rpcAddress":       rpcAddress,
 	}).WithField("source", "spec").Debug("urunc annotations")
@@ -244,6 +252,7 @@ func getConfigFromSpec(spec *specs.Spec) *UnikernelConfig {
 		NetDev:           netDev,
 		BlkDev:           blkDev,
 		HyperlightPorts:  hyperlightPorts,
+		Init:             initPath,
 		VAccel:           vAccel,
 		RPCAddress:       rpcAddress,
 	}
@@ -288,6 +297,7 @@ func getConfigFromJSON(jsonFilePath string) (*UnikernelConfig, error) {
 		"netDev":           tryDecode(conf.NetDev),
 		"blkDev":           tryDecode(conf.BlkDev),
 		"hyperlightPorts":  tryDecode(conf.HyperlightPorts),
+		"init":             tryDecode(conf.Init),
 	}).WithField("source", uruncJSONFilename).Debug("urunc annotations")
 
 	return &conf, nil
@@ -375,6 +385,12 @@ func (c *UnikernelConfig) decode() error {
 	}
 	c.HyperlightPorts = string(decoded)
 
+	decoded, err = base64.StdEncoding.DecodeString(c.Init)
+	if err != nil {
+		return fmt.Errorf("failed to decode init: %v", err)
+	}
+	c.Init = string(decoded)
+
 	return nil
 }
 
@@ -416,6 +432,9 @@ func (c *UnikernelConfig) Map() map[string]string {
 	}
 	if c.HyperlightPorts != "" {
 		myMap[annotHyperlightPorts] = c.HyperlightPorts
+	}
+	if c.Init != "" {
+		myMap[annotInit] = c.Init
 	}
 	if c.VAccel != "" {
 		myMap[annotVAccel] = c.VAccel
@@ -502,6 +521,11 @@ func (c *UnikernelConfig) validateValues() error {
 		return err
 	}
 
+	err = validateInit(c.UnikernelType, c.Init)
+	if err != nil {
+		return err
+	}
+
 	if c.VAccel == "" {
 		if c.RPCAddress != "" {
 			return fmt.Errorf("%s is set, but %s is not", annotRPCAddress, annotVAccel)
@@ -546,6 +570,23 @@ func validateSolo5DevName(key string, val string) error {
 	}
 
 	return nil
+}
+
+// validateInit verifies that val is an absolute path to the init of a Linux
+func validateInit(unikernelType string, val string) error {
+	if val == "" {
+		return nil
+	}
+
+	if unikernelType != unikernels.LinuxUnikernel {
+		return fmt.Errorf("%s is only supported by %s guests", annotInit, unikernels.LinuxUnikernel)
+	}
+
+	if !filepath.IsAbs(val) {
+		return fmt.Errorf("%s must be an absolute path, got %q", annotInit, val)
+	}
+
+	return validateAnnotationPathClean(annotInit, val, true)
 }
 
 // validateHyperlightPorts verifies that val lists the ports a
