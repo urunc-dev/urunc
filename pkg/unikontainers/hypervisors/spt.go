@@ -74,25 +74,7 @@ func (s *SPT) Ok() error {
 }
 
 func (s *SPT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
-	sptMem := BytesToStringMB(args.MemSizeB)
-	exArgs := []string{s.binaryPath, "--mem=" + sptMem}
-	if args.Net.TapDev != "" {
-		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
-		exArgs = append(exArgs, netCli...)
-	}
-	bArgs := ukernel.MonitorBlockCli()
-	for _, blockArg := range bArgs {
-		if blockArg.Path != "" {
-			exArgs = append(exArgs, "--block:"+blockArg.ID+"="+blockArg.Path)
-		}
-	}
-	extraMonArgs := ukernel.MonitorCli()
-	exArgs = append(exArgs, extraMonArgs.OtherArgs...)
-	exArgs = append(exArgs, solo5ArgsSeparator, args.UnikernelPath)
-	if args.Command != "" {
-		exArgs = append(exArgs, args.Command)
-	}
-	return exArgs, nil
+	return solo5ExecCmd(s.binaryPath, args, ukernel), nil
 }
 
 // PreExec performs pre-execution setup. SPT has no special pre-exec requirements.
