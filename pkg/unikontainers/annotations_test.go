@@ -1060,3 +1060,136 @@ func TestValidateValuesHyperlightPorts(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateValuesInit(t *testing.T) {
+	t.Parallel()
+
+	linux := map[string]string{
+		annotType:       unikernels.LinuxUnikernel,
+		annotHypervisor: string(hypervisors.QemuVmm),
+		annotBinary:     "/.boot/kernel",
+	}
+	unikraft := map[string]string{
+		annotType:       unikernels.UnikraftUnikernel,
+		annotHypervisor: string(hypervisors.QemuVmm),
+		annotBinary:     "/unikernel/app",
+	}
+	testCases := []struct {
+		name    string
+		base    map[string]string
+		init    string
+		wantErr bool
+	}{
+		{name: "unset", base: linux},
+		{name: "an absolute path", base: linux, init: "/urunit"},
+		{name: "a relative path is rejected", base: linux, init: "urunit", wantErr: true},
+		{name: "an unclean path is rejected", base: linux, init: "/a/../urunit", wantErr: true},
+		{name: "a space is rejected", base: linux, init: "/urunit panic=0", wantErr: true},
+		{name: "a value on another guest is rejected", base: unikraft, init: "/urunit", wantErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			annots := maps.Clone(tc.base)
+			if tc.init != "" {
+				annots[annotInit] = tc.init
+			}
+			err := validateAnnots(annots)
+			if tc.wantErr {
+				assert.ErrorContains(t, err, annotInit, "Expected error to mention the annotation")
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestGetUnikernelConfigInitFromJSONFallback(t *testing.T) {
+	t.Parallel()
+
+	writeJSONBundle := func(t *testing.T, initPath string) string {
+		t.Helper()
+		jsonConf := map[string]string{
+			annotType:       base64.StdEncoding.EncodeToString([]byte(unikernels.LinuxUnikernel)),
+			annotHypervisor: base64.StdEncoding.EncodeToString([]byte(hypervisors.QemuVmm)),
+			annotBinary:     base64.StdEncoding.EncodeToString([]byte("/.boot/kernel")),
+		}
+		if initPath != "" {
+			jsonConf[annotInit] = base64.StdEncoding.EncodeToString([]byte(initPath))
+		}
+		configData, err := json.Marshal(jsonConf)
+		assert.NoError(t, err)
+
+		bundle := t.TempDir()
+		rootfsDir := filepath.Join(bundle, rootfsDirName)
+		err = os.Mkdir(rootfsDir, 0755)
+		assert.NoError(t, err)
+		err = os.WriteFile(filepath.Join(rootfsDir, uruncJSONFilename), configData, 0600)
+		assert.NoError(t, err)
+		return bundle
+	}
+
+	testCases := []struct {
+		name     string
+		jsonInit string
+		specInit string
+		expected string
+	}{
+		{name: "the spec annotation sets the init", specInit: "/urunit", expected: "/urunit"},
+		{name: "the spec annotation replaces urunc.json", jsonInit: "/urunit", specInit: "/sbin/urunit", expected: "/sbin/urunit"},
+		{name: "urunc.json stands without a spec annotation", jsonInit: "/urunit", expected: "/urunit"},
+		{name: "no init anywhere"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			spec := &specs.Spec{
+				Root:        &specs.Root{Path: rootfsDirName},
+				Annotations: map[string]string{},
+			}
+			if tc.specInit != "" {
+				spec.Annotations[annotInit] = tc.specInit
+			}
+
+			conf, err := GetUnikernelConfig(writeJSONBundle(t, tc.jsonInit), spec)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, conf.Init)
+		})
+	}
+
+	t.Run("an annotation alone does not make a unikernel container", func(t *testing.T) {
+		t.Parallel()
+		bundle := t.TempDir()
+		err := os.Mkdir(filepath.Join(bundle, rootfsDirName), 0755)
+		assert.NoError(t, err)
+		spec := &specs.Spec{
+			Root:        &specs.Root{Path: rootfsDirName},
+			Annotations: map[string]string{annotInit: "/urunit"},
+		}
+
+		_, err = GetUnikernelConfig(bundle, spec)
+		assert.ErrorIs(t, err, ErrNotUnikernel)
+	})
+}
+
+func TestIsNullDevice(t *testing.T) {
+	t.Parallel()
+
+	null, err := os.Open(os.DevNull)
+	assert.NoError(t, err)
+	defer null.Close()
+	assert.True(t, isNullDevice(null), "Expected /dev/null to be detected")
+
+	reader, writer, err := os.Pipe()
+	assert.NoError(t, err)
+	defer reader.Close()
+	defer writer.Close()
+	assert.False(t, isNullDevice(reader), "Expected a pipe not to be /dev/null")
+
+	file, err := os.Create(filepath.Join(t.TempDir(), "stdin"))
+	assert.NoError(t, err)
+	defer file.Close()
+	assert.False(t, isNullDevice(file), "Expected a file not to be /dev/null")
+}

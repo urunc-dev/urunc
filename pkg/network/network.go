@@ -54,12 +54,12 @@ type Interface struct {
 	MTU            int
 }
 
-func NewNetworkManager(networkType string) (Manager, error) {
+func NewNetworkManager(networkType string, linuxGuest bool) (Manager, error) {
 	switch networkType {
 	case "static":
 		return &StaticNetwork{}, nil
 	case "dynamic":
-		return &DynamicNetwork{}, nil
+		return &DynamicNetwork{linuxGuest: linuxGuest}, nil
 	default:
 		return nil, fmt.Errorf("network manager %s not supported", networkType)
 

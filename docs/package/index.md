@@ -78,6 +78,11 @@ Apart from the above, `urunc` accepts the following optional annotations:
   guest may serve on, as a comma-separated list of ports and `LOW-HIGH` ranges
   (e.g. `8080,9000-9100`). Without it the guest serves on any port, as a
   container does. Only supported by `hyperlight-unikraft`.
+- `com.urunc.unikernel.init`: The absolute path to the init of a Linux guest
+  inside the container's rootfs (e.g. `/urunit`). The container's command then
+  runs under that init, which is useful when something else sets the command
+  (i.e., [Argo Workflows](https://argoproj.github.io/workflows/)). A value in
+  the annotations of the container replaces the one in `urunc.json`.
 
 Due to the fact that [Docker](https://www.docker.com/) and some high-level
 container runtimes do not pass the image annotations to the underlying container

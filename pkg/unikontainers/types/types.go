@@ -100,11 +100,13 @@ type ProcessConfig struct {
 	UID     uint32 // The uid of the process inside the guest
 	GID     uint32 // The gid of the process inside the guest
 	WorkDir string // The workdir of the process inside the guest
+	NoStdin bool   // The process has no stdin attached, so it must not read the console
 }
 
 // UnikernelParams holds the data required by the unikernels commandline
 type UnikernelParams struct {
 	CmdLine    []string // The cmdline provided by the image
+	Init       string   // The init to start the cmdline under, if any
 	EnvVars    []string // The environment variables provided by the image
 	Monitor    string   // The monitor where guest will execute
 	Version    string   // The version of the unikernel

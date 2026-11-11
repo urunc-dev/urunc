@@ -21,6 +21,9 @@ import (
 )
 
 type DynamicNetwork struct {
+	// linuxGuest is set when the guest is Linux, so its own connections use
+	// the local port range of the Linux kernel.
+	linuxGuest bool
 }
 
 // NetworkSetup checks if any tap device is available in the current netns. If it is, it assumes a running unikernel
@@ -55,6 +58,20 @@ func (n DynamicNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkI
 		return nil, fmt.Errorf("networkSetup(%s) failed: %w", newTapName, err)
 	}
 	netlog.Debugf("tap device created: %s", newTapDevice.Attrs().Name)
+
+	// The redirect sends every packet of the pod to the guest. If the pod
+	// keeps a local port range for its own connections, the other containers
+	// of the pod still need the replies to them.
+	if n.linuxGuest {
+		if low, high, ok := podPortBand(); ok {
+			err = addPodPortFilters(redirectLink, newTapDevice, low, high)
+			if err != nil {
+				netlog.Warnf("failed to keep ports %d-%d for the pod, all traffic goes to the guest: %v", low, high, err)
+			} else {
+				netlog.Infof("keeping ARP and ports %d-%d of %s for the pod", low, high, redirectLink.Attrs().Name)
+			}
+		}
+	}
 
 	netlog.Debugf("fetching info for %s", redirectLink.Attrs().Name)
 	ifInfo, err := getInterfaceInfo(redirectLink.Attrs().Name)
