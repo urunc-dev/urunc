@@ -42,6 +42,17 @@ spec:
                   fieldPath: spec.nodeName
           securityContext:
             privileged: true
+          # reset removes the urunc binaries and directories from the node,
+          # once the container runtime restarted without the urunc
+          # configuration, so it needs the host filesystem mounted at /host,
+          # like the urunc-deploy Pod itself.
+          volumeMounts:
+            - name: host
+              mountPath: /host/
+      volumes:
+        - name: host
+          hostPath:
+            path: /
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 1
