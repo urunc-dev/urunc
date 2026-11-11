@@ -15,6 +15,9 @@
 package urunce2etesting
 
 import (
+	"log"
+	"os"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -28,9 +31,13 @@ var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 		err := pullAllImages(testCtr, images)
 		Expect(err).NotTo(HaveOccurred(), "Failed to pull ctr images")
 
-		DeferCleanup(func() {
-			removeAllImages(testCtr, images)
-		})
+		if os.Getenv("URUNC_E2E_TEST_KEEP_IMAGES") == "1" {
+			log.Printf("URUNC_E2E_TEST_KEEP_IMAGES=1: skipping image cleanup")
+		} else {
+			DeferCleanup(func() {
+				removeAllImages(testCtr, images)
+			})
+		}
 	})
 
 	BeforeEach(func() {
