@@ -100,7 +100,7 @@ func runcExec() error {
 		return err
 	}
 	args[0] = binPath
-	return syscall.Exec(binPath, args, os.Environ())
+	return syscall.Exec(binPath, args, os.Environ()) //nolint:gosec // runc gets urunc's own arguments
 }
 
 // newSockPair returns a new SOCK_STREAM unix socket pair.
@@ -151,16 +151,23 @@ func ShouldHonorXDGRuntimeDir() bool {
 	return !ok || u != "root"
 }
 
-// prepareXDGRuntimeDir prepares the XDG_RUNTIME_DIR directory according to the XDG specification.
-// It creates the directory with proper permissions and sets the sticky bit to prevent auto-pruning.
-func prepareXDGRuntimeDir(root string) error {
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return fmt.Errorf("the path in $XDG_RUNTIME_DIR must be writable by the user: %w", err)
+// prepareXDGRuntimeDir creates urunc's directory in $XDG_RUNTIME_DIR according to
+// the XDG specification, with the sticky bit set to prevent auto-pruning, and
+// returns its path. os.Root keeps both steps inside $XDG_RUNTIME_DIR.
+func prepareXDGRuntimeDir(xdgRuntimeDir string) (string, error) {
+	const name = "urunc"
+	dir, err := os.OpenRoot(xdgRuntimeDir)
+	if err != nil {
+		return "", fmt.Errorf("the path in $XDG_RUNTIME_DIR must be writable by the user: %w", err)
 	}
-	if err := os.Chmod(root, os.FileMode(0o700)|os.ModeSticky); err != nil {
-		return fmt.Errorf("you should check permission of the path in $XDG_RUNTIME_DIR: %w", err)
+	defer dir.Close()
+	if err := dir.MkdirAll(name, 0o700); err != nil {
+		return "", fmt.Errorf("the path in $XDG_RUNTIME_DIR must be writable by the user: %w", err)
 	}
-	return nil
+	if err := dir.Chmod(name, os.FileMode(0o700)|os.ModeSticky); err != nil {
+		return "", fmt.Errorf("you should check permission of the path in $XDG_RUNTIME_DIR: %w", err)
+	}
+	return filepath.Join(xdgRuntimeDir, name), nil
 }
 
 // validateID validates the given ID string against the allowed characters.
