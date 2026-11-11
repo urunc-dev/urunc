@@ -312,7 +312,7 @@ func monitorResolvConfMount(vmm types.VMM, cntrMounts []specs.Mount) (specs.Moun
 // sockets in that namespace itself, so the interface is left as it is and only
 // described, for the monitor to know whether the container has a network at
 // all: one started with none gets empty parameters.
-func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevParams, error) {
+func SetupNet(tuntap bool, networkType string, linuxGuest bool, uid, gid uint32) (types.NetDevParams, error) {
 	netArgs := types.NetDevParams{}
 	if !tuntap {
 		iface, err := network.ContainerIface()
@@ -332,7 +332,7 @@ func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevPar
 	}
 
 	uniklog.WithField("network type", networkType).Debug("Retrieved network type")
-	netManager, err := network.NewNetworkManager(networkType)
+	netManager, err := network.NewNetworkManager(networkType, linuxGuest)
 	if err != nil {
 		return netArgs, fmt.Errorf("failed to create network manager for %s type: %v", networkType, err)
 	}
@@ -724,7 +724,7 @@ func (u *Unikontainer) Exec(metrics m.Writer) error {
 	}
 
 	// handle network
-	netArgs, err := SetupNet(vmm.UsesTUNTAP(), u.getNetworkType(), u.Spec.Process.User.UID, u.Spec.Process.User.GID)
+	netArgs, err := SetupNet(vmm.UsesTUNTAP(), u.getNetworkType(), ms.UnikernelType == unikernels.LinuxUnikernel, u.Spec.Process.User.UID, u.Spec.Process.User.GID)
 	if err != nil {
 		uniklog.Errorf("failed to setup network: %v", err)
 		return err
