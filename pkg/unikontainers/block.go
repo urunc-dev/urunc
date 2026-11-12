@@ -209,11 +209,27 @@ func handleExplicitBlockImage(blockImg string, mountPoint string) (types.BlockDe
 // Search the bind mounts passed to the guest, as selected by onlyBindMounts,
 // and find the ones that come from a block.
 func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.BlockDevParams, error) {
+	return blockVolumesFrom(mounts, ukernel, func() ([]*mountinfo.Info, error) {
+		return mountinfo.GetMounts(nil)
+	})
+}
+
+// blockVolumesFrom resolves every bind mount against one snapshot of the mount
+// table instead of reading /proc/thread-self/mountinfo once per bind. The
+// snapshot is refreshed after an unmount, because unmounting a source changes
+// the table that the following lookups must see.
+func blockVolumesFrom(mounts []specs.Mount, ukernel types.Unikernel, readMountInfo func() ([]*mountinfo.Info, error)) ([]types.BlockDevParams, error) {
 	blkImgs := []types.BlockDevParams{}
+
+	mountInfo, err := readMountInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read mountinfo: %w", err)
+	}
+
 	for i, m := range mounts {
 		// Get the information of the source path
-		// from /proc/thread-self/mountinfo
-		mInfo, err := getMountInfo(m.Source)
+		// from the mount table snapshot
+		mInfo, err := findMountInfo(mountInfo, m.Source)
 		if errors.Is(err, ErrMountpoint) {
 			// ErrMountpoint means we did not find any
 			// such mount and hence we can skip it.
@@ -245,6 +261,12 @@ func getBlockVolumes(mounts []specs.Mount, ukernel types.Unikernel) ([]types.Blo
 			err = unmount(mInfo.MountPoint)
 			if err != nil {
 				return nil, err
+			}
+			// The unmount removed the source from the mount table, so refresh
+			// the snapshot before resolving the next bind.
+			mountInfo, err = readMountInfo()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read mountinfo: %w", err)
 			}
 			mInfo.ID = fmt.Sprintf("vol%d", i)
 			mInfo.HostMountPoint = mInfo.MountPoint
