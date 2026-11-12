@@ -15,10 +15,12 @@
 package unikontainers
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/moby/sys/mountinfo"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
@@ -68,5 +70,60 @@ func TestFindMountInfoEscapedPath(t *testing.T) {
 			assert.Equal(t, "ext4", blockDev.FsType)
 			assert.Equal(t, tt.path, blockDev.MountPoint)
 		})
+	}
+}
+
+// stubUnikernel only implements the parts of types.Unikernel that
+// blockVolumesFrom can reach in the tests below.
+type stubUnikernel struct {
+	types.Unikernel
+	fsType string
+}
+
+func (s stubUnikernel) SupportsFS(fsType string) bool {
+	return fsType == s.fsType
+}
+
+func testBinds(n int) []specs.Mount {
+	mounts := make([]specs.Mount, n)
+	for i := range mounts {
+		mounts[i] = specs.Mount{
+			Source:      fmt.Sprintf("/mnt/vol%d", i),
+			Destination: fmt.Sprintf("/data/vol%d", i),
+			Type:        "bind",
+		}
+	}
+	return mounts
+}
+
+// TestBlockVolumesShareMountInfoSnapshot makes sure the mount table is read
+// once for all the bind mounts instead of once per bind. None of the binds
+// below is mounted, so every lookup ends in ErrMountpoint and no unmount
+// (which would need a real mount) is triggered.
+func TestBlockVolumesShareMountInfoSnapshot(t *testing.T) {
+	reads := 0
+	readMountInfo := func() ([]*mountinfo.Info, error) {
+		reads++
+		return nil, nil
+	}
+
+	vols, err := blockVolumesFrom(testBinds(8), stubUnikernel{}, readMountInfo)
+	assert.NoError(t, err)
+	assert.Empty(t, vols)
+	assert.Equal(t, 1, reads, "mountinfo must be read once for all binds")
+}
+
+func BenchmarkBlockVolumesShareMountInfoSnapshot(b *testing.B) {
+	line := "36 35 8:1 / /mnt/data rw,relatime shared:1 - ext4 /dev/sdb1 rw\n"
+	readMountInfo := func() ([]*mountinfo.Info, error) {
+		return mountinfo.GetMountsFromReader(strings.NewReader(strings.Repeat(line, 500)), nil)
+	}
+	mounts := testBinds(32)
+
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := blockVolumesFrom(mounts, stubUnikernel{}, readMountInfo); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
