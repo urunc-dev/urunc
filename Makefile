@@ -284,7 +284,7 @@ test_unikernels:
 
 ## fuzz Run every Go fuzz target for FUZZTIME
 .PHONY: fuzz
-fuzz: fuzz_unikontainers_GetUnikernelConfig fuzz_shim_FetchUruncAnnotations
+fuzz: fuzz_unikontainers_GetUnikernelConfig fuzz_shim_FetchUruncAnnotations fuzz_shim_PatchConfigJSON
 
 ## fuzz_unikontainers_[name] Run the fuzz target Fuzz[name] of the unikontainers package
 .PHONY: fuzz_unikontainers_%

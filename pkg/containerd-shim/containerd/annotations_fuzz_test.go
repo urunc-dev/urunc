@@ -15,12 +15,16 @@
 package containerd
 
 import (
+	"bytes"
 	"encoding/json"
 	"maps"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	imagespec "github.com/opencontainers/image-spec/specs-go/v1"
+	runtimespec "github.com/opencontainers/runtime-spec/specs-go"
 
 	"github.com/urunc-dev/urunc/internal/fuzzseed"
 )
@@ -54,6 +58,69 @@ func FuzzFetchUruncAnnotations(f *testing.F) {
 		}
 		if !maps.Equal(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+}
+
+// FuzzPatchConfigJSON patches two annotations into an arbitrary config.json.
+func FuzzPatchConfigJSON(f *testing.F) {
+	// An annotation that is already there keeps its value.
+	fuzzseed.Add(f, []byte(`{"hostname":"h","mounts":[{"destination":"/d","type":"bind","source":"/s"}],"annotations":{"`+uruncPrefix+`a":"old","keep":"1"}}`))
+	fuzzseed.Add(f, []byte(`{}`))
+	fuzzseed.Add(f, []byte(`{`))
+	bundle := f.TempDir()
+	path := filepath.Join(bundle, "config.json")
+	annotations := map[string]string{uruncPrefix + "a": "new", uruncPrefix + "b": "2"}
+
+	f.Fuzz(func(t *testing.T, config []byte) {
+		// A non-default mode, to check it is kept. Chmod because the umask applies to WriteFile.
+		if err := os.WriteFile(path, config, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o640); err != nil { //nolint:gosec // a non-default mode, to check it is kept
+			t.Fatal(err)
+		}
+		var spec runtimespec.Spec
+		validSpec := json.Unmarshal(config, &spec) == nil
+
+		patchErr := patchConfigJSON(bundle, annotations)
+
+		patched, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entries, _ := os.ReadDir(bundle); len(entries) != 1 {
+			t.Fatalf("%d files left in the bundle", len(entries))
+		}
+		if !validSpec {
+			if patchErr == nil || !bytes.Equal(patched, config) {
+				t.Fatalf("invalid config.json: error %v, rewritten: %v", patchErr, !bytes.Equal(patched, config))
+			}
+			return
+		}
+		if patchErr != nil {
+			t.Fatalf("patching a valid config.json: %v", patchErr)
+		}
+		if now, err := os.Stat(path); err != nil || now.Mode() != 0o640 {
+			t.Fatalf("mode changed from 0640: %v, %v", now, err)
+		}
+
+		var out runtimespec.Spec
+		if err := json.Unmarshal(patched, &out); err != nil {
+			t.Fatalf("patched config.json is not a spec: %v", err)
+		}
+		// Missing annotations are added, existing ones keep their value.
+		want := maps.Clone(annotations)
+		maps.Copy(want, spec.Annotations)
+		if !maps.Equal(out.Annotations, want) {
+			t.Fatalf("annotations %v, want %v", out.Annotations, want)
+		}
+		// Nothing else changes, except fields this runtime-spec version does not know, which are dropped.
+		spec.Annotations, out.Annotations = nil, nil
+		before, _ := json.Marshal(spec)
+		after, _ := json.Marshal(out)
+		if !bytes.Equal(before, after) {
+			t.Fatalf("config.json changed besides annotations:\n%s\n%s", before, after)
 		}
 	})
 }
