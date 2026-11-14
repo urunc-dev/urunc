@@ -74,7 +74,11 @@ func (s *SPT) Ok() error {
 }
 
 func (s *SPT) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]string, error) {
-	sptMem := BytesToStringMB(args.MemSizeB)
+	sptMem := BytesToMiBString(args.MemSizeB)
+	if args.MemSizeB > 0 && args.MemSizeB < 1024*1024 {
+		sptMem = "1"
+		vmmLog.Warnf("Requested memory (%d bytes) is below Solo5's minimum unit (1 MiB); clamping to 1 MiB", args.MemSizeB)
+	}
 	exArgs := []string{s.binaryPath, "--mem=" + sptMem}
 	if args.Net.TapDev != "" {
 		netCli := ukernel.MonitorNetCli(args.Net.TapDev, args.Net.MAC)
