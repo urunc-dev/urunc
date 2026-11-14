@@ -38,6 +38,7 @@ func TestSupportsControlSocket(t *testing.T) {
 		{"spt", &SPT{}, false},
 		{"hedge", &Hedge{}, false},
 		{"hyperlight", &Hyperlight{}, false},
+		{"hvi", &HVI{}, false},
 	}
 
 	for _, tt := range tests {
@@ -96,4 +97,12 @@ func TestVMMFactoryNonQemuIgnoresVhost(t *testing.T) {
 	vmm = factory.createFunc(FirecrackerBinary, "/usr/bin/firecracker", true)
 	_, ok = vmm.(*Firecracker)
 	assert.True(t, ok, "factory should return *Firecracker")
+
+	// HVI factory should ignore vhost parameter
+	factory, exists = vmmFactories[HviVmm]
+	assert.True(t, exists, "hvi factory should exist")
+
+	vmm = factory.createFunc(HviBinary, "/usr/bin/hvi", true)
+	_, ok = vmm.(*HVI)
+	assert.True(t, ok, "factory should return *HVI")
 }
