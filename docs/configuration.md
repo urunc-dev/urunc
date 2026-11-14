@@ -155,6 +155,7 @@ values.
 - [Solo5-hvt](./hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
 - [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
 - [Hyperlight](./hypervisor-support#hyperlight) - `hyperlight-unikraft`
+- [hvi](./hypervisor-support#hvi) - `hvi`
 
 #### Monitor Options
 
@@ -334,6 +335,11 @@ default_vcpus = 1
 
 [monitors.hyperlight-unikraft]
 # default_memory_mb is not applied: without a limit, hluk sizes the guest itself
+default_vcpus = 1
+# path is not set by default - urunc will search in PATH
+
+[monitors.hvi]
+default_memory_mb = 256
 default_vcpus = 1
 # path is not set by default - urunc will search in PATH
 ```

@@ -53,7 +53,7 @@ required annotations are the following:
   supported values: a) unikraft, b) rumprun, c) mirage.
 - `com.urunc.unikernel.hypervisor`: The VMM or sandbox monitor to run the
   unikernel. Currently supported values: a) `qemu`, b) `firecracker`, c)
-  `cloud-hypervisor`, d) `spt`,  e) `hvt`, f) `hyperlight-unikraft`.
+  `cloud-hypervisor`, d) `spt`,  e) `hvt`, f) `hyperlight-unikraft`, g) `hvi`.
 - `com.urunc.unikernel.binary`: The path to the unikernel binary inside the
   container's rootfs. Optional for `hyperlight-unikraft`, whose `hluk` boots
   an embedded kernel when the image ships none.
