@@ -284,13 +284,20 @@ test_unikernels:
 
 ## fuzz Run every Go fuzz target for FUZZTIME
 .PHONY: fuzz
-fuzz: fuzz_unikontainers_GetUnikernelConfig
+fuzz: fuzz_unikontainers_GetUnikernelConfig fuzz_shim_FetchUruncAnnotations
 
 ## fuzz_unikontainers_[name] Run the fuzz target Fuzz[name] of the unikontainers package
 .PHONY: fuzz_unikontainers_%
 fuzz_unikontainers_%:
 	@echo "Fuzzing Fuzz$* in unikontainers"
 	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/unikontainers -run='^$$' -fuzz='^Fuzz$*$$' -fuzztime=$(FUZZTIME) -v
+	@echo " "
+
+## fuzz_shim_[name] Run the fuzz target Fuzz[name] of the containerd shim package
+.PHONY: fuzz_shim_%
+fuzz_shim_%:
+	@echo "Fuzzing Fuzz$* in the containerd shim"
+	@GOFLAGS=$(TEST_FLAGS) $(GO) test $(TEST_OPTS) ./pkg/containerd-shim/containerd -run='^$$' -fuzz='^Fuzz$*$$' -fuzztime=$(FUZZTIME) -v
 	@echo " "
 
 ## test_nerdctl Run all end-to-end tests with nerdctl
