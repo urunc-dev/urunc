@@ -139,15 +139,15 @@ At the moment, `urunc` is available on GNU/Linux for x86\_64 and arm64 architect
 In addition, the following table provides an overview of the currently
 supported VM/Sandbox monitors and unikernels:
 
-| Unikernel | VM/Sandbox Monitor         | Arch        | Storage                                 |
-| --------- | -------------------------- | ----------- | --------------------------------------- |
-| Rumprun   | Solo5-hvt, Solo5-spt                | x86,aarch64 | Block/Devmapper                         |
-| Unikraft  | QEMU, Firecracker, Hyperlight       | x86         | Initrd, 9pfs                            |
-| MirageOS  | QEMU, Solo5-hvt, Solo5-spt          | x86,aarch64 | Block/Devmapper                         |
-| Mewz      | QEMU                                | x86         | In-memory                               |
-| Linux     | QEMU, Firecracker, Cloud-Hypervisor | x86,aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
-| Hermit    | QEMU                                | x86         | Initrd                                  |
-| FreeBSD    | Firecracker, QEMU          | x86          | Block/Devmapper/9pfs (Qemu)                    |
+| Unikernel | VM/Sandbox Monitor                       | Arch        | Storage                                 |
+| --------- | ---------------------------------------- | ----------- | --------------------------------------- |
+| Rumprun   | Solo5-hvt, Solo5-spt                     | x86,aarch64 | Block/Devmapper                         |
+| Unikraft  | QEMU, Firecracker, Hyperlight            | x86         | Initrd, 9pfs                            |
+| MirageOS  | QEMU, Solo5-hvt, Solo5-spt               | x86,aarch64 | Block/Devmapper                         |
+| Mewz      | QEMU                                     | x86         | In-memory                               |
+| Linux     | QEMU, Firecracker, Cloud-Hypervisor, hvi | x86,aarch64 | Initrd, Block/Devmapper, 9pfs, Virtiofs |
+| Hermit    | QEMU                                     | x86         | Initrd                                  |
+| FreeBSD   | Firecracker, QEMU                        | x86         | Block/Devmapper/9pfs (Qemu)             |
 
 We plan to add support for more unikernel frameworks and other platforms too.
 Feel free to [contact](#Contact) us for a specific unikernel framework or similar
