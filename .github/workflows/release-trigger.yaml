@@ -7,6 +7,10 @@ on:
     paths:
       - VERSION
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 env:
   ARTIFACTS_PATH: 'dist/'
 
@@ -56,6 +60,7 @@ jobs:
         with:
           app-id: ${{ vars.URUNC_BOT_APP_ID }}
           private-key: ${{ secrets.URUNC_BOT_PRIVATE_KEY }}
+          permission-contents: write
 
       - name: Tag Parent Repository
         uses: gntouts/tag-remote-repo-action@b3c9868dbb01f9ea3875289e783d1a2478b7ea88 # v1.0.0
@@ -63,6 +68,8 @@ jobs:
         with:
           repository: ${{ github.repository }}
           tag: ${{ needs.parse-version-manifest.outputs.version }}
+          # Without a commit, the action tags the newest commit on main.
+          commit: ${{ github.sha }}
           token: ${{ steps.generate-token.outputs.token }}
           skip_update: true
       - name: Log outputs
@@ -85,14 +92,10 @@ jobs:
     needs: [parse-version-manifest,tag-parent]
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       pull-requests: read
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ needs.parse-version-manifest.outputs.version }}
-    secrets: inherit
 
   release:
     name: Create Release
@@ -143,6 +146,7 @@ jobs:
         with:
           app-id: ${{ vars.URUNC_BOT_APP_ID }}
           private-key: ${{ secrets.URUNC_BOT_PRIVATE_KEY }}
+          permission-contents: write
 
 
       - name: Extract release notes for ${{ needs.parse-version-manifest.outputs.version }}
@@ -173,5 +177,4 @@ jobs:
           prerelease: false
           generate_release_notes: false
           tag_name: ${{needs.parse-version-manifest.outputs.version}}
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          token: ${{ steps.generate-token.outputs.token }}

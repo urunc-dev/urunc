@@ -9,10 +9,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   check-labels:
     runs-on: ubuntu-24.04
     if: ${{ github.event.pull_request.base.ref == 'main' }}
+    permissions:
+      pull-requests: read # to read the labels of the PR
     outputs:
       skip_build: ${{ steps.set-vars.outputs.skip_build }}
       skip_lint:  ${{ steps.set-vars.outputs.skip_lint }}
@@ -71,9 +76,6 @@ jobs:
     needs: [check-labels]
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       pull-requests: read
     if: ${{ needs.check-labels.outputs.ok_to_test == 'yes' &&
       github.event.pull_request.base.ref == 'main' &&
@@ -83,4 +85,3 @@ jobs:
       ref: ${{ github.event.pull_request.head.sha }}
       skip-build: ${{ needs.check-labels.outputs.skip_build }}
       skip-lint: ${{ needs.check-labels.outputs.skip_lint }}
-    secrets: inherit
