@@ -24,9 +24,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 600
     permissions:
-      contents: write # for uploading the SBOM to the release
+      contents: read # to check the repository out
       packages: write # for uploading the finished container
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
       id-token: write # to complete the identity challenge with sigstore/fulcio when running outside of PRs
     strategy:
       matrix:
@@ -104,9 +103,8 @@ jobs:
     needs: [build-all]
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # for uploading the SBOM to the release
+      contents: read # to check the repository out
       packages: write # for uploading the finished container
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
       id-token: write # to complete the identity challenge with sigstore/fulcio when running outside of PRs
     env:
       REGISTRY: ${{ inputs.registry }}

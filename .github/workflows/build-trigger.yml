@@ -20,6 +20,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   get-changed-files:
     runs-on: ubuntu-24.04
@@ -60,8 +63,13 @@ jobs:
   build-dockerfiles-deploy:
     name: Build urunc-deploy container image
     needs: get-changed-files
+    # A called workflow cannot hold more than its caller grants, so this has
+    # to cover what build-latest declares.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     uses: ./.github/workflows/build-latest.yml
-    secrets: inherit
     with:
       runner-archs: '["amd64", "arm64"]'
       dockerfiles: 'deployment/urunc-deploy/Dockerfile'

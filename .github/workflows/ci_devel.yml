@@ -83,9 +83,6 @@ jobs:
   ci-on-push:
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       pull-requests: read
     uses: ./.github/workflows/ci.yml
     with:
@@ -104,4 +101,3 @@ jobs:
       qemu_version: ${{ inputs.qemu_version }}
       virtiofsd_version: ${{ inputs.virtiofsd_version }}
       hluk_version: ${{ inputs.hluk_version }}
-    secrets: inherit
