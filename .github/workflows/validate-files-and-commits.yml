@@ -33,6 +33,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          # commitlint lints origin/main..HEAD, which needs the history of both.
+          fetch-depth: 0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -41,9 +43,7 @@ jobs:
       - run: npm install --legacy-peer-deps
 
       - name: Run commitlint
-        run: |
-          git fetch origin main --depth=1
-          npx commitlint --from=origin/main --config ./commitlint.config.js
+        run: npx commitlint --from=origin/main --config ./commitlint.config.js
 
   linter-typos:
     name: Spell Check Repo
