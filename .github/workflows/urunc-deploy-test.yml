@@ -24,6 +24,7 @@ jobs:
             runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
+      fail-fast: false
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a
@@ -39,9 +40,9 @@ jobs:
         run: |
           ARCH=$(uname -m)
           if [ "$ARCH" = "x86_64" ]; then
-            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+            curl -fLo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
           elif [ "$ARCH" = "aarch64" ]; then
-            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-arm64
+            curl -fLo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-arm64
           else
             echo "Unsupported architecture: $ARCH"
             exit 1
@@ -86,7 +87,7 @@ jobs:
             echo "Unsupported architecture: ${{ matrix.arch }}"
             exit 1
           fi
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBECTL_ARCH}/kubectl"
+          curl -fLO "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBECTL_ARCH}/kubectl"
           sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
           chmod +x kubectl
           mkdir -p ~/.local/bin
@@ -103,6 +104,7 @@ jobs:
           RUNC_VERSION: ${{ inputs.runc_version }}
         run: |
           docker exec -e RUNC_VERSION="${RUNC_VERSION}" urunc-deploy-test-control-plane bash -c '
+            set -e
             if ! which runc; then
               wget -q https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.$(dpkg --print-architecture)
               install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
@@ -190,11 +192,12 @@ jobs:
       - name: Verify nginx-spt deployment (arm64)
         if: matrix.arch == 'arm64'
         run: |
-          kubectl wait --for=condition=Ready pod/nginx-spt-arm64 --timeout=180s || true
-          kubectl logs nginx-spt-arm64 | tee /tmp/logs.txt
-          echo "=== LOGS ==="
-          cat /tmp/logs.txt
-          kubectl describe pod nginx-spt-arm64 || true
+          if ! kubectl wait --for=condition=Ready pod/nginx-spt-arm64 --timeout=180s; then
+            kubectl describe pod nginx-spt-arm64 || true
+            kubectl logs nginx-spt-arm64 || true
+            exit 1
+          fi
+          kubectl logs nginx-spt-arm64
 
       - name: Deploy httpreply-fc unikernel (amd64)
         if: matrix.arch == 'amd64'
@@ -223,11 +226,12 @@ jobs:
       - name: Verify httpreply-fc deployment (amd64)
         if: matrix.arch == 'amd64'
         run: |
-          kubectl wait --for=condition=Ready pod/httpreply-fc-amd64 --timeout=180s || true
-          kubectl logs httpreply-fc-amd64 | tee /tmp/logs.txt
-          echo "=== LOGS ==="
-          cat /tmp/logs.txt
-          kubectl describe pod httpreply-fc-amd64 || true
+          if ! kubectl wait --for=condition=Ready pod/httpreply-fc-amd64 --timeout=180s; then
+            kubectl describe pod httpreply-fc-amd64 || true
+            kubectl logs httpreply-fc-amd64 || true
+            exit 1
+          fi
+          kubectl logs httpreply-fc-amd64
 
       - name: Deploy hello-hyperlight-unikraft unikernel (amd64)
         if: matrix.arch == 'amd64'
@@ -299,6 +303,12 @@ jobs:
           docker exec urunc-deploy-test-control-plane test ! -f /usr/local/bin/urunc || exit 1
           docker exec urunc-deploy-test-control-plane test ! -f /usr/local/bin/containerd-shim-urunc-v2 || exit 1
 
+          # Only a NotFound error means that the RuntimeClass is gone.
           docker exec urunc-deploy-test-control-plane bash -c '
-            kubectl get runtimeclass urunc && exit 1 || echo "RuntimeClass removed"
+            if out=$(kubectl get runtimeclass urunc 2>&1); then
+              echo "RuntimeClass urunc still exists"
+              exit 1
+            fi
+            echo "${out}"
+            grep -q NotFound <<< "${out}"
           '

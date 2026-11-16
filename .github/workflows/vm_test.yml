@@ -293,7 +293,7 @@ jobs:
         SAFE_FC="${FC_FREEBSD_VERSION}"
         ARCH="$(uname -m)"
         release_url="https://github.com/firecracker-microvm/firecracker/releases"
-        curl -L "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
+        curl -fL "${release_url}/download/${SAFE_FC}/firecracker-${SAFE_FC}-${ARCH}.tgz" | tar -xz
         sudo mv "release-${SAFE_FC}-${ARCH}/firecracker-${SAFE_FC}-${ARCH}" /usr/local/bin/firecracker-freebsd
         rm -fr "release-${SAFE_FC}-${ARCH}"
 

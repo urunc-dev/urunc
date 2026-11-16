@@ -70,9 +70,9 @@ jobs:
       run: |
         ARCH=$(uname -m)
         if [ "$ARCH" = "x86_64" ]; then
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+          curl -fLo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
         elif [ "$ARCH" = "aarch64" ]; then
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-arm64
+          curl -fLo ./kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-arm64
         else
           echo "Unsupported architecture: $ARCH"
           exit 1
@@ -116,6 +116,7 @@ jobs:
     - name: Install runc inside kind node
       run: |
         docker exec urunc-test-control-plane bash -c '
+          set -e
           if ! which runc; then
             wget -q https://github.com/opencontainers/runc/releases/download/v${{ inputs.runc_version }}/runc.$(dpkg --print-architecture)
             install -m 755 runc.$(dpkg --print-architecture) /usr/local/sbin/runc
@@ -259,6 +260,7 @@ jobs:
     - name: Verify urunc installation
       run: |
         docker exec urunc-test-control-plane bash -c '
+        set -e
         ls -la /usr/local/bin/urunc*
         ls -la /usr/local/bin/containerd-shim-urunc-v2*
         containerd --version
@@ -275,7 +277,7 @@ jobs:
           echo "Unsupported architecture: $ARCH"
           exit 1
         fi
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBECTL_ARCH}/kubectl"
+        curl -fLO "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${KUBECTL_ARCH}/kubectl"
         chmod +x kubectl
         sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
