@@ -87,3 +87,76 @@ func TestUnikraftMonitorCli(t *testing.T) {
 		})
 	}
 }
+
+func TestUnikraftNetdevIPPrefixLength(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		version         string
+		mask            string
+		expectedAddress string
+		expectedMask    string
+	}{
+		{
+			name:            "a /16 subnet gives a /16 prefix",
+			version:         "0.18.0",
+			mask:            "255.255.0.0",
+			expectedAddress: "netdev.ip=172.17.0.2/16:172.17.0.1:8.8.8.8",
+		},
+		{
+			name:            "a /24 subnet gives a /24 prefix",
+			version:         "0.18.0",
+			mask:            "255.255.255.0",
+			expectedAddress: "netdev.ip=172.17.0.2/24:172.17.0.1:8.8.8.8",
+		},
+		{
+			name:            "a /20 subnet gives a /20 prefix",
+			version:         "0.18.0",
+			mask:            "255.255.240.0",
+			expectedAddress: "netdev.ip=172.17.0.2/20:172.17.0.1:8.8.8.8",
+		},
+		{
+			name:            "an undefined version uses the mask too",
+			version:         "",
+			mask:            "255.255.0.0",
+			expectedAddress: "netdev.ip=172.17.0.2/16:172.17.0.1:8.8.8.8",
+		},
+		{
+			name:            "without a mask the prefix stays /24",
+			version:         "0.18.0",
+			mask:            "",
+			expectedAddress: "netdev.ip=172.17.0.2/24:172.17.0.1:8.8.8.8",
+		},
+		{
+			name:            "versions before 0.16.1 still get the mask as is",
+			version:         "0.15.0",
+			mask:            "255.255.0.0",
+			expectedAddress: "netdev.ipv4_addr=172.17.0.2",
+			expectedMask:    "netdev.ipv4_subnet_mask=255.255.0.0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			u := &Unikraft{Version: tc.version}
+			err := u.configureUnikraftArgs("initrd", "172.17.0.2", "172.17.0.1", tc.mask, "")
+			if tc.version == "" {
+				assert.ErrorIs(t, err, ErrUndefinedVersion)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tc.expectedAddress, u.Net.Address)
+			assert.Equal(t, tc.expectedMask, u.Net.Mask)
+		})
+	}
+}
+
+func TestUnikraftNetdevIPInvalidMask(t *testing.T) {
+	t.Parallel()
+
+	u := &Unikraft{Version: "0.18.0"}
+	err := u.configureUnikraftArgs("initrd", "172.17.0.2", "172.17.0.1", "255.255.0", "")
+	assert.ErrorContains(t, err, "failed to convert subnet mask")
+}
