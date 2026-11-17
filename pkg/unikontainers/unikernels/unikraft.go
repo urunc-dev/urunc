@@ -65,7 +65,7 @@ func (u *Unikraft) CommandString() (string, error) {
 	}
 
 	if len(u.Env) > 0 {
-		envVarString = "env.vars=[ " + strings.Join(u.Env, " ") + " ]"
+		envVarString = "env.vars=[ " + quoteUnikraftArgs(u.Env) + " ]"
 	}
 
 	return fmt.Sprintf("%s %s %s %s %s %s %s -- %s", u.AppName,
@@ -144,7 +144,12 @@ func (u *Unikraft) Init(data types.UnikernelParams) error {
 	u.Version = data.Version
 	u.AppName = "Unikraft"
 	u.Monitor = data.Monitor
-	u.Command = strings.Join(data.CmdLine, " ")
+	if u.Monitor == hyperlightMonitor {
+		// hluk takes the command as the value of one --guest-exec option.
+		u.Command = strings.Join(data.CmdLine, " ")
+	} else {
+		u.Command = quoteUnikraftArgs(data.CmdLine)
+	}
 
 	return u.configureUnikraftArgs(data.Rootfs.Type, data.Net.IP, data.Net.Gateway, data.Net.Mask, data.Net.DNSServer)
 }
@@ -212,4 +217,27 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 func newUnikraft() *Unikraft {
 	unikraftStruct := new(Unikraft)
 	return unikraftStruct
+}
+
+// quoteUnikraftArg returns arg written so that the command line parser of
+// Unikraft (ukargparse) reads it back as one argument. Arguments without
+// whitespace, quotes or backslashes are returned as they are. Any other
+// argument is put in single quotes, inside which ukargparse takes every
+// character as it is. A single quote in it ends the quoted part, is added
+// as \' and starts a new quoted part.
+func quoteUnikraftArg(arg string) string {
+	if !strings.ContainsAny(arg, " \t\n\r\v'\"\\") {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+}
+
+// quoteUnikraftArgs quotes each argument with quoteUnikraftArg and joins
+// them with spaces.
+func quoteUnikraftArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = quoteUnikraftArg(arg)
+	}
+	return strings.Join(quoted, " ")
 }
