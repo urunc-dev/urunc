@@ -29,9 +29,17 @@ Therefore, the users have the following options:
    the unikernel.
 2. Directly copy all the files to the container's rootfs and use devmapper
    snapshotter or shared-fs to pass the container's rootfs to the unikernel.
-3. Let [bunny](https://github.com/nubificus/bunny) and [bunix](https://github.com/nubificus/bunix) create the rootfs file.
+3. Use [bunny](https://github.com/nubificus/bunny) to build a rootfs with a bunnyfile or a standard Containerfile.
 
-> **NOTE**: For the time being, [bunny](https://github.com/nubificus/bunny) supports the creation of initrd files and [bunix](https://github.com/nubificus/bunix) does not provide any support for creating the rootfs.
+Bunny supports `initrd`, `block` and `raw` rootfs types, depending on the guest
+framework. An `initrd` is a CPIO archive; a `block` rootfs is a disk image;
+`raw` copies files directly into the OCI image for shared-fs or a block-based
+snapshotter. Bunny can create an initrd or assemble a raw rootfs from an
+`include` list, including files from other OCI images. In a bunnyfile,
+`type: block` packages an existing image selected by `rootfs.from` and
+`rootfs.path`; it does not generate the filesystem. A standard Containerfile
+can create a block filesystem using tools in a build stage.
+Bunix packages existing files but does not create the rootfs.
 
 ## Creating an initrd file
 
@@ -63,7 +71,7 @@ kernel:
   from: local
   path: redis-qemu-x86_64-initrd_qemu-x86_64
 
-cmdline: "redis-server /conf/redis.conf"
+cmd: ["redis-server", "/conf/redis.conf"]
 ```
 
 In the above file we specify the following:
@@ -72,7 +80,7 @@ In the above file we specify the following:
   x86 architecture.
 - We want to create from `scratch` a rootfs with `initrd` as its type. In
   particular, we want an initrd file that contains the file `redis.conf` in
-  `/data/conf/redis.conf`. In that way, [bunny](https://github.com/nubificus/bunny) creates the initrd file for us
+  `/conf/redis.conf`. In that way, [bunny](https://github.com/nubificus/bunny) creates the initrd file for us
   and sets up the respective `urunc` annotations to attach this initrd file
   when we boot the unikernel.
 - We want to use the `redis-qemu-x86_64-initrd_qemu-x86_64` binary from the local build context as the unikernel to boot.
@@ -137,7 +145,7 @@ kernel:
   from: local
   path: redis.hvt
 
-cmdline: "redis-server /data/conf/redis.conf"
+cmd: ["redis-server", "/data/conf/redis.conf"]
 ```
 
 In the above file we specify the following:
@@ -282,7 +290,7 @@ kernel:
   from: local
   path: app-elfloader-qemu-x86_64-initrd_qemu-x86_64
 
-cmdline: "/chttp"
+cmd: ["/chttp"]
 ```
 
 In the above file we specify the following:

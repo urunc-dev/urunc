@@ -36,7 +36,7 @@ kernel:
   from: unikraft.org/nginx:1.15
   path: /unikraft/bin/kernel
 
-cmdline: "nginx -c /nginx/conf/nginx.conf"
+cmd: ["nginx", "-c", "/nginx/conf/nginx.conf"]
 ```
 
 In the above file we specify the following:

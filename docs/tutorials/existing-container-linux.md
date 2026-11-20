@@ -158,11 +158,28 @@ In this case preparing the container image involves two key steps:
 1. Append the Linux kernel binary to the container image.
 2. Set the appropriate `urunc` annotations.
 
-These tasks can be easily automated with [bunny](https://github.com/nubificus/bunny).
+Bunny's Containerfile frontend performs these steps automatically and also
+adds urunit. For example, save this as `Containerfile`:
 
-Let's use as an example the `redis:alpine` container image using the Linux
-kernel from `harbor.nbfc.io/nubificus/urunc/linux-kernel-qemu:v6.14`. The
-respective `bunnyfile` would look like:
+```Dockerfile
+#syntax=harbor.nbfc.io/nubificus/bunny:latest
+FROM redis:alpine
+```
+
+Bunny defaults to Linux over QEMU, selects a kernel, copies `/urunit` into the
+image and prepends it to the existing entrypoint. The base image's `CMD` is
+preserved, so Redis does not need a manual urunit wrapper. Build it with:
+
+```bash
+docker build -f Containerfile -t redis/apline/linux/qemu:latest .
+```
+
+To select a different monitor, set the `com.urunc.unikernel.hypervisor` label.
+To supply a kernel yourself, copy it into the image and set
+`com.urunc.unikernel.binary`. Set `LABEL bunny.urunit=false` only when providing
+your own init process.
+
+Alternatively, a bunnyfile makes the kernel and init setup explicit:
 
 ```yaml
 #syntax=harbor.nbfc.io/nubificus/bunny:latest
@@ -176,59 +193,29 @@ platforms:
 rootfs:
   from: redis:alpine
   type: raw
+  include:
+    - from: harbor.nbfc.io/nubificus/urunit:latest
+      source: /urunit
+      destination: /urunit
 
 kernel:
   from: harbor.nbfc.io/nubificus/urunc/linux-kernel-qemu:v6.14
   path: /kernel
 
-cmdline: "/usr/local/bin/redis-server"
+entrypoint: ["/urunit"]
+cmd: ["/usr/local/bin/redis-server"]
 ```
 
-We can build the container with:
+Unlike the Containerfile frontend, the bunnyfile does not add urunit
+automatically. Its `include` mapping copies the binary directly from its OCI
+image. Build with:
 
 ```bash
 docker build -f bunnyfile -t redis/apline/linux/qemu:latest .
 ```
 
-Alternatively, if the Linux kernel was built locally, we can update the kernel
-section of the bunnyfile to reference the local binary:
-
-```yaml
-kernel:
-  from: local
-  path: bzImage
-```
-
-By default, this setup will run redis-server as the init process.  To include
-[urunit](https://github.com/nubificus/urunit) in the redis:alpine image, we can
-use the following Containerfile:
-
-```
-FROM harbor.nbfc.io/nubificus/urunit:latest AS init
-
-FROM redis:alpine
-
-COPY --from=init /urunit /urunit
-```
-
-> **NOTE**: We are working towards enabling the addition of extra files from the
-> `bunnyfile`. We will update this page once this feature is supported.
-
-After building the above container, make sure to specify it in the `from` field
-of rootfs in `bunnyfile`:
-
-```yaml
-rootfs:
-  from: redis/urunit:alpine
-  type: raw
-```
-
-At last we need to modify the `cmdline` section of `bunnyfile` to execute
-[urunit](https://github.com/nubificus/urunit):
-
-```yaml
-cmdline: "/urunit /usr/local/bin/redis-server"
-```
+To use a locally built kernel instead, set `kernel.from: local` and
+`kernel.path: bzImage`.
 
 #### Running the container
 
@@ -318,15 +305,21 @@ just to demonstrate how to manually define the required annotations for `urunc`:
 FROM scratch
 
 COPY vmlinux /kernel
-COPY nginx_rootfs.ext2 /rootfs.ext2
+COPY rootfs.ext2 /rootfs.ext2
 
 LABEL "com.urunc.unikernel.binary"="/kernel"
 LABEL "com.urunc.unikernel.unikernelType"="linux"
 LABEL "com.urunc.unikernel.block"="/rootfs.ext2"
 LABEL "com.urunc.unikernel.blkMntPoint"="/"
 LABEL "com.urunc.unikernel.hypervisor"="firecracker"
-CMD ["/urunit", "/usr/sbin/nginx", "-g", "daemon off;error_log stderr debug;"]
+LABEL bunny.urunit=false
+ENTRYPOINT ["/urunit"]
+CMD ["/usr/sbin/nginx", "-g", "daemon off;error_log stderr debug;"]
 ```
+
+Here `/urunit` is already inside the block image, so `bunny.urunit=false`
+prevents the frontend from adding another copy and prepending it again. The
+entrypoint selects the init process inside the guest's block rootfs.
 
 We can build the container with:
 
@@ -387,27 +380,11 @@ image to use as the root filesystem. To demonstrate this, we will use the
 
 #### Preparing the container image.
 
-First let's create the initrd:
+Bunny can create the initrd directly from an include list. Copy the
+application's rootfs and urunit from their OCI images, then select urunit as
+the entrypoint:
 
-```bash
-mkdir tmp_rootfs
-docker export $(docker create traefik/whoami) | tar -C tmp_rootfs/ -xvf -
-wget -O tmp_rootfs/urunit https://github.com/nubificus/urunit/releases/download/v0.1.0/urunit_x86_64 # If we want urunit as init
-chmod +x tmp_rootfs/urunit
-cd tmp_rootfs
-find . | cpio -H newc -o > ../rootfs.initrd
-```
-
-> **NOTE**: We are working towards enabling the creation of the initrd directly
-> from [bunny](https://github.com/nubificus/bunny). We will update this page
-> once this feature is supported.
-
-Now we have an initrd `rootfs.initrd` generated from `traefik/whoami` and with
-[urunit](https://github.com/nubificus/urunit) that we got from its [latest
-release](https://github.com/nubificus/urunit/releases/tag/v0.1.0).  In order to
-pack everything together, we can use the following `bunnyfile`:
-
-```
+```yaml
 #syntax=harbor.nbfc.io/nubificus/bunny:latest
 version: v0.1
 
@@ -417,15 +394,22 @@ platforms:
   architecture: x86
 
 rootfs:
-  from: local
+  from: scratch
   type: initrd
-  path: rootfs.initrd
+  include:
+    - from: traefik/whoami:latest
+      source: /
+      destination: /
+    - from: harbor.nbfc.io/nubificus/urunit:latest
+      source: /urunit
+      destination: /urunit
 
 kernel:
   from: harbor.nbfc.io/nubificus/urunc/linux-kernel-firecracker:v6.14
   path: /kernel
 
-cmdline: "/urunit /whoami"
+entrypoint: ["/urunit"]
+cmd: ["/whoami"]
 ```
 
 We can build the container with:
