@@ -27,7 +27,6 @@ var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 		images := getTestImages(cases)
 		err := pullAllImages(testDocker, images)
 		Expect(err).NotTo(HaveOccurred(), "Failed to pull docker images")
-
 		DeferCleanup(func() {
 			removeAllImages(testDocker, images)
 		})
@@ -43,12 +42,25 @@ var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 		}
 	})
 
-	DescribeTable("unikernel containers",
-		func(tc containerTestArgs) {
-			skipMissingVolumes(tc)
-			tool = newDockerTool(tc)
-			runDetachedTest(tool, tc)
-		},
-		toTableEntries(dockerTestCases()),
-	)
+	Context("foreground containers", func() {
+		DescribeTable("unikernel containers",
+			func(tc containerTestArgs) {
+				skipMissingVolumes(tc)
+				tool = newDockerTool(tc)
+				runForegroundTest(tool, tc)
+			},
+			toTableEntries(selectTestCases(dockerTestCases(), false)),
+		)
+	})
+
+	Context("detached containers", func() {
+		DescribeTable("unikernel containers",
+			func(tc containerTestArgs) {
+				skipMissingVolumes(tc)
+				tool = newDockerTool(tc)
+				runDetachedTest(tool, tc)
+			},
+			toTableEntries(selectTestCases(dockerTestCases(), true)),
+		)
+	})
 })

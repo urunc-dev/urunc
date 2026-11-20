@@ -31,6 +31,7 @@ import (
 
 	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/network"
+	"github.com/urunc-dev/urunc/pkg/network/localhost"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/unikernels"
@@ -355,8 +356,9 @@ func SetupNet(tuntap bool, networkType string, uid, gid uint32) (types.NetDevPar
 		// virtual ethernet interface inside the namespace
 		netArgs.MAC = networkInfo.EthDevice.MAC
 		netArgs.MTU = networkInfo.EthDevice.MTU
+		// Empty unless dynamic networking applied localhost DNS forwarding.
+		netArgs.DNSServer = networkInfo.DNSServer
 	}
-
 	return netArgs, nil
 }
 

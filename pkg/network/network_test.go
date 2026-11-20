@@ -46,7 +46,7 @@ func TestNewNetworkManager(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := NewNetworkManager(tt.networkType)
+			got, err := NewNetworkManager(tt.networkType, nil)
 			if tt.expectedErr {
 				assert.Error(t, err, "NewNetworkManager() should return an error")
 			} else {
