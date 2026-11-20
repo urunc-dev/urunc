@@ -56,6 +56,29 @@ func TestHermitCommandString(t *testing.T) {
 			expected: "ip=10.0.0.2/24",
 		},
 		{
+			name: "with DNS configured",
+			hermit: &Hermit{
+				Net: HermitNet{
+					Address:   "10.0.0.2",
+					Mask:      24,
+					Gateway:   "10.0.0.1",
+					DNSServer: "1.1.1.1",
+				},
+			},
+			expected: "ip=10.0.0.2/24:10.0.0.1 env=HERMIT_DNS1=1.1.1.1",
+		},
+		{
+			name: "without DNS configured",
+			hermit: &Hermit{
+				Net: HermitNet{
+					Address: "10.0.0.2",
+					Mask:    24,
+					Gateway: "10.0.0.1",
+				},
+			},
+			expected: "ip=10.0.0.2/24:10.0.0.1",
+		},
+		{
 			name: "network and application arguments",
 			hermit: &Hermit{
 				Command: "/app --port 8080",
