@@ -293,9 +293,11 @@ func (l *Linux) configureNetwork(net types.NetDevParams) {
 
 // setupUrunitConfig creates the urunit configuration file with environment variables.
 func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
-	urunitConfig := l.buildUrunitConfig()
+	urunitConfig, err := l.buildUrunitConfig()
+	if err != nil {
+		return fmt.Errorf("failed to setup urunit config: %w", err)
+	}
 
-	var err error
 	if l.RootFsType == "initrd" {
 		var initrdToUpdate string
 		initrdToUpdate, err = securejoin.SecureJoin(constants.ContainerRootfsMountPath, rfs.Path)
@@ -315,32 +317,53 @@ func (l *Linux) setupUrunitConfig(rfs types.RootfsParams) error {
 }
 
 // buildEnvConfig creates the environment configuration content for urunit.
-func (l *Linux) buildUrunitConfig() string {
-	// Format: UES\n<env1>\n<env2>\n...\nUEE\n
+func (l *Linux) buildUrunitConfig() (string, error) {
+	// Every section marker and value is a NUL-terminated record, so a newline
+	// inside a value cannot corrupt framing (see #1068). NUL cannot appear in
+	// valid values, so it is rejected.
+	for _, e := range l.Env {
+		if err := validateUrunitValue("env var", e); err != nil {
+			return "", err
+		}
+	}
+	if err := validateUrunitValue("working directory", l.ProcConfig.WorkDir); err != nil {
+		return "", err
+	}
+	for _, b := range l.Blk {
+		if b.ID == "rootfs" {
+			continue
+		}
+		if err := validateUrunitValue("block ID", b.ID); err != nil {
+			return "", err
+		}
+		if err := validateUrunitValue("block mountpoint", b.MountPoint); err != nil {
+			return "", err
+		}
+	}
 	var sb strings.Builder
 	sb.WriteString(envStartMarker)
-	sb.WriteString("\n")
-	if len(l.Env) > 0 {
-		sb.WriteString(strings.Join(l.Env, "\n"))
-		sb.WriteString("\n")
+	sb.WriteString("\x00")
+	for _, e := range l.Env {
+		sb.WriteString(e)
+		sb.WriteString("\x00")
 	}
 	sb.WriteString(envEndMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(lpcStartMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("UID:")
 	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.UID), 10))
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("GID:")
 	sb.WriteString(strconv.FormatUint(uint64(l.ProcConfig.GID), 10))
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString("WD:")
 	sb.WriteString(l.ProcConfig.WorkDir)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(lpcEndMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	sb.WriteString(blkStartMarker)
-	sb.WriteString("\n")
+	sb.WriteString("\x00")
 	for _, b := range l.Blk {
 		if b.ID == "rootfs" {
 			continue
@@ -350,14 +373,14 @@ func (l *Linux) buildUrunitConfig() string {
 			sb.WriteString("FC")
 		}
 		sb.WriteString(b.ID)
-		sb.WriteString("\n")
+		sb.WriteString("\x00")
 		sb.WriteString("MP:")
 		sb.WriteString(b.MountPoint)
-		sb.WriteString("\n")
+		sb.WriteString("\x00")
 	}
 	sb.WriteString(blkEndMarker)
-	sb.WriteString("\n")
-	return sb.String()
+	sb.WriteString("\x00")
+	return sb.String(), nil
 }
 
 func newLinux() *Linux {
