@@ -2,7 +2,7 @@
 
 ## Configuration File Location
 
-`urunc` looks for its configuration file at `/etc/urunc/config.toml` by default. The location can be overridden with the `URUNC_CONFIG_FILE` environment variable, for example `URUNC_CONFIG_FILE=/var/etc/urunc/config.toml`. If the file doesn't exist or contains invalid configuration, `urunc` will use sensible defaults and continue to operate normally.
+`urunc` looks for its configuration file at `/etc/urunc/config.toml` by default. The location can be overridden with the `URUNC_CONFIG_FILE` environment variable, for example `URUNC_CONFIG_FILE=/var/etc/urunc/config.toml`. If the file doesn't exist, `urunc` will use sensible defaults and continue to operate normally. If it can not be read or decoded, every `urunc create` fails.
 
 One way to set the variable is to replace the `containerd-shim-urunc-v2` binary that containerd invokes with a small wrapper script that sets it and execs the real shim. For example, move the real shim aside (e.g. to `containerd-shim-urunc-v2.real`) and save the following as `/usr/local/bin/containerd-shim-urunc-v2`:
 
@@ -169,6 +169,11 @@ Each monitor subsection supports the following options:
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
 | `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
 
+The `path` and `socket_path` fields must hold absolute and clean paths, e.g.
+without `..` or a trailing `/`. This applies to every monitor in the file, even
+one that no container uses. Otherwise, every `urunc create` fails, also for the
+containers that `urunc` hands to `runc`.
+
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
 Qemu's data files.
@@ -231,6 +236,8 @@ Each extra binary subsection supports the following options:
 | `path` | string | (empty) | Optional custom path to the extra binary. If not specified, urunc will search for the binary in PATH |
 | `options` | string | (empty) | Optional custom cli options for the extra binary |
 
+The `path` field must hold an absolute and clean path, as for the monitors.
+
 Specifically for `virtiofsd` the default values are the following:
 
 - `path`: `/usr/libexec/virtiofsd`
@@ -291,8 +298,9 @@ To create a configuration file, you can:
 `urunc` will validate the configuration file when it starts. If the configuration file:
 
 - **Does not exist**: `urunc` uses default values and logs a warning
-- **Contains syntax errors**: `urunc` uses default values and logs a warning about the parsing error
-- **Contains invalid values**: `urunc` will either use default values for invalid fields or fail to start if critical errors are found
+- **Can not be read or decoded** (e.g. no read permission, a syntax error, a table defined twice or a field of the wrong type): every `urunc create` fails with the error, also for the containers that `urunc` hands to `runc`, since the default values would silently replace every field of the file
+- **Contains an invalid path**: a `path` or `socket_path` field of a monitor, or the `path` field of an extra binary, that is not absolute and clean makes every `urunc create` fail in the same way
+- **Contains other invalid values**: `urunc` will either use default values for invalid fields, e.g. for a zero `default_vcpus` or an unknown log `level`, or fail to start if critical errors are found
 
 ## Default Values
 
