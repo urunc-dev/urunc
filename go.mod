@@ -25,7 +25,7 @@ require (
 	github.com/onsi/gomega v1.44.0
 	github.com/opencontainers/cgroups v0.1.0
 	github.com/opencontainers/image-spec v1.1.1
-	github.com/opencontainers/runc v1.5.2
+	github.com/opencontainers/runc v1.5.3
 	github.com/opencontainers/runtime-spec v1.3.0
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/rs/zerolog v1.35.1
@@ -34,7 +34,7 @@ require (
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	k8s.io/cri-api v0.37.2
@@ -71,7 +71,7 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mdlayher/socket v0.8.0 // indirect
 	github.com/mdlayher/vsock v1.3.0 // indirect
-	github.com/moby/sys/capability v0.4.0 // indirect
+	github.com/moby/sys/capability v0.5.0 // indirect
 	github.com/moby/sys/user v0.4.1 // indirect
 	github.com/mrunalp/fileutils v0.5.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
