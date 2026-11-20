@@ -39,14 +39,16 @@ RUN cp /app/tenders/hvt/solo5-hvt /artifacts/ && \
     cp /app/tenders/spt/solo5-spt /artifacts/
 
 FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS urunc-builder
+RUN apk update && \
+    apk add --no-cache git make build-base linux-headers
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 # COMMIT is passed from CI (first 7 chars of GITHUB_SHA) so that
 # `git describe --dirty` is not used inside the build context,
 # preventing a -dirty suffix in the embedded version string.
 ARG COMMIT
-RUN apk update && \
-    apk add --no-cache git make build-base linux-headers
-WORKDIR /app
-COPY . .
 RUN make COMMIT=${COMMIT}
 WORKDIR /artifacts
 RUN cp -r /app/dist .
@@ -110,30 +112,35 @@ COPY --from=qemu-builder /opt/kata-artifacts/opt/kata/libexec/virtiofsd /urunc-a
 COPY --from=firecracker-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=cloud-hypervisor-builder /artifacts /urunc-artifacts/hypervisors
 COPY --from=hluk-builder /artifacts /urunc-artifacts/hypervisors
-COPY --from=urunc-builder /artifacts/dist /urunc-artifacts
 
+# kubectl is pinned so that cached CI builds stay reproducible.
+ARG KUBECTL_VERSION=v1.37.2
 RUN apk update && \
     apk add --no-cache curl && \
     ARCH=$(uname -m) && \
     mv /urunc-artifacts/hypervisors/qemu-system /urunc-artifacts/hypervisors/qemu-system-${ARCH}  && \
     if [ "${ARCH}" = "x86_64" ]; then ARCH=amd64; fi && \
     if [ "${ARCH}" = "aarch64" ]; then ARCH=arm64; fi && \
-    mv /urunc-artifacts/containerd-shim-urunc-v2_static_${ARCH} /urunc-artifacts/containerd-shim-urunc-v2 && \
-    mv /urunc-artifacts/urunc_static_${ARCH} /urunc-artifacts/urunc && \
-    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt) && \
     curl -fL --progress-bar -o /usr/bin/kubectl https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl && \
     chmod +x /usr/bin/kubectl && \
     curl -fL --progress-bar -o /usr/bin/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-${ARCH} && \
     chmod +x /usr/bin/jq
 
+COPY --from=urunc-builder /artifacts/dist /urunc-artifacts
+RUN ARCH=$(uname -m) && \
+    if [ "${ARCH}" = "x86_64" ]; then ARCH=amd64; fi && \
+    if [ "${ARCH}" = "aarch64" ]; then ARCH=arm64; fi && \
+    mv /urunc-artifacts/containerd-shim-urunc-v2_static_${ARCH} /urunc-artifacts/containerd-shim-urunc-v2 && \
+    mv /urunc-artifacts/urunc_static_${ARCH} /urunc-artifacts/urunc
+
 # Final image
 FROM alpine:3.21@sha256:b6a6be0ff92ab6db8acd94f5d1b7a6c2f0f5d10ce3c24af348d333ac6da80685
-COPY --from=intermediate /urunc-artifacts /urunc-artifacts
-COPY --from=intermediate /usr/bin/jq /usr/bin/jq
-COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
-COPY deployment/urunc-deploy/scripts/install.sh /urunc-artifacts/scripts/install.sh
-COPY deployment/urunc-deploy/config.toml /deployment/config.toml
 RUN apk update && \
     apk add --no-cache bash curl py3-pip && \
-    pip install --no-cache-dir --break-system-packages yq==3.2.3 && \
-    chmod +x /urunc-artifacts/scripts/install.sh
+    pip install --no-cache-dir --break-system-packages yq==3.2.3
+COPY --from=intermediate /usr/bin/jq /usr/bin/jq
+COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
+COPY --from=intermediate /urunc-artifacts /urunc-artifacts
+COPY deployment/urunc-deploy/scripts/install.sh /urunc-artifacts/scripts/install.sh
+COPY deployment/urunc-deploy/config.toml /deployment/config.toml
+RUN chmod +x /urunc-artifacts/scripts/install.sh
