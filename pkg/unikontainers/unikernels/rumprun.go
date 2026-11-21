@@ -15,6 +15,7 @@
 package unikernels
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -26,7 +27,7 @@ const RumprunUnikernel string = "rumprun"
 const SubnetMask125 = "128.0.0.0"
 
 type Rumprun struct {
-	Command string
+	CmdLine []string
 	Monitor string
 	Envs    []string
 	Net     RumprunNet
@@ -35,6 +36,27 @@ type Rumprun struct {
 
 type RumprunCmd struct {
 	CmdLine string `json:"cmdline"`
+}
+
+// rumprunRc is one entry of the rumprun configuration's "rc" list: bin is
+// passed to the program as argv[0] and every element of argv as its own
+// argument, so argument boundaries survive (doc/config.md).
+type rumprunRc struct {
+	Bin  string   `json:"bin"`
+	Argv []string `json:"argv"`
+}
+
+// marshalRumprunJSON marshals without HTML escaping. The guest parses the
+// configuration with jsmn and keeps string bytes as they appear, without
+// decoding \uXXXX escapes, so &, < and > must stay raw.
+func marshalRumprunJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 type RumprunEnv struct {
@@ -68,12 +90,28 @@ func (r *Rumprun) CommandString() (string, error) {
 	envJSONString := ""
 	netJSONString := ""
 	blkJSONString := ""
-	cmd := RumprunCmd{
-		CmdLine: r.Command,
-	}
-	cmdJSON, err := json.Marshal(cmd)
-	if err != nil {
-		return "", fmt.Errorf("could not marshal cmdline: %v", err)
+	var cmdJSON []byte
+	var err error
+	if len(r.CmdLine) == 0 {
+		// Without a command there is nothing to describe in rc. Keep the
+		// empty cmdline of the old format, which lets the guest run its
+		// first baked program without arguments.
+		cmdJSON, err = marshalRumprunJSON(RumprunCmd{CmdLine: ""})
+		if err != nil {
+			return "", fmt.Errorf("could not marshal cmdline: %v", err)
+		}
+	} else {
+		// The old "cmdline" format is one whitespace-delimited string, which
+		// cannot tell an argument that contains a space from two arguments
+		// and drops empty arguments. "rc" keeps every argv element intact.
+		cmdJSON, err = marshalRumprunJSON(struct {
+			Rc []rumprunRc `json:"rc"`
+		}{
+			Rc: []rumprunRc{{Bin: r.CmdLine[0], Argv: r.CmdLine[1:]}},
+		})
+		if err != nil {
+			return "", fmt.Errorf("could not marshal rc: %v", err)
+		}
 	}
 	cmdJSONString = string(cmdJSON)
 	for i, eVar := range r.Envs {
@@ -221,7 +259,7 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 		r.Blk.Source = ""
 	}
 
-	r.Command = strings.Join(data.CmdLine, " ")
+	r.CmdLine = data.CmdLine
 	r.Monitor = data.Monitor
 	r.Envs = data.EnvVars
 
