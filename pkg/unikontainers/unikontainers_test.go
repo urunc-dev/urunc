@@ -152,6 +152,50 @@ func TestGuestMemory(t *testing.T) {
 	}
 }
 
+func TestMonitorVCPUs(t *testing.T) {
+	t.Parallel()
+
+	cpu := func(quota int64, period uint64) *specs.LinuxResources {
+		return &specs.LinuxResources{CPU: &specs.LinuxCPU{Quota: &quota, Period: &period}}
+	}
+	noPeriod := int64(200000)
+	qemu := string(hypervisors.QemuVmm)
+	fc := string(hypervisors.FirecrackerVmm)
+
+	tests := []struct {
+		name      string
+		def       uint
+		guest     string
+		vmm       string
+		resources *specs.LinuxResources
+		hostCPUs  int
+		expected  uint
+	}{
+		{name: "linux without resources", def: 2, guest: "linux", vmm: qemu, expected: 2},
+		{name: "linux without cpu section", def: 2, guest: "linux", vmm: qemu, resources: &specs.LinuxResources{}, expected: 2},
+		{name: "linux without a quota", def: 2, guest: "linux", vmm: qemu, resources: &specs.LinuxResources{CPU: &specs.LinuxCPU{}}, hostCPUs: 8, expected: 2},
+		{name: "linux with an unlimited quota", def: 1, guest: "linux", vmm: qemu, resources: cpu(-1, 100000), hostCPUs: 8, expected: 1},
+		{name: "linux with a quota and no period", def: 1, guest: "linux", vmm: qemu, resources: &specs.LinuxResources{CPU: &specs.LinuxCPU{Quota: &noPeriod}}, hostCPUs: 8, expected: 1},
+		{name: "linux with a zero period", def: 1, guest: "linux", vmm: qemu, resources: cpu(200000, 0), hostCPUs: 8, expected: 1},
+		{name: "linux with two cpus", def: 1, guest: "linux", vmm: qemu, resources: cpu(200000, 100000), hostCPUs: 8, expected: 2},
+		{name: "linux with half a cpu", def: 1, guest: "linux", vmm: qemu, resources: cpu(50000, 100000), hostCPUs: 8, expected: 1},
+		{name: "linux rounds up", def: 1, guest: "linux", vmm: qemu, resources: cpu(250000, 100000), hostCPUs: 8, expected: 3},
+		{name: "limit replaces a larger default", def: 4, guest: "linux", vmm: qemu, resources: cpu(100000, 100000), hostCPUs: 8, expected: 1},
+		{name: "limited by the host cpus", def: 1, guest: "linux", vmm: qemu, resources: cpu(1600000, 100000), hostCPUs: 4, expected: 4},
+		{name: "firecracker maximum", def: 1, guest: "linux", vmm: fc, resources: cpu(6400000, 100000), hostCPUs: 64, expected: 32},
+		{name: "qemu above the firecracker maximum", def: 1, guest: "linux", vmm: qemu, resources: cpu(6400000, 100000), hostCPUs: 64, expected: 64},
+		{name: "zero default is one", def: 0, guest: "linux", vmm: qemu, expected: 1},
+		{name: "other guests ignore the quota", def: 1, guest: "unikraft", vmm: qemu, resources: cpu(400000, 100000), hostCPUs: 8, expected: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, monitorVCPUs(tt.def, tt.guest, tt.vmm, tt.resources, tt.hostCPUs))
+		})
+	}
+}
+
 func TestExecuteHooksSequential(t *testing.T) {
 	trace := filepath.Join(t.TempDir(), "trace")
 

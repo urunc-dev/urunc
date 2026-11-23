@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -550,6 +551,36 @@ func monitorMemoryBytes(defaultMem uint, resources *specs.LinuxResources) uint64
 	return mem
 }
 
+// firecrackerMaxVCPUs is the most vCPUs Firecracker accepts for a guest.
+const firecrackerMaxVCPUs = 32
+
+// monitorVCPUs returns the number of vCPUs for the guest. For a guest that can
+// use more than one CPU (currently Linux), a CPU quota in the OCI spec sets the
+// count to quota/period, rounded up. Otherwise, or without a quota, it returns
+// the monitor's configured default. The result is at least 1 and never more
+// than the CPUs of the host, or the limit of the monitor.
+func monitorVCPUs(defaultVCPUs uint, unikernelType string, vmmType string, resources *specs.LinuxResources, hostCPUs int) uint {
+	vcpus := max(defaultVCPUs, 1)
+	if unikernelType != unikernels.LinuxUnikernel || resources == nil || resources.CPU == nil {
+		return vcpus
+	}
+	cpu := resources.CPU
+	if cpu.Quota == nil || *cpu.Quota <= 0 || cpu.Period == nil || *cpu.Period == 0 {
+		return vcpus
+	}
+
+	quota := uint64(*cpu.Quota) // nolint:gosec
+	period := *cpu.Period
+	vcpus = uint(min((quota+period-1)/period, uint64(math.MaxUint32))) // nolint:gosec
+
+	vcpus = min(vcpus, uint(max(hostCPUs, 1))) // nolint:gosec
+	if hypervisors.VmmType(vmmType) == hypervisors.FirecrackerVmm {
+		vcpus = min(vcpus, firecrackerMaxVCPUs)
+	}
+
+	return max(vcpus, 1)
+}
+
 // guestDefaultMemoryMB returns the memory, in MiB, to give a guest when the
 // container has no memory limit, 0 leaving it to the monitor. hluk sizes a
 // guest by the runtime its rootfs carries, from 64 MiB to 1536 MiB, so a
@@ -585,10 +616,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		"snapshot Path":     snapshotPath,
 	}).Debug("Initialization values")
 
-	defaultVCPUs := u.UruncCfg.Monitors[vmmType].DefaultVCPUs
-	if defaultVCPUs < 1 {
-		defaultVCPUs = 1
-	}
+	vcpus := monitorVCPUs(u.UruncCfg.Monitors[vmmType].DefaultVCPUs, unikernelType, vmmType, u.Spec.Linux.Resources, runtime.NumCPU())
 	defaultMemSizeMB := guestDefaultMemoryMB(vmmType, u.UruncCfg.Monitors[vmmType].DefaultMemoryMB)
 	socketPath := u.UruncCfg.Monitors[vmmType].SocketPath
 
@@ -599,7 +627,7 @@ func (u *Unikontainer) buildMonitorSpec(rootfsParams types.RootfsParams, monRes 
 		SnapshotPath:  snapshotPath,
 		Seccomp:       true, // Enable Seccomp by default
 		MemSizeB:      monitorMemoryBytes(defaultMemSizeMB, u.Spec.Linux.Resources),
-		VCPUs:         uint(defaultVCPUs),
+		VCPUs:         vcpus,
 		SocketPath:    socketPath,
 		Environment:   os.Environ(),
 		Ports:         u.State.Annotations[annotHyperlightPorts],
