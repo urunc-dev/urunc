@@ -31,13 +31,14 @@ var _ = Describe("Ctr", Ordered, ContinueOnFailure, func() {
 		err := pullAllImages(testCtr, images)
 		Expect(err).NotTo(HaveOccurred(), "Failed to pull ctr images")
 
-		if os.Getenv("URUNC_E2E_TEST_KEEP_IMAGES") == "1" {
-			log.Printf("URUNC_E2E_TEST_KEEP_IMAGES=1: skipping image cleanup")
-		} else {
-			DeferCleanup(func() {
-				removeAllImages(testCtr, images)
-			})
-		}
+		DeferCleanup(func() {
+			if os.Getenv(keepImagesEnv) == "1" {
+				log.Printf("%s=1: skipping image cleanup", keepImagesEnv)
+				return
+			}
+
+			removeAllImages(testCtr, images)
+		})
 	})
 
 	BeforeEach(func() {

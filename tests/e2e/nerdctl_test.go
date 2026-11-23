@@ -31,13 +31,14 @@ var _ = Describe("Nerdctl", Ordered, ContinueOnFailure, func() {
 		err := pullAllImages(testNerdctl, images)
 		Expect(err).NotTo(HaveOccurred(), "Failed to pull nerdctl images")
 
-		if os.Getenv("URUNC_E2E_TEST_KEEP_IMAGES") == "1" {
-			log.Printf("URUNC_E2E_TEST_KEEP_IMAGES=1: skipping image cleanup")
-		} else {
-			DeferCleanup(func() {
-				removeAllImages(testNerdctl, images)
-			})
-		}
+		DeferCleanup(func() {
+			if os.Getenv(keepImagesEnv) == "1" {
+				log.Printf("%s=1: skipping image cleanup", keepImagesEnv)
+				return
+			}
+
+			removeAllImages(testNerdctl, images)
+		})
 	})
 
 	BeforeEach(func() {

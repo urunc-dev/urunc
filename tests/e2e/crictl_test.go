@@ -31,13 +31,14 @@ var _ = Describe("Crictl", Ordered, ContinueOnFailure, func() {
 		err := pullAllImages(testCrictl, images)
 		Expect(err).NotTo(HaveOccurred(), "Failed to pull crictl images")
 
-		if os.Getenv("URUNC_E2E_TEST_KEEP_IMAGES") == "1" {
-			log.Printf("URUNC_E2E_TEST_KEEP_IMAGES=1: skipping image cleanup")
-		} else {
-			DeferCleanup(func() {
-				removeAllImages(testCrictl, images)
-			})
-		}
+		DeferCleanup(func() {
+			if os.Getenv(keepImagesEnv) == "1" {
+				log.Printf("%s=1: skipping image cleanup", keepImagesEnv)
+				return
+			}
+
+			removeAllImages(testCrictl, images)
+		})
 	})
 
 	BeforeEach(func() {
