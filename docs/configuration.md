@@ -169,6 +169,16 @@ Each monitor subsection supports the following options:
 | `vhost` | boolean | `false` | Optional: enable `vhost-net` for the monitor's network device, to improve network performance. Currently only honored by the `qemu` monitor |
 | `socket_path` | string | (empty) | Optional path for the monitor's control socket. If not set, the monitor runs without a control socket |
 
+### vCPUs of Linux guests
+
+`default_vcpus` is the number of vCPUs a guest gets when the container has no
+CPU limit. For a Linux guest, a CPU limit of the container (a CPU quota in the
+OCI spec, for example `docker run --cpus 2` or `resources.limits.cpu` in
+Kubernetes) sets the number of vCPUs instead. urunc rounds `quota / period` up,
+so a limit of `2500m` gives 3 vCPUs. The number never exceeds the CPUs of the
+host, or 32 for Firecracker. The limit only sizes the guest. urunc does not
+enforce it. Other guests always use `default_vcpus`.
+
 Since Qemu is the only currently supported monitor which requires extra data to
 boot a VM, `urunc` will first check `/usr/local/share` and then `/usr/share` for
 Qemu's data files.
