@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/urunc-dev/urunc/internal/constants"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -35,6 +36,7 @@ const (
 	testHvtMemoryKey     = "urunc_config.monitors.hvt.default_memory_mb"
 	testVirtiofsdPathKey = "urunc_config.extra_binaries.virtiofsd.path"
 	testVirtiofsdOptsKey = "urunc_config.extra_binaries.virtiofsd.options"
+	testDNSResolverIPKey = "urunc_config.network.dns_resolver_ip"
 	testVirtiofsdDefOpts = "--cache always --sandbox none"
 	testBinOpts          = "opt1 opt2"
 	testQemuBinaryPath   = "/usr/bin/qemu"
@@ -52,6 +54,19 @@ func TestUruncConfigFromMap(t *testing.T) {
 		assert.NotNil(t, config)
 		assert.Equal(t, defaultMonitorsConfig(), config.Monitors)
 		assert.Equal(t, defaultExtraBinConfig(), config.ExtraBins)
+		assert.Equal(t, defaultNetworkConfig(), config.Network)
+	})
+
+	t.Run("network dns resolver ip is picked up", func(t *testing.T) {
+		t.Parallel()
+		cfgMap := map[string]string{
+			testDNSResolverIPKey: "192.168.150.150",
+		}
+
+		config := UruncConfigFromMap(cfgMap)
+
+		assert.NotNil(t, config)
+		assert.Equal(t, "192.168.150.150", config.Network.DNSResolverIP)
 	})
 
 	t.Run("single monitor with all fields", func(t *testing.T) {
@@ -385,6 +400,7 @@ func TestUruncConfigMap(t *testing.T) {
 			"urunc_config.monitors.firecracker.binary_path",
 			testVirtiofsdPathKey,
 			testVirtiofsdOptsKey,
+			testDNSResolverIPKey,
 		}
 
 		for _, key := range expectedKeys {
@@ -397,6 +413,7 @@ func TestUruncConfigMap(t *testing.T) {
 		assert.Equal(t, "", cfgMap[testQemuBinaryKey])
 		assert.Equal(t, "/usr/libexec/virtiofsd", cfgMap[testVirtiofsdPathKey])
 		assert.Equal(t, testVirtiofsdDefOpts, cfgMap[testVirtiofsdOptsKey])
+		assert.Equal(t, constants.LocalhostDNSResolverIP, cfgMap[testDNSResolverIPKey])
 	})
 
 	t.Run("custom config produces expected map", func(t *testing.T) {
