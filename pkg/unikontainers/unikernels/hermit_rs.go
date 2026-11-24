@@ -48,14 +48,8 @@ func (h *Hermit) CommandString() (string, error) {
 		args = append(args, "ip="+ip)
 	}
 
-	// Add separator ONLY if we have net args AND a command
-	appArgs := strings.TrimSpace(h.Command)
-	if len(args) > 0 && appArgs != "" {
-		args = append(args, "--")
-	}
-
-	if appArgs != "" {
-		args = append(args, appArgs)
+	if h.Command != "" {
+		args = append(args, "--", h.Command)
 	}
 
 	return strings.Join(args, " "), nil
@@ -123,7 +117,13 @@ func (h *Hermit) Init(data types.UnikernelParams) error {
 		h.Net.Mask = mask
 	}
 
-	h.Command = strings.Join(data.CmdLine, " ")
+	// Hermit splits boot arguments like shell words. Quote each OCI argument
+	// separately, escaping a literal apostrophe outside the single quotes.
+	args := make([]string, len(data.CmdLine))
+	for i, arg := range data.CmdLine {
+		args[i] = "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+	}
+	h.Command = strings.Join(args, " ")
 	h.Monitor = data.Monitor
 
 	return nil
