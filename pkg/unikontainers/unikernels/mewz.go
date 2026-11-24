@@ -36,10 +36,14 @@ type MewzNet struct {
 }
 
 func (m *Mewz) CommandString() (string, error) {
-	if m.Net.Address != "" {
-		return fmt.Sprintf("ip=%s/%d gateway=%s", m.Net.Address, m.Net.Mask, m.Net.Gateway), nil
+	if m.Net.Address == "" {
+		return "", nil
 	}
-	return "", nil
+	args := fmt.Sprintf("ip=%s/%d", m.Net.Address, m.Net.Mask)
+	if m.Net.Gateway != "" {
+		args += " gateway=" + m.Net.Gateway
+	}
+	return args, nil
 }
 
 func (m *Mewz) SupportsBlock() bool {

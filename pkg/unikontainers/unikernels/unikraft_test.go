@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -86,4 +87,29 @@ func TestUnikraftMonitorCli(t *testing.T) {
 			assert.Equal(t, tc.expected, tc.unikraft.MonitorCli())
 		})
 	}
+}
+
+func TestUnikraftNetworkWithoutGateway(t *testing.T) {
+	t.Parallel()
+
+	params := types.UnikernelParams{Net: types.NetDevParams{IP: "172.18.5.2", Mask: "255.255.0.0"}}
+	current := &Unikraft{}
+	params.Version = "0.17.0"
+	require.NoError(t, current.Init(params))
+	assert.Equal(t, "netdev.ip=172.18.5.2/16", current.Net.Address)
+
+	params.Net.DNSServer = "172.18.0.3"
+	require.NoError(t, current.Init(params))
+	assert.Equal(t, "netdev.ip=172.18.5.2/16::172.18.0.3", current.Net.Address)
+
+	params.Version = "0.15.0"
+	require.NoError(t, current.Init(params))
+	assert.Equal(t, "netdev.ipv4_addr=172.18.5.2", current.Net.Address)
+	assert.Equal(t, "netdev.ipv4_subnet_mask=255.255.0.0", current.Net.Mask)
+	assert.Empty(t, current.Net.Gateway)
+
+	params.Version = "0.17.0"
+	params.Net = types.NetDevParams{}
+	require.NoError(t, current.Init(params))
+	assert.Empty(t, current.Net)
 }

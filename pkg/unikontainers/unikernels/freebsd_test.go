@@ -101,6 +101,18 @@ func TestFreeBSDCommandString(t *testing.T) {
 				" init_path=/urunit URUNIT_CONFIG=/dev/vtbd1",
 		},
 		{
+			name: "urunit init, a local network without a gateway",
+			freebsd: &FreeBSD{
+				WithUrunit:  true,
+				InitPath:    "/urunit",
+				BlockFsType: freeBSDufs,
+				Block:       []types.BlockDevParams{{ID: "rootfs"}},
+				Net:         FreeBSDNet{Address: "172.18.5.2", Mask: "255.255.0.0"},
+			},
+			expected: "vfs.root.mountfrom=ufs:/dev/vtbd0" +
+				" init_path=/urunit URUNIT_CONFIG=/dev/vtbd1",
+		},
+		{
 			name: "container command as init (no urunit): no URUNIT_* variables",
 			freebsd: &FreeBSD{
 				WithUrunit:  false,

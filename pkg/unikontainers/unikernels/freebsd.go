@@ -83,7 +83,7 @@ func (f *FreeBSD) CommandString() (string, error) {
 		// rootfs there is no other block device and therefore
 		// len(f.Block) will be 0.
 		params = append(params, "URUNIT_CONFIG=/dev/vtbd"+strconv.Itoa(len(f.Block)))
-		if f.Net.Address != "" {
+		if f.Net.Address != "" && f.Net.Gateway != "" {
 			ln := LinuxNet{Address: f.Net.Address, Gateway: f.Net.Gateway, Mask: f.Net.Mask}
 			if !IsIPInSubnet(ln) {
 				params = append(params, "URUNIT_DEFROUTE=1")

@@ -48,7 +48,7 @@ type RumprunNet struct {
 	Method    string `json:"method"`
 	Address   string `json:"addr"`
 	Mask      string `json:"mask"`
-	Gateway   string `json:"gw"`
+	Gateway   string `json:"gw,omitempty"`
 }
 
 type RumprunBlk struct {
@@ -192,7 +192,11 @@ func (r *Rumprun) Init(data types.UnikernelParams) error {
 		// For that reason, we might need to set the mask to an
 		// inclusive value (e.g. 0 or 1).
 		// However, further exploration of this issue is necessary.
-		mask, err := subnetMaskToCIDR(SubnetMask125)
+		subnetMask := data.Net.Mask
+		if data.Net.Gateway != "" {
+			subnetMask = SubnetMask125
+		}
+		mask, err := subnetMaskToCIDR(subnetMask)
 		if err != nil {
 			return err
 		}
