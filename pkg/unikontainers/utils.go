@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -27,6 +28,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -345,14 +347,11 @@ func findQemuDataDir(basename string) (string, error) {
 
 func executeHook(hook specs.Hook, state []byte) error {
 	var stdout, stderr bytes.Buffer
-	var cancel context.CancelFunc
 	ctx := context.Background()
 
-	// Apply hook-specific timeout if set, otherwise use global config timeout
 	if hook.Timeout != nil && *hook.Timeout > 0 {
+		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(*hook.Timeout)*time.Second)
-	}
-	if cancel != nil {
 		defer cancel()
 	}
 
@@ -369,9 +368,33 @@ func executeHook(hook specs.Hook, state []byte) error {
 	cmd.Stdin = bytes.NewReader(state)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// Bound pipe draining after exit or cancellation. Descendants can keep
+	// the hook's pipes open after the hook itself is gone.
+	cmd.WaitDelay = time.Second
+
+	// The deadline can expire during pipe draining after the hook exits.
+	// Record whether cancellation sent a signal to the hook itself.
+	var sentTimeoutSignal bool
+	cmd.Cancel = func() error {
+		err := cmd.Process.Kill()
+		sentTimeoutSignal = err == nil
+		return err
+	}
 
 	err := cmd.Run()
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The hook exited successfully and its pipes stayed open.
+		return nil
+	}
 	if err != nil {
+		// Run waits for Cancel to finish. The process may have exited as
+		// cancellation was trying to send the signal.
+		var exitErr *exec.ExitError
+		if sentTimeoutSignal && errors.As(err, &exitErr) {
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signal() == syscall.SIGKILL {
+				err = errors.Join(ctx.Err(), err)
+			}
+		}
 		return fmt.Errorf("failed hook: %s stdout: %s stderr %s error: %w", hook.Path, stdout.String(), stderr.String(), err)
 	}
 

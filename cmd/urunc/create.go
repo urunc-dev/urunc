@@ -140,7 +140,7 @@ func newUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (*un
 // createUnikontainer creates a Unikernel struct from bundle data, initializes
 // its base dir and state.json, sets up terminal if required and spawns reexec
 // process, waits for reexec process to notify, executes CreateRuntime hooks,
-// sends ACK to reexec process
+// and waits for reexec to finish CreateContainer hooks and listen for start.
 func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (err error) {
 	unikontainer, err := newUnikontainer(cmd, uruncCfg)
 	if err != nil {
@@ -293,7 +293,21 @@ func createUnikontainer(cmd *cli.Command, uruncCfg *unikontainers.UruncConfig) (
 
 	metrics.Capture(m.TS08)
 
-	return err
+	if err := waitForReexecReady(initSockParent); err != nil {
+		return errors.Join(err, unikontainer.CleanupFailedCreate(pidFilePath))
+	}
+	return nil
+}
+
+func waitForReexecReady(conn io.Reader) error {
+	var setupError string
+	if err := json.NewDecoder(conn).Decode(&setupError); err != nil {
+		return fmt.Errorf("failed to read readiness from reexec process: %w", err)
+	}
+	if setupError != "" {
+		return fmt.Errorf("reexec setup failed: %s", setupError)
+	}
+	return nil
 }
 
 func createReexecCmd(initSock *os.File, logPipe *os.File) *exec.Cmd {
@@ -356,11 +370,8 @@ func handleNsenterRet(initSock *os.File, reexec *exec.Cmd) (int, error) {
 	return pid.Stage2Pid, nil
 }
 
-// reexecUnikontainer gets a Unikernel struct from state.json,
-// sends ReexecStarted message to init.sock,
-// waits AckReexec message on urunc.sock,
-// waits StartExecve message on urunc.sock,
-// executes Prestart hooks and finally execve's the unikernel vmm.
+// reexecUnikontainer reports when the start listener is ready, then waits for
+// the start command and launches the unikernel monitor.
 func reexecUnikontainer(cmd *cli.Command) error {
 	// We need containerID here for filesystem paths.
 	// Metrics get the containerID from each subcommand
@@ -381,48 +392,26 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("unable to convert _LIBCONTAINER_INITPIPE: %w", err)
 	}
+	// Hooks must not inherit the socket used to report readiness to create.
+	unix.CloseOnExec(initFd)
 	initPipe := os.NewFile(uintptr(initFd), "initpipe")
 	metrics.Capture(m.TS05)
 
-	// wait AckReexec message on init socket from parent process
-	buf := make([]byte, len(unikontainers.AckReexec))
-	n, err := initPipe.Read(buf)
-	if err != nil {
-		return fmt.Errorf("failed to read from init socket: %w", err)
+	unikontainer, setupErr := prepareReexec(cmd, initPipe)
+	var setupError string
+	if setupErr != nil {
+		setupError = setupErr.Error()
 	}
-	msg := string(buf[0:n])
-	if msg != string(unikontainers.AckReexec) {
-		return fmt.Errorf("received unexpected message: %s", msg)
+	reportErr := json.NewEncoder(initPipe).Encode(setupError)
+	_ = initPipe.Close()
+	if reportErr != nil {
+		if unikontainer != nil {
+			reportErr = errors.Join(reportErr, unikontainer.DestroyListener(unikontainers.FromReexec))
+		}
+		return errors.Join(setupErr, fmt.Errorf("failed to report readiness to create: %w", reportErr))
 	}
-	err = initPipe.Close()
-	if err != nil {
-		return fmt.Errorf("close init pipe: %w", err)
-	}
-	metrics.Capture(m.TS09)
-
-	// get Unikontainer data from state.json
-	// TODO: We need to find a better way to synchronize and make sure
-	// the pid is written from urunc create. Right now we rely on receiving
-	// the AckReexec message, however this is not optimal and we might lose
-	// time because urunc create tries to write in a socket that the reexec
-	// process has not created yet.
-	unikontainer, err := getUnikontainer(cmd)
-	if err != nil {
-		return err
-	}
-
-	// execute CreateContainer hooks
-	err = unikontainer.ExecuteHooks("CreateContainer")
-	if err != nil {
-		err = fmt.Errorf("failed to execute CreateContainer hooks: %w", err)
-		return err
-	}
-	metrics.Capture(m.TS10)
-
-	// wait StartExecve message on urunc.sock from urunc start process
-	err = unikontainer.CreateListener(unikontainers.FromReexec)
-	if err != nil {
-		return fmt.Errorf("error creating listener on reexec socket: %w", err)
+	if setupErr != nil {
+		return setupErr
 	}
 	awaitErr := unikontainer.AwaitMsg(unikontainers.StartExecve)
 	// Before checking for any errors, make sure to clean up the socket
@@ -479,4 +468,30 @@ func reexecUnikontainer(cmd *cli.Command) error {
 	}
 
 	return errors.Join(err, sockErr)
+}
+
+func prepareReexec(cmd *cli.Command, initPipe io.Reader) (*unikontainers.Unikontainer, error) {
+	// The parent sends this ACK after saving the container state and PID.
+	ack := make([]byte, len(unikontainers.AckReexec))
+	if _, err := io.ReadFull(initPipe, ack); err != nil {
+		return nil, fmt.Errorf("failed to read from init socket: %w", err)
+	}
+	if string(ack) != string(unikontainers.AckReexec) {
+		return nil, fmt.Errorf("received unexpected message: %s", ack)
+	}
+	metrics.Capture(m.TS09)
+
+	container, err := getUnikontainer(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if err := container.ExecuteHooks("CreateContainer"); err != nil {
+		return nil, err
+	}
+	metrics.Capture(m.TS10)
+
+	if err := container.CreateListener(unikontainers.FromReexec); err != nil {
+		return nil, fmt.Errorf("error creating listener on reexec socket: %w", err)
+	}
+	return container, nil
 }

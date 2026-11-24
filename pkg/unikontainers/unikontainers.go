@@ -276,17 +276,20 @@ func (u *Unikontainer) InitialSetup() error {
 // and saves the given PID in the provided pid file path.
 // If pidFilePath is empty, it falls back to the default init.pid path.
 func (u *Unikontainer) Create(pid int, pidFilePath string) error {
-	path := filepath.Join(u.State.Bundle, initPidFilename)
-	if pidFilePath != "" {
-		path = pidFilePath
-	}
-	err := writePidFile(path, pid)
+	err := writePidFile(u.resolvePidFilePath(pidFilePath), pid)
 	if err != nil {
 		return err
 	}
 	u.State.Pid = pid
 	u.State.Status = specs.StateCreated
 	return u.saveContainerState()
+}
+
+func (u *Unikontainer) resolvePidFilePath(pidFilePath string) string {
+	if pidFilePath != "" {
+		return pidFilePath
+	}
+	return filepath.Join(u.State.Bundle, initPidFilename)
 }
 
 // SetRunningState sets the Unikernel status as running,
@@ -1112,6 +1115,28 @@ func (u *Unikontainer) Delete(force bool) error {
 		uniklog.Warnf("failed to cleanup network: %v", err)
 	}
 
+	return u.removeCreateResources()
+}
+
+// CleanupFailedCreate undoes create after reexec failed before start. The
+// monitor hasn't set up networking, so the pod namespace is left alone.
+func (u *Unikontainer) CleanupFailedCreate(pidFilePath string) error {
+	pidErr := os.Remove(u.resolvePidFilePath(pidFilePath))
+	if errors.Is(pidErr, os.ErrNotExist) {
+		pidErr = nil
+	}
+	resourceErr := u.removeCreateResources()
+
+	u.State.Status = specs.StateStopped
+	u.State.Pid = 0
+	if err := u.ExecuteHooks("Poststop"); err != nil {
+		uniklog.Warnf("failed to execute poststop hooks: %v", err)
+	}
+
+	return errors.Join(pidErr, resourceErr)
+}
+
+func (u *Unikontainer) removeCreateResources() error {
 	// Restore the block volume mounts that were unmounted during create,
 	// so their sources become discoverable by future containers. Do it in
 	// a best-effort way, since a failure to restore a mount should not
