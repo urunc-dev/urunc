@@ -29,8 +29,11 @@ use_containerd_drop_in_conf_file="false"
 containerd_drop_in_conf_file="/etc/containerd/config.d/urunc-deploy.toml"
 containerd_conf_d_import="/etc/containerd/conf.d/*.toml"
 containerd_conf_d_drop_in_file="/etc/containerd/conf.d/urunc-deploy.toml"
-# urunc's own containerd configuration file on k0s
-containerd_k0s_conf_file="/etc/containerd/containerd.d/urunc.toml"
+# k0s manages containerd under /etc/k0s on the node.
+containerd_k0s_root_conf_file="/host/etc/k0s/containerd.toml"
+containerd_k0s_conf_file="/host/etc/k0s/containerd.d/urunc.toml"
+# Snippet path used by older installers, checked on uninstall.
+containerd_k0s_old_conf_file="/etc/containerd/containerd.d/urunc.toml"
 # The drop-in file, when the containerd configuration already imports a
 # directory for drop-in files: conf.d, or the drop-in directory of k3s/rke2
 containerd_imported_drop_in_file=""
@@ -394,11 +397,67 @@ function wait_till_node_is_ready() {
     done
 }
 
+function k0s_containerd_endpoint() {
+    local pid arg config endpoint
+
+    # Read the running kubelet's endpoint to support a socket other than
+    # the k0s default. A command-line override takes precedence over YAML.
+    for pid in $(pidof kubelet); do
+        config=""
+        endpoint=""
+        while IFS= read -r -d '' arg; do
+            case "$arg" in
+                --config=/*) config="${arg#*=}" ;;
+                --container-runtime-endpoint=*) endpoint="${arg#*=}" ;;
+            esac
+        done 2>/dev/null < "/proc/${pid}/cmdline" || continue
+
+        if [ -z "$endpoint" ] && [ -n "$config" ]; then
+            endpoint=$(yq -r '.containerRuntimeEndpoint // empty' "/host${config}") || continue
+        fi
+        if [[ "$endpoint" == unix:///* ]]; then
+            printf 'unix:///host%s\n' "${endpoint#unix://}"
+            return 0
+        fi
+        if [ -n "$endpoint" ]; then
+            die "k0s kubelet must use a local Unix socket for containerd (found ${endpoint})"
+        fi
+    done
+
+    echo "unix:///host/run/k0s/containerd.sock"
+}
+
+function wait_for_k0s_runtime() {
+    local endpoint deadline
+    endpoint=$(k0s_containerd_endpoint)
+    deadline=$((SECONDS + 60))
+
+    # k0s reloads drop-ins asynchronously. A Ready node can still be
+    # running with the previous configuration.
+    while (( SECONDS < deadline )); do
+        if crictl --runtime-endpoint "$endpoint" --timeout 2s info 2>/dev/null \
+            | jq -e '.config.containerd.runtimes.urunc.runtimeType == "io.containerd.urunc.v2"' >/dev/null; then
+            return 0
+        fi
+        sleep 1s
+    done
+    die "k0s containerd at ${endpoint} did not load the urunc runtime within 60 seconds" \
+        "(check the k0s logs and ${containerd_k0s_conf_file#/host})"
+}
+
+function clear_k0s_ready_label() {
+    local label
+    label=$(kubectl get node "$NODE_NAME" --request-timeout=5s \
+        -o jsonpath='{.metadata.labels.urunc\.io/urunc-runtime}')
+    if [ "$label" == "true" ]; then
+        kubectl label node "$NODE_NAME" --request-timeout=5s urunc.io/urunc-runtime-
+    fi
+}
+
 function configure_cri_runtime() {
     configure_containerd "$1"
     if [ "$1" == "k0s-worker" ] || [ "$1" == "k0s-controller" ]; then
-        # do nothing, k0s will automatically load the config on the fly
-        :
+        wait_for_k0s_runtime
     else
         echo "reloading $1"
         host_systemctl daemon-reload
@@ -480,7 +539,7 @@ function create_containerd_conf_file() {
 function get_containerd_pluginid() {
     local containerd_root_conf_file="$containerd_conf_file"
     if [[ "$1" =~ ^(k0s-worker|k0s-controller)$ ]]; then
-        containerd_root_conf_file="/etc/containerd/containerd.toml"
+        containerd_root_conf_file="$containerd_k0s_root_conf_file"
     fi
 
     local config_version=""
@@ -499,6 +558,85 @@ function get_containerd_pluginid() {
         echo \"io.containerd.cri.v1.runtime\"
     else
         echo cri
+    fi
+}
+
+# Classify how the k0s configuration loads the given snippet. Cleanup
+# also uses this to preserve files referenced by an exact import.
+function k0s_containerd_config_mode() {
+    if [ ! -e "$containerd_k0s_root_conf_file" ]; then
+        echo "managed"
+        return 0
+    fi
+
+    python3 - /host "$containerd_k0s_root_conf_file" "${1#/host}" "$containerd_major_version" <<'PY'
+import glob
+import os
+from pathlib import Path
+import sys
+import tomllib
+
+host, root = map(Path, sys.argv[1:3])
+snippet = host / sys.argv[3].lstrip("/")
+managed_marker = "# k0s_managed=true"
+pending = [root]
+seen = set()
+mode = "unimported"
+
+while pending:
+    config = pending.pop()
+    if config in seen:
+        continue
+    seen.add(config)
+    try:
+        content = config.read_text(encoding="utf-8")
+        imports = tomllib.loads(content).get("imports", [])
+    except (OSError, ValueError) as error:
+        sys.exit(f"Cannot read k0s containerd configuration {config} ({error})")
+
+    if config == root:
+        lines = content.splitlines()
+        # k0s with bundled containerd 1.x also accepts the marker below
+        # the first line. k0s 1.36 requires it to be the first line.
+        if lines[:1] == [managed_marker] or (sys.argv[4] == "1" and managed_marker in lines):
+            print("managed")
+            sys.exit(0)
+
+    if not isinstance(imports, list) or any(not isinstance(path, str) for path in imports):
+        sys.exit(f"The imports in {config} must be a list of paths")
+
+    for pattern in imports:
+        # Match how containerd resolves imports relative to the current file.
+        path = os.path.normpath(Path("/") / config.relative_to(host).parent / pattern)
+        imported = host / path.lstrip("/")
+        if imported == snippet:
+            print("exact-import")
+            sys.exit(0)
+        if "*" in path:
+            if snippet.match(str(imported)):
+                mode = "glob-import"
+            pending.extend(map(Path, glob.glob(str(imported))))
+        else:
+            pending.append(imported)
+
+print(mode)
+PY
+}
+
+function validate_k0s_containerd_config() {
+    local mode snippet="${containerd_k0s_conf_file#/host}"
+    mode=$(k0s_containerd_config_mode "$containerd_k0s_conf_file")
+    if [ "$mode" == "managed" ]; then
+        return 0
+    fi
+    if [ "${containerd_major_version:-0}" -lt 2 ]; then
+        die "urunc-deploy requires a k0s-managed configuration with containerd 1.x" \
+            "because a runtime import can replace the entire CRI configuration"
+    fi
+    if [ "$mode" == "unimported" ]; then
+        die "The user-managed k0s containerd config ${containerd_k0s_root_conf_file#/host}" \
+            "must import ${snippet} for urunc-deploy to register its runtime" \
+            "(add ${snippet%/*}/*.toml to its imports)"
     fi
 }
 
@@ -731,13 +869,25 @@ function remove_urunc_containerd_conf() {
 # only the urunc entries.
 function cleanup_containerd_conf_file() {
     local file="$1"
-    local created_marker
+    local created_marker keep_empty="false"
     created_marker="$(created_marker_file "$file")"
 
+    if [ -f "$file" ] && [[ "$file" == "$containerd_k0s_conf_file" || "$file" == "$containerd_k0s_old_conf_file" ]]; then
+        local mode
+        if ! mode=$(k0s_containerd_config_mode "$file") || [ "$mode" == "exact-import" ]; then
+            # An exact import needs a file even after urunc is removed.
+            # Keep it if we could not determine the imports safely.
+            keep_empty="true"
+        fi
+    fi
+
     if conf_file_unchanged_since_created "$file"; then
-        # An install created the configuration and nobody changed it since,
-        # so remove it as a whole
-        rm -f "$file" "$created_marker"
+        if [ "$keep_empty" == "true" ]; then
+            : > "$file"
+            rm -f "$created_marker"
+        else
+            rm -f "$file" "$created_marker"
+        fi
     elif [ -f "$file" ]; then
         local created="false"
         if [ -f "$created_marker" ]; then
@@ -758,7 +908,7 @@ function cleanup_containerd_conf_file() {
         # A file left empty only ever held urunc's configuration, if
         # urunc-deploy created it. An administrator's file may have held only
         # comments, which tomlq drops, so it is kept even if empty.
-        if { [ "$created" == "true" ] || [ "$file" == "$containerd_k0s_conf_file" ]; } \
+        if [ "$created" == "true" ] && [ "$keep_empty" == "false" ] \
             && ! grep -q '[^[:space:]]' "$file"; then
             rm -f "$file"
         fi
@@ -872,9 +1022,7 @@ function main() {
             containerd_conf_tmpl_file="${containerd_conf_tmpl_files[0]}"
         fi
     elif [[ "$runtime" =~ ^(k0s-worker|k0s-controller)$ ]]; then
-        # From 1.27.1 onwards k0s enables dynamic configuration on containerd CRI runtimes.
-        # This works by k0s creating a special directory in /etc/k0s/containerd.d/ where user can drop-in partial containerd configuration snippets.
-        # k0s will automatically pick up these files and adds these in containerd configuration imports list.
+        # k0s automatically loads CRI runtime snippets from its managed directory.
         containerd_conf_file="${containerd_k0s_conf_file}"
     fi
 
@@ -897,6 +1045,10 @@ function main() {
 
     case "$action" in
         install)
+            if [[ "$runtime" =~ ^(k0s-worker|k0s-controller)$ ]]; then
+                clear_k0s_ready_label
+                validate_k0s_containerd_config
+            fi
             # Validate the configuration overrides before touching the host,
             # so an invalid value fails the installation without leaving
             # residual artifacts behind.
@@ -980,6 +1132,9 @@ function main() {
                 # Both templates, since config-v3.toml.tmpl may have been added
                 # or removed since install
                 conf_files=("${containerd_conf_tmpl_files[@]}")
+            elif [[ "$runtime" =~ ^(k0s-worker|k0s-controller)$ ]] \
+                && [ -f "$(created_marker_file "$containerd_k0s_old_conf_file")" ]; then
+                conf_files+=("$containerd_k0s_old_conf_file")
             fi
 
             cleanup_cri_runtime "$runtime" "${conf_files[@]}"
