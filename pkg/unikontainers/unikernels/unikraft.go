@@ -154,6 +154,17 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 		dnsServer = defaultDNSServer
 	}
 
+	// netdev.ip takes the subnet as a prefix length. Without a mask, keep
+	// the /24 that was used before.
+	prefixLen := 24
+	if ethDeviceMask != "" {
+		var err error
+		prefixLen, err = subnetMaskToCIDR(ethDeviceMask)
+		if err != nil {
+			return fmt.Errorf("failed to convert subnet mask %q to a prefix length: %w", ethDeviceMask, err)
+		}
+	}
+
 	setCompatArgs := func() {
 		u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
 		u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
@@ -168,7 +179,7 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	}
 
 	setCurrentArgs := func() {
-		u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":" + dnsServer
+		u.Net.Address = fmt.Sprintf("netdev.ip=%s/%d:%s:%s", ethDeviceIP, prefixLen, ethDeviceGateway, dnsServer)
 		switch rootFsType {
 		case "initrd":
 			// TODO: This needs better handling. We need to revisit this
