@@ -198,7 +198,7 @@ filesystem support and allows the mounting of the containerd's snapshot
 directly in the unikernel. This is only possible using devmapper as a
 snapshotter in containerd. For more information on setting up devmapper, please
 take a look on our [installation
-guide](../installation#setup-thinpool-devmapper).
+guide](../installation#setting-and-configuring-devmapper).
 
 Except for devmapper, `urunc` also supports the option of adding a block image
 inside the container image and attaching it to
@@ -323,7 +323,7 @@ support of [Linux](https://github.com/torvalds/linux) and can directly mount
 containerd's snapshot to a [Linux](https://github.com/torvalds/linux)
 VM. This is only possible using devmapper as a snapshotter in containerd. For
 more information on setting up devmapper, please take a look on our
-[installation guide](../installation#setup-thinpool-devmapper).
+[installation guide](../installation#setting-and-configuring-devmapper).
 
 For more information on packaging applications and executing them on top of
 [Linux](https://github.com/torvalds/linux) with `urunc` take a look at our
@@ -450,7 +450,7 @@ terminates. Images without `urunit` fall back to their own `/sbin/init`.
 
 For more information take a look at the
 [FreeBSD tutorial](../tutorials/freebsd-workloads). Setting up devmapper
-is described in the [installation guide](../installation#setup-thinpool-devmapper).
+is described in the [installation guide](../installation#setting-and-configuring-devmapper).
 
 An example of a Caddy HTTP server on top of [FreeBSD](https://www.freebsd.org/)
 and [Firecracker](https://github.com/firecracker-microvm/firecracker) with

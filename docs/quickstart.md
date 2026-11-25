@@ -1,6 +1,6 @@
 This document acts as a quickstart guide to showcase `urunc` features. Please
 refer to the [installation guide](../installation) for more detailed installation
-instructions, or the [design](../design#architecture) document for more
+instructions, or the [design](../design) document for more
 details regarding `urunc`'s architecture.
 
 We can quickly set up `urunc` either with [docker](https://docs.docker.com/engine/install/ubuntu/) or [containerd](https://github.com/containerd/containerd) and [nerdctl](https://github.com/containerd/nerdctl/).
@@ -181,7 +181,7 @@ sudo /usr/local/bin/scripts/dm_create.sh
 
 > Note: The above instructions will create the thinpool, but in case of reboot,
 > you will need to reload it running the `dm_reload.sh` script. Otherwise
-> check the [installation guide for creating a service](../installation#create-a-service-for-thinpool-reloading). 
+> check the [installation guide for creating a service](../installation#setting-and-configuring-devmapper). 
 
 At last, we need to modify
 [containerd](https://github.com/containerd/containerd/tree/main) configuration

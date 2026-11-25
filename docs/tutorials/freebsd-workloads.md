@@ -50,7 +50,7 @@ If the image does not contain `urunit`, the kernel falls back to `/sbin/init`
 of the image and the configuration is ignored.
 
 The configuration format is the one described in the
-[Linux tutorial](./existing-container-linux#init-process) with two additions:
+[Linux tutorial](../existing-container-linux#init-process) with two additions:
 
 ```
 UCS
@@ -71,7 +71,7 @@ UNE
 ## Preparing the image
 
 To differentiate traditional containers from unikernels, `urunc` uses specific
-[annotations](../image-building#annotations). Therefore, to run a container with
+[annotations](../../package#annotations). Therefore, to run a container with
 a FreeBSD kernel on `urunc`, these annotations must be configured and the kernel
 (along with `urunit`) must be included in the container image.
 
