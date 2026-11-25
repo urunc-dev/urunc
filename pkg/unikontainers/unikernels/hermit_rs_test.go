@@ -19,67 +19,68 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
 func TestHermitCommandString(t *testing.T) {
 	t.Parallel()
 
+	network := types.NetDevParams{
+		IP:      "10.0.0.2",
+		Mask:    "255.255.255.0",
+		Gateway: "10.0.0.1",
+	}
 	testCases := []struct {
 		name     string
-		hermit   *Hermit
+		net      types.NetDevParams
+		cmdLine  []string
 		expected string
 	}{
+		{name: "no network or arguments"},
 		{
-			name:     "no network configured",
-			hermit:   &Hermit{},
-			expected: "",
-		},
-		{
-			name: "address and gateway",
-			hermit: &Hermit{
-				Net: HermitNet{
-					Address: "10.0.0.2",
-					Mask:    24,
-					Gateway: "10.0.0.1",
-				},
-			},
+			name:     "address and gateway",
+			net:      network,
 			expected: "ip=10.0.0.2/24:10.0.0.1",
 		},
 		{
-			name: "address without gateway",
-			hermit: &Hermit{
-				Net: HermitNet{
-					Address: "10.0.0.2",
-					Mask:    24,
-				},
-			},
+			name:     "address without gateway",
+			net:      types.NetDevParams{IP: network.IP, Mask: network.Mask},
 			expected: "ip=10.0.0.2/24",
 		},
 		{
-			name: "network and application arguments",
-			hermit: &Hermit{
-				Command: "/app --port 8080",
-				Net: HermitNet{
-					Address: "10.0.0.2",
-					Mask:    24,
-					Gateway: "10.0.0.1",
-				},
-			},
-			expected: "ip=10.0.0.2/24:10.0.0.1 -- /app --port 8080",
+			name:     "network and application arguments",
+			net:      network,
+			cmdLine:  []string{"/app", "-g", "daemon off;"},
+			expected: "ip=10.0.0.2/24:10.0.0.1 -- '/app' '-g' 'daemon off;'",
 		},
 		{
-			name: "application arguments without network",
-			hermit: &Hermit{
-				Command: "/app --port 8080",
-			},
-			expected: "/app --port 8080",
+			name:     "application flags without network",
+			cmdLine:  []string{"--port=80", "x", "--"},
+			expected: "-- '--port=80' 'x' '--'",
+		},
+		{
+			name:     "one empty argument",
+			cmdLine:  []string{""},
+			expected: "-- ''",
+		},
+		{
+			name:     "comments and whitespace",
+			cmdLine:  []string{"a", "#b", "", " ", "c\td\ne", ""},
+			expected: "-- 'a' '#b' '' ' ' 'c\td\ne' ''",
+		},
+		{
+			name:     "quotes and backslashes",
+			cmdLine:  []string{`O'Brien`, `"`, `{"k":"v"}`, `C:\dir\`},
+			expected: `-- 'O'\''Brien' '"' '{"k":"v"}' 'C:\dir\'`,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := tc.hermit.CommandString()
+			h := newHermit()
+			require.NoError(t, h.Init(types.UnikernelParams{CmdLine: tc.cmdLine, Net: tc.net}))
+			result, err := h.CommandString()
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, result)
 		})
