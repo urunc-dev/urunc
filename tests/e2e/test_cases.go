@@ -211,7 +211,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-qemu-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/nginx-linux-qemu-raw:latest",
 			Name:           "Qemu-linux-nginx",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -291,7 +291,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/nginx-linux-firecracker-raw:latest",
 			Name:           "Firecracker-linux-nginx",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -355,7 +355,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       namespaceTest,
 		},
 		{
-			Image:     "harbor.nbfc.io/nubificus/urunc/busybox-qemu-linux-raw:latest",
+			Image:     "ghcr.io/urunc-dev/guest-images/busybox-linux-qemu-raw:latest",
 			Name:      "Qemu-linux-block-mounts",
 			Devmapper: true,
 			Seccomp:   true,
@@ -363,7 +363,7 @@ func nerdctlTestCases() []containerTestArgs {
 			GID:       0,
 			Groups:    []int64{},
 			Memory:    "",
-			Cli:       "/bin/cat /proc/self/mountinfo",
+			Cli:       "/bin/sh -c echo${IFS}7>/proc/sys/kernel/printk;cat${IFS}/proc/self/mountinfo",
 			Volumes: []containerVolume{
 				{Source: "/tmp/test_mountpoint", Dest: "/mnt/data/mp"},
 			},
@@ -374,7 +374,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       blockMountTest,
 		},
 		{
-			Image:     "harbor.nbfc.io/nubificus/urunc/busybox-firecracker-linux-raw:latest",
+			Image:     "ghcr.io/urunc-dev/guest-images/busybox-linux-firecracker-raw:latest",
 			Name:      "Firecracker-linux-block-mounts",
 			Devmapper: true,
 			Seccomp:   true,
@@ -382,7 +382,7 @@ func nerdctlTestCases() []containerTestArgs {
 			GID:       0,
 			Groups:    []int64{},
 			Memory:    "",
-			Cli:       "/bin/cat /proc/self/mountinfo",
+			Cli:       "/bin/sh -c echo${IFS}7>/proc/sys/kernel/printk;cat${IFS}/proc/self/mountinfo",
 			Volumes: []containerVolume{
 				{Source: "/tmp/test_mountpoint", Dest: "/mnt/data/mp"},
 			},
@@ -393,7 +393,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       blockMountTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/busybox-cloud-hypervisor-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/busybox-linux-cloud-hypervisor-raw:latest",
 			Name:           "CloudHypervisor-linux-ping",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -409,7 +409,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/busybox-cloud-hypervisor-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/busybox-linux-cloud-hypervisor-raw:latest",
 			Name:           "CloudHypervisor-linux-seccomp",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -425,7 +425,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       seccompTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/nginx-linux-cloud-hypervisor-raw:latest",
 			Name:           "CloudHypervisor-linux-nginx",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -441,7 +441,7 @@ func nerdctlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-cloud-hypervisor-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/nginx-linux-cloud-hypervisor-raw:latest",
 			Name:           "CloudHypervisor-linux-nginx-devmapper",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -714,7 +714,7 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/hello-world-qemu-linux-initrd:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/hello-world-linux-qemu-initrd:latest",
 			Name:           "Qemu-linux-hello-world",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -731,7 +731,7 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/readfile-qemu-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/readfile-linux-qemu-raw:latest",
 			Name:           "Qemu-linux-read-file-virtiofs",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -748,7 +748,7 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/hello-exec-env-qemu-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/hello-exec-env-linux-qemu-raw:latest",
 			Name:           "Qemu-linux-environment-setup-create-initrd",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -782,7 +782,7 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/hello-world-firecracker-linux-initrd:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/hello-world-linux-firecracker-initrd:latest",
 			Name:           "Firecracker-linux-hello-world",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -799,7 +799,7 @@ func ctrTestCases() []containerTestArgs {
 			TestFunc:       matchTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/hello-exec-env-firecracker-linux-initrd:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/hello-exec-env-linux-firecracker-initrd:latest",
 			Name:           "Firecracker-linux-environment-setup-append-initrd",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -950,7 +950,7 @@ func crictlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-qemu-linux-block:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/redis-linux-qemu-block:latest",
 			Name:           "Qemu-linux-redis",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -982,7 +982,7 @@ func crictlTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/nginx-firecracker-linux-raw:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/nginx-linux-firecracker-raw:latest",
 			Name:           "Firecracker-linux-nginx",
 			Devmapper:      true,
 			Seccomp:        true,
@@ -1147,7 +1147,7 @@ func dockerTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-qemu-linux-block:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/redis-linux-qemu-block:latest",
 			Name:           "Qemu-linux-redis",
 			Devmapper:      false,
 			Seccomp:        true,
@@ -1227,7 +1227,7 @@ func dockerTestCases() []containerTestArgs {
 			TestFunc:       pingTest,
 		},
 		{
-			Image:          "harbor.nbfc.io/nubificus/urunc/redis-firecracker-linux-block:latest",
+			Image:          "ghcr.io/urunc-dev/guest-images/redis-linux-firecracker-block:latest",
 			Name:           "Firecracker-linux-redis",
 			Devmapper:      false,
 			Seccomp:        true,
