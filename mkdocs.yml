@@ -35,6 +35,7 @@ nav:
   - Developer Guide: 
       - developer-guide/*.md
       - API Reference: https://pkg.go.dev/github.com/urunc-dev/urunc/pkg/unikontainers
+  - Examples: examples.md
   - Tutorials:
       - tutorials/*.md
 
