@@ -70,16 +70,16 @@ func (l *Linux) CommandString() (string, error) {
 	rdinit := ""
 	bootParams := "panic=-1"
 
-	// TODO: Check if this check causes any performance drop
-	// or explore alternative implementations
-	consoleStr := ""
-	// TODO: Check under which conditions console should be set to
-	// ttyS0 or ttyAMA0. Currently, we have noticed that FC requires ttyS0
-	// and Qemu ttyAMA0 for aarch64 while for amd64 both are fine with ttyS0
-	if runtime.GOARCH == "arm64" && l.Monitor == "qemu" {
-		consoleStr = "console=ttyAMA0"
-	} else {
-		consoleStr = "console=ttyS0"
+	consoleStr := "console=ttyS0"
+	if runtime.GOARCH == "arm64" {
+		switch l.Monitor {
+		case "qemu":
+			consoleStr = "console=ttyAMA0"
+		case "cloud-hypervisor":
+			// Use virtio console with the serial device disabled so Cloud
+			// Hypervisor does not append earlycon after the init arguments.
+			consoleStr = "console=hvc0"
+		}
 	}
 	bootParams += " " + consoleStr
 
