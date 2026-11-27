@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -141,8 +142,9 @@ func CopyFileMountsToInitrd(oldInitrd string, mounts []specs.Mount) error {
 }
 
 // MergeFileMountsIntoInitrd adds regular-file bind mounts before the trailer
-// of an uncompressed newc archive. The archive is fully parsed before the
-// disposable initrd is updated in place. The caller should pass only bind mounts.
+// of an uncompressed newc archive. The merged archive is written to a temporary
+// file next to the initrd and replaces it only on success, so a failed merge
+// leaves the initrd untouched. The caller should pass only bind mounts.
 func MergeFileMountsIntoInitrd(oldInitrd string, mounts []specs.Mount) (retErr error) {
 	fileMounts, err := regularFileBindMounts(mounts)
 	if err != nil {
@@ -152,40 +154,77 @@ func MergeFileMountsIntoInitrd(oldInitrd string, mounts []specs.Mount) (retErr e
 		return nil
 	}
 
-	initrdFile, err := os.OpenFile(oldInitrd, os.O_RDWR, 0)
+	initrdFile, err := os.Open(oldInitrd)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %w", oldInitrd, err)
 	}
-	defer func() {
-		if err := initrdFile.Close(); err != nil {
-			closeErr := fmt.Errorf("could not close %s: %w", oldInitrd, err)
-			if retErr == nil {
-				retErr = closeErr
-			} else {
-				retErr = errors.Join(retErr, closeErr)
-			}
-		}
-	}()
+	defer initrdFile.Close()
 
-	trailerOffset, existingNames, inodes, err := inspectInitrd(initrdFile)
+	trailerOffset, entries, inodes, err := inspectInitrd(initrdFile)
 	if err != nil {
 		return fmt.Errorf("could not parse %s: %w", oldInitrd, err)
 	}
-	if err := initrdFile.Truncate(trailerOffset); err != nil {
-		return fmt.Errorf("could not truncate %s: %w", oldInitrd, err)
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(oldInitrd), filepath.Base(oldInitrd)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("could not create temporary file for %s: %w", oldInitrd, err)
 	}
-	if _, err := initrdFile.Seek(trailerOffset, io.SeekStart); err != nil {
-		return fmt.Errorf("could not seek in %s: %w", oldInitrd, err)
+	defer func() {
+		if retErr != nil {
+			tmpFile.Close()
+			os.Remove(tmpFile.Name())
+		}
+	}()
+
+	if err := copyOwnerAndMode(initrdFile, tmpFile); err != nil {
+		return fmt.Errorf("could not copy owner and mode of %s: %w", oldInitrd, err)
+	}
+	if err := writeMergedInitrd(tmpFile, initrdFile, trailerOffset, fileMounts, entries, inodes); err != nil {
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("could not close temporary file for %s: %w", oldInitrd, err)
+	}
+	if err := os.Rename(tmpFile.Name(), oldInitrd); err != nil {
+		return fmt.Errorf("could not replace %s: %w", oldInitrd, err)
 	}
 
-	w := cpio.NewWriter(initrdFile)
+	return nil
+}
+
+func copyOwnerAndMode(src, dst *os.File) error {
+	info, err := src.Stat()
+	if err != nil {
+		return err
+	}
+	fileInfo := info.Sys().(*syscall.Stat_t)
+	if err := dst.Chown(int(fileInfo.Uid), int(fileInfo.Gid)); err != nil {
+		return err
+	}
+	return dst.Chmod(info.Mode().Perm())
+}
+
+// writeMergedInitrd copies the records of src up to its trailer into dst, then
+// adds the file mounts and a new trailer.
+func writeMergedInitrd(dst, src *os.File, trailerOffset int64, fileMounts []specs.Mount, entries map[string]cpio.FileMode, inodes *inodeAllocator) error {
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("could not seek in %s: %w", src.Name(), err)
+	}
+	if _, err := io.CopyN(dst, src, trailerOffset); err != nil {
+		return fmt.Errorf("could not copy %s: %w", src.Name(), err)
+	}
+
+	w := cpio.NewWriter(dst)
 	for _, mount := range fileMounts {
 		archiveName, err := archivePath(mount.Destination)
 		if err != nil {
 			return err
 		}
 		lookupName := archiveLookupPath(archiveName)
-		if err := addMissingParents(w, lookupName, existingNames, inodes); err != nil {
+		if err := checkDestinationConflict(lookupName, entries); err != nil {
+			return fmt.Errorf("could not add mount destination %s to initrd: %w", mount.Destination, err)
+		}
+		if err := addMissingParents(w, lookupName, entries, inodes); err != nil {
 			return err
 		}
 		inode, err := inodes.allocate()
@@ -195,10 +234,37 @@ func MergeFileMountsIntoInitrd(oldInitrd string, mounts []specs.Mount) (retErr e
 		if err := copyFileToInitrdWithInode(w, mount.Source, archiveName, inode); err != nil {
 			return fmt.Errorf("could not add file %s to initrd: %w", mount.Source, err)
 		}
-		existingNames[lookupName] = struct{}{}
+		entries[lookupName] = cpio.TypeReg
 	}
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("could not close initrd writer: %w", err)
+	}
+
+	return nil
+}
+
+// checkDestinationConflict rejects a destination the guest could not unpack: a
+// file replacing a directory, or a file below an entry that cannot hold it. The
+// archive itself would stay valid, so the guest would only fail later at boot.
+// A symlink may point at a directory, so it is accepted as a parent.
+func checkDestinationConflict(lookupName string, entries map[string]cpio.FileMode) error {
+	if mode, exists := entries[lookupName]; exists && mode&cpio.ModeType == cpio.TypeDir {
+		return fmt.Errorf("%s is a directory in the initrd", lookupName)
+	}
+
+	parentName := ""
+	for _, component := range strings.Split(path.Dir(lookupName), "/") {
+		if component == "" || component == "." {
+			continue
+		}
+		parentName = path.Join(parentName, component)
+		mode, exists := entries[parentName]
+		if !exists {
+			continue
+		}
+		if fileType := mode & cpio.ModeType; fileType != cpio.TypeDir && fileType != cpio.TypeSymlink {
+			return fmt.Errorf("%s is not a directory in the initrd", parentName)
+		}
 	}
 
 	return nil
@@ -218,13 +284,13 @@ func regularFileBindMounts(mounts []specs.Mount) ([]specs.Mount, error) {
 	return fileMounts, nil
 }
 
-func inspectInitrd(f *os.File) (int64, map[string]struct{}, *inodeAllocator, error) {
+func inspectInitrd(f *os.File) (int64, map[string]cpio.FileMode, *inodeAllocator, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return 0, nil, nil, err
 	}
 
 	r := cpio.NewReader(f)
-	names := make(map[string]struct{})
+	entries := make(map[string]cpio.FileMode)
 	inodes := newInodeAllocator()
 	var trailerOffset int64
 	for {
@@ -233,12 +299,12 @@ func inspectInitrd(f *os.File) (int64, map[string]struct{}, *inodeAllocator, err
 			if err := validateTrailerAt(f, trailerOffset); err != nil {
 				return 0, nil, nil, err
 			}
-			return trailerOffset, names, inodes, nil
+			return trailerOffset, entries, inodes, nil
 		}
 		if err != nil {
 			return 0, nil, nil, fmt.Errorf("could not read newc record at offset %d: %w", trailerOffset, err)
 		}
-		names[archiveLookupPath(hdr.Name)] = struct{}{}
+		entries[archiveLookupPath(hdr.Name)] = hdr.Mode
 		inodes.reserve(hdr.Inode)
 		if _, err := io.Copy(io.Discard, r); err != nil {
 			return 0, nil, nil, err
@@ -307,14 +373,14 @@ func archiveLookupPath(name string) string {
 	return strings.TrimPrefix(path.Clean(name), "/")
 }
 
-func addMissingParents(w *cpio.Writer, lookupName string, existingNames map[string]struct{}, inodes *inodeAllocator) error {
+func addMissingParents(w *cpio.Writer, lookupName string, entries map[string]cpio.FileMode, inodes *inodeAllocator) error {
 	parentName := ""
 	for _, component := range strings.Split(path.Dir(lookupName), "/") {
 		if component == "" || component == "." {
 			continue
 		}
 		parentName = path.Join(parentName, component)
-		if _, exists := existingNames[parentName]; exists {
+		if _, exists := entries[parentName]; exists {
 			continue
 		}
 
@@ -329,7 +395,7 @@ func addMissingParents(w *cpio.Writer, lookupName string, existingNames map[stri
 		if err := w.WriteHeader(hdr); err != nil {
 			return fmt.Errorf("could not add directory %s to initrd: %w", archiveName, err)
 		}
-		existingNames[parentName] = struct{}{}
+		entries[parentName] = hdr.Mode
 	}
 	return nil
 }
