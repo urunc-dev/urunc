@@ -19,6 +19,7 @@ import (
 )
 
 const ctrName = "ctr"
+const ctrCmd = ctrName + " --namespace " + testNamespace
 
 type ctrInfo struct {
 	testArgs    containerTestArgs
@@ -90,7 +91,7 @@ func (i *ctrInfo) createPod() (string, error) {
 }
 
 func (i *ctrInfo) createContainer() (string, error) {
-	cmdBase := ctrName
+	cmdBase := ctrCmd
 	cmdBase += " c create "
 	cmdBase += ctrNewContainerCmd(i.testArgs)
 	return commonCmdExec(cmdBase)
@@ -106,11 +107,11 @@ func (i *ctrInfo) startContainer(detach bool) (string, error) {
 	if detach {
 		i.detached = true
 	}
-	return commonStart(ctrName+" t", i.containerID, detach)
+	return commonStart(ctrCmd+" t", i.containerID, detach)
 }
 
 func (i *ctrInfo) runContainer(detach bool) (string, error) {
-	cmdBase := ctrName
+	cmdBase := ctrCmd
 	cmdBase += " run "
 	if detach {
 		cmdBase += "-d "
@@ -124,7 +125,7 @@ func (i *ctrInfo) stopContainer() error {
 	if !i.detached {
 		return nil
 	}
-	cmdBase := ctrName
+	cmdBase := ctrCmd
 	cmdBase += " t kill "
 	cmdBase += i.containerID
 	output, err := commonCmdExec(cmdBase)
@@ -141,12 +142,12 @@ func (i *ctrInfo) stopPod() error {
 }
 
 func (i *ctrInfo) rmContainer() error {
-	output, err := commonRmContainer(ctrName+" c", i.containerID)
+	output, err := commonRmContainer(ctrCmd+" c", i.containerID)
 	err = checkExpectedOut("", output, err)
 	if err != nil {
 		return fmt.Errorf("Failed to remove %s: %v", i.containerID, err)
 	}
-	output, err = commonRmContainer(ctrName+" s", i.testArgs.Name)
+	output, err = commonRmContainer(ctrCmd+" s", i.testArgs.Name)
 	err = checkExpectedOut("", output, err)
 	if err != nil {
 		return fmt.Errorf("Failed to remove snapshot %s: %v", i.testArgs.Name, err)
@@ -168,7 +169,7 @@ func (i *ctrInfo) logContainer() (string, error) {
 }
 
 func (i *ctrInfo) searchContainer(cID string) (bool, error) {
-	cmd := ctrName + " c ls -q"
+	cmd := ctrCmd + " c ls -q"
 
 	output, err := commonCmdExec(cmd)
 	if err != nil {
@@ -183,7 +184,7 @@ func (i *ctrInfo) searchPod(string) (bool, error) {
 }
 
 func (i *ctrInfo) inspectCAndGet(key string) (string, error) {
-	cmdBase := ctrName
+	cmdBase := ctrCmd
 	cmdBase += " c info "
 	cmdBase += i.containerID
 	output, err := commonCmdExec(cmdBase)

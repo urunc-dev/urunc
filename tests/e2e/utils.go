@@ -88,11 +88,11 @@ func pullImageForTest(testFunc string, image string) error {
 		}
 		return nil
 	case testNerdctl:
-		return commonPull(nerdctlName, image)
+		return commonPull(nerdctlCmd, image)
 	case testDocker:
 		return commonPull(dockerName, image)
 	default:
-		return commonPull(ctrName, image)
+		return commonPull(ctrCmd, image)
 	}
 }
 
@@ -106,11 +106,11 @@ func removeImageForTest(testFunc string, image string) error {
 		}
 		return nil
 	case testNerdctl:
-		return commonRmImage(nerdctlName, image)
+		return commonRmImage(nerdctlCmd, image)
 	case testDocker:
 		return commonRmImage(dockerName, image)
 	default:
-		return commonRmImage(ctrName, image)
+		return commonRmImage(ctrCmd, image)
 	}
 }
 
@@ -219,6 +219,13 @@ func verifyNoStaleFiles(containerID string) error {
 
 	// Check /run/containerd/io.containerd.runtime.v2.task/k8s.io/containerID directory does not exist
 	dirPath = "/run/containerd/io.containerd.runtime.v2.task/k8s.io/" + containerID
+	_, err = os.Stat(dirPath)
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("bundle directory %s still exists", dirPath)
+	}
+
+	// Check /run/containerd/io.containerd.runtime.v2.task/urunc-test/containerID directory does not exist
+	dirPath = "/run/containerd/io.containerd.runtime.v2.task/" + testNamespace + "/" + containerID
 	_, err = os.Stat(dirPath)
 	if !os.IsNotExist(err) {
 		return fmt.Errorf("bundle directory %s still exists", dirPath)
