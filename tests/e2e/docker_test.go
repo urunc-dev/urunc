@@ -15,6 +15,9 @@
 package urunce2etesting
 
 import (
+	"log"
+	"os"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -29,6 +32,11 @@ var _ = Describe("Docker", Ordered, ContinueOnFailure, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to pull docker images")
 
 		DeferCleanup(func() {
+			if os.Getenv(keepImagesEnv) == "1" {
+				log.Printf("%s=1: skipping image cleanup", keepImagesEnv)
+				return
+			}
+
 			removeAllImages(testDocker, images)
 		})
 	})

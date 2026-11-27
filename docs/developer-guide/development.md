@@ -54,6 +54,10 @@ by running the:
 
 - end-to-end tests: `sudo make e2etest`
 
+To keep images pulled by the end-to-end tests, run `sudo make e2etest_keep_images`.
+Images are removed by default; this target sets `URUNC_E2E_TEST_KEEP_IMAGES=1`
+for the test run to skip image cleanup.
+
 > Note: When running `make` commands for `urunc` that will use go (i.e. build,
 > unittest, e2etest) you might need to specify the path to the go binary
 with `sudo GO=$(which go) make`.

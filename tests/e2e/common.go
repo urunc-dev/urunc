@@ -23,6 +23,8 @@ import (
 	"strings"
 )
 
+const keepImagesEnv = "URUNC_E2E_TEST_KEEP_IMAGES"
+
 type testTool interface {
 	Name() string
 	getTestArgs() containerTestArgs
