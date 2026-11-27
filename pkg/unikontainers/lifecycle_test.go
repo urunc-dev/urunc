@@ -15,9 +15,13 @@
 package unikontainers
 
 import (
+	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/require"
@@ -107,4 +111,113 @@ func TestDeleteKeepsStateWhenNetworkCleanupFails(t *testing.T) {
 	require.NoError(t, u.Delete(true))
 	_, err = os.Stat(u.BaseDir)
 	require.True(t, os.IsNotExist(err), "%s still exists after a forced delete", u.BaseDir)
+}
+
+func TestCleanupFailedCreate(t *testing.T) {
+	for _, test := range []string{"default PID file", "custom PID file"} {
+		t.Run(test, func(t *testing.T) {
+			u := unikontainerWithoutMonitor(t, 1234)
+			u.State.Status = specs.StateCreated
+			monitorRoot := filepath.Join(u.State.Bundle, monitorRootfsDirName)
+			require.NoError(t, os.Mkdir(monitorRoot, 0o700))
+			require.NoError(t, saveMonitorResources(u.BaseDir, monitorResources{}))
+
+			pidPath := filepath.Join(u.State.Bundle, initPidFilename)
+			pidArg := ""
+			if test == "custom PID file" {
+				pidPath = filepath.Join(t.TempDir(), "custom.pid")
+				pidArg = pidPath
+			}
+			require.NoError(t, os.WriteFile(pidPath, []byte("1234"), 0o600))
+
+			hookStatePath := filepath.Join(t.TempDir(), "poststop.json")
+			u.Spec.Hooks = &specs.Hooks{Poststop: []specs.Hook{{
+				Path: "/bin/sh",
+				Args: []string{"sh", "-c", `cat > "$1"`, "poststop", hookStatePath},
+			}}}
+			require.NoError(t, u.CleanupFailedCreate(pidArg))
+
+			for _, removed := range []string{pidPath, monitorRoot, u.BaseDir} {
+				_, err := os.Stat(removed)
+				require.ErrorIs(t, err, os.ErrNotExist)
+			}
+			require.DirExists(t, u.State.Bundle)
+			hookState, err := os.ReadFile(hookStatePath)
+			require.NoError(t, err)
+			var stopped specs.State
+			require.NoError(t, json.Unmarshal(hookState, &stopped))
+			require.Equal(t, specs.StateStopped, stopped.Status)
+			require.Zero(t, stopped.Pid)
+		})
+	}
+}
+
+func TestHookWithChildHoldingPipes(t *testing.T) {
+	t.Parallel()
+	timeout := 1
+	for _, tc := range []struct {
+		name         string
+		command      string
+		timeout      *int
+		wantTimeout  bool
+		wantExitCode int
+	}{
+		{
+			name:        "timeout",
+			command:     `/bin/cat "$1"; exit 0`,
+			timeout:     &timeout,
+			wantTimeout: true,
+		},
+		{
+			name:    "successful exit with timeout",
+			command: `/bin/cat "$1" & exit 0`,
+			timeout: &timeout,
+		},
+		{
+			name:    "successful exit without timeout",
+			command: `/bin/cat "$1" & exit 0`,
+		},
+		{
+			name:         "failed exit before timeout",
+			command:      `/bin/sleep 0.2; /bin/cat "$1" & exit 17`,
+			timeout:      &timeout,
+			wantExitCode: 17,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fifo := filepath.Join(t.TempDir(), "release-child")
+			require.NoError(t, unix.Mkfifo(fifo, 0o600))
+			defer func() {
+				fd, err := unix.Open(fifo, unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+				if err == nil {
+					_ = unix.Close(fd)
+				}
+			}()
+
+			hook := specs.Hook{
+				Path:    "/bin/sh",
+				Args:    []string{"sh", "-c", tc.command, "hook", fifo},
+				Timeout: tc.timeout,
+			}
+			done := make(chan error, 1)
+			go func() { done <- executeHook(hook, nil) }()
+			select {
+			case err := <-done:
+				switch {
+				case tc.wantTimeout:
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+				case tc.wantExitCode != 0:
+					var exitErr *exec.ExitError
+					require.ErrorAs(t, err, &exitErr)
+					require.Equal(t, tc.wantExitCode, exitErr.ExitCode())
+					require.NotErrorIs(t, err, context.DeadlineExceeded)
+				default:
+					require.NoError(t, err)
+				}
+			case <-time.After(4 * time.Second):
+				t.Fatal("hook did not return within four seconds")
+			}
+		})
+	}
 }
