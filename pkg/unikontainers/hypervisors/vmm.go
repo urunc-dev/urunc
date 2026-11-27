@@ -72,6 +72,12 @@ var vmmFactories = map[VmmType]VMMFactory{
 			return &Hyperlight{binary: binary, binaryPath: binaryPath}
 		},
 	},
+	HviVmm: {
+		binary: HviBinary,
+		createFunc: func(binary, binaryPath string, _ bool) types.VMM {
+			return &HVI{binary: binary, binaryPath: binaryPath}
+		},
+	},
 }
 
 func NewVMM(vmmType VmmType, monitors map[string]types.MonitorConfig) (vmm types.VMM, err error) {

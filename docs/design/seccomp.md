@@ -35,6 +35,8 @@ supported VMM. In particular, in the case of:
   of seccomp by itself, as of Solo5 v0.11.0.
 - Solo5-spt, 'urunc' can not do anything since solo5-spt makes use of seccomp by
   itself.
+- hvi, 'urunc' relies on hvi's internal seccomp sandbox filters by default,
+  and disables them with `--no-sandbox` when container seccomp is unconfined.
 
 ## Caveats of using seccomp in 'urunc'
 
