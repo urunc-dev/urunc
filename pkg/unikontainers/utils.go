@@ -333,37 +333,6 @@ func findNS(namespaces []specs.LinuxNamespace, nsType specs.LinuxNamespaceType) 
 	return "", fmt.Errorf("namespace %s was not found", string(nsType))
 }
 
-// findQemuDataDir tries to find the location of data and BIOS files for Qemu.
-// At first checks /usr/local/share and if it does not exist, it falls back to
-// /usr/share. If /usr/local/share is a soft link, it will find its target.
-func findQemuDataDir(basename string) (string, error) {
-	// First check if the file exists under /usr/local/share
-	qdPath := filepath.Join("/usr/local/share/", basename)
-	info, err := os.Lstat(qdPath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return "", fmt.Errorf("failed to get info of %s: %w", qdPath, err)
-		}
-		// The file does not exist under /usr/local/share
-		// fallback to the usual path /usr/share/
-		qdPath = filepath.Join("/usr/share/", basename)
-	} else {
-		// The file exists under /usr/local/share, but check if it is a link
-		if info.Mode()&os.ModeSymlink != 0 {
-			// It is a link, get the target
-			qdPath, err = os.Readlink(qdPath)
-			if err != nil {
-				return "", fmt.Errorf("failed to get target of %s %w", qdPath, err)
-			}
-		}
-
-		// It is not a link, so we found it
-		return qdPath, nil
-	}
-
-	return qdPath, nil
-}
-
 func executeHook(hook specs.Hook, state []byte) error {
 	var stdout, stderr bytes.Buffer
 	var cancel context.CancelFunc

@@ -59,14 +59,21 @@ sudo apt install -y qemu-system
 default contains no host libraries. However, since the Qemu package is
 dynamically linked, it can not start without its shared libraries. Therefore,
 the host directories with Qemu's libraries need to be listed in the `host_libs`
-field of [`urunc`'s configuration](../configuration#monitor-fields). For
-example, on Debian and Ubuntu (x86_64), a coarse-grained selection of host
-libraries is:
+field of [`urunc`'s configuration](../configuration#monitor-fields).
+Moreover, Qemu's data files (e.g. BIOS) need to be listed in the `data_files`
+field. For example, on Debian and Ubuntu (x86_64), the following configuration
+lists the data files of Unikraft and Linux guests and a coarse-grained
+selection of host libraries:
 
 ```bash
 sudo mkdir -p /etc/urunc
 sudo tee -a /etc/urunc/config.toml > /dev/null <<'EOF'
 [monitors.qemu]
+data_files = ["/usr/share/seabios/bios-256k.bin",
+              "/usr/share/qemu/kvmvapic.bin",
+              "/usr/share/qemu/multiboot_dma.bin",
+              "/usr/share/qemu/linuxboot_dma.bin",
+              "/usr/lib/ipxe/qemu/efi-virtio.rom"]
 host_libs = ["/lib", "/lib64", "/usr/lib"]
 EOF
 ```
@@ -74,13 +81,12 @@ EOF
 On arm64, leave out `/lib64`, which does not exist there, since every listed
 path must exist on the host.
 
-Please use a much more fine-grained list in production: the files that `ldd`
-shows for Qemu and its network boot ROM. On Debian and Ubuntu (x86_64), the
-following command prints them:
+Please use a much more fine-grained list of libraries in production: the files
+that `ldd` shows for Qemu. On Debian and Ubuntu (x86_64), the following command
+prints them:
 
 ```bash
-{ ldd /usr/bin/qemu-system-x86_64 | grep -o '/[^ ]*'
-  echo /usr/lib/ipxe/qemu/efi-virtio.rom; }
+ldd /usr/bin/qemu-system-x86_64 | grep -o '/[^ ]*'
 ```
 
 Every listed path is a mount at each container start, so a long list also makes

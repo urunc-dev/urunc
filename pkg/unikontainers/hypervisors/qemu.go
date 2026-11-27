@@ -26,6 +26,8 @@ import (
 const (
 	QemuVmm    VmmType = "qemu"
 	QemuBinary string  = "qemu-system-"
+	// QemuDataDir is where Qemu looks for its data files (e.g. BIOS).
+	QemuDataDir string = "/usr/share/qemu"
 )
 
 type Qemu struct {
@@ -75,7 +77,7 @@ func (q *Qemu) BuildExecCmd(args types.ExecArgs, ukernel types.Unikernel) ([]str
 	exArgs := []string{
 		q.binaryPath,
 		"-m", qemuMem + "M",
-		"-L", "/usr/share/qemu", // Set the path for qemu bios/data
+		"-L", QemuDataDir, // Set the path for qemu bios/data
 		"-cpu", "host", // Choose CPU
 		"-enable-kvm",      // Enable KVM to use CPU virt extensions
 		"-display", "none", // Disable graphic output

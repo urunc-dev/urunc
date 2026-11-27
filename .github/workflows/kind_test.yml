@@ -183,7 +183,7 @@ jobs:
 
         [monitors.qemu]
         path = "/opt/urunc/bin/qemu-system-$(uname -m)"
-        data_path = "/opt/urunc/share/qemu"
+        data_files = ["/opt/urunc/share/qemu/qemu"]
 
         [monitors.firecracker]
         path = "/opt/urunc/bin/firecracker"

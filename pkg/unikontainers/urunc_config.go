@@ -254,7 +254,17 @@ func checkMonitorPaths(mon types.MonitorConfig) error {
 			return err
 		}
 	}
-	return checkHostLibs(mon.HostLibs)
+	err := checkHostLibs(mon.HostLibs)
+	if err != nil {
+		return err
+	}
+	for _, file := range mon.DataFiles {
+		err = checkConfigPath("data_files", file)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkHostLibs checks the host_libs field of a monitor or an extra binary.
@@ -288,8 +298,8 @@ func checkConfigPath(field, path string) error {
 func (p *UruncConfig) Map() map[string]string {
 	// since log and timestamps are loaded at the start of urunc, we will not be adding
 	// them to this map. this map will be used to save the rest of the urunc config to state.json
-	// The host libraries are not added either, since only create uses them,
-	// with the configuration from the file.
+	// The host libraries and data files are not added either, since only
+	// create uses them, with the configuration from the file.
 	cfgMap := make(map[string]string)
 
 	cfgMap[libcontainerKey] = strconv.FormatBool(p.Runtime.Libcontainer)
@@ -299,7 +309,6 @@ func (p *UruncConfig) Map() map[string]string {
 		cfgMap[prefix+"default_memory_mb"] = strconv.FormatUint(uint64(hvCfg.DefaultMemoryMB), 10)
 		cfgMap[prefix+"default_vcpus"] = strconv.FormatUint(uint64(hvCfg.DefaultVCPUs), 10)
 		cfgMap[prefix+"binary_path"] = hvCfg.BinaryPath
-		cfgMap[prefix+"data_path"] = hvCfg.DataPath
 		cfgMap[prefix+"vhost"] = strconv.FormatBool(hvCfg.Vhost)
 		cfgMap[prefix+"socket_path"] = hvCfg.SocketPath
 	}
@@ -347,8 +356,6 @@ func UruncConfigFromMap(cfgMap map[string]string) *UruncConfig {
 			}
 		case "binary_path":
 			hvCfg.BinaryPath = val
-		case "data_path":
-			hvCfg.DataPath = val
 		case "socket_path":
 			hvCfg.SocketPath = val
 		case "vhost":

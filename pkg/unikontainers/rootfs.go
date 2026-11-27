@@ -25,6 +25,7 @@ import (
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
 
+	"github.com/urunc-dev/urunc/pkg/unikontainers/hypervisors"
 	"github.com/urunc-dev/urunc/pkg/unikontainers/types"
 )
 
@@ -487,11 +488,11 @@ func setupConsole(monRootfs string) error {
 }
 
 // mountsForMonitor returns the mounts of the monitor rootfs: the special
-// filesystems, the monitor binary, Qemu's data directories and the host
-// libraries. The libraries can not overlap these mounts, otherMounts or the
-// control socket. They are mounted first, so a later mount hides them if they
-// still overlap. All the paths must be absolute and clean.
-func mountsForMonitor(monitorPath string, monitorDataPath string, socketPath string, libs []string, otherMounts []specs.Mount) ([]specs.Mount, error) {
+// filesystems, the monitor binary, Qemu's data files and the host libraries.
+// The libraries can not overlap these mounts, otherMounts or the control
+// socket. They are mounted first, so a later mount hides them if they still
+// overlap. All the paths must be absolute and clean.
+func mountsForMonitor(vmmType hypervisors.VmmType, monitorPath string, monCfg types.MonitorConfig, otherMounts []specs.Mount) ([]specs.Mount, error) {
 	procMount := specs.Mount{
 		Type:        "proc",
 		Source:      "proc",
@@ -512,35 +513,17 @@ func mountsForMonitor(monitorPath string, monitorDataPath string, socketPath str
 
 	mounts := []specs.Mount{bindMount(monitorPath, monitorPath, true, true), procMount, devMount, devPtsMount}
 
-	monitorName := filepath.Base(monitorPath)
-	if len(monitorName) >= 4 && monitorName[:4] == "qemu" {
-		qDataPath := filepath.Join(monitorDataPath, "qemu")
-		sBiosPath := filepath.Join(monitorDataPath, "seabios")
-		if monitorDataPath == "" {
-			var err error
-			qDataPath, err = findQemuDataDir("qemu")
-			if err != nil {
-				return nil, err
-			}
-			sBiosPath, err = findQemuDataDir("seabios")
-			if err != nil {
-				return nil, fmt.Errorf("failed to get info of seabios directory: %w", err)
-			}
-		}
-
-		mounts = append(mounts, bindMount(qDataPath, "/usr/share/qemu", true, true))
-
-		// In urunc-deploy and in some distros seabios does not exist and
-		// we do not need it. So if we could not find it, just ignore it.
-		if _, err := os.Stat(sBiosPath); err == nil {
-			mounts = append(mounts, bindMount(sBiosPath, "/usr/share/seabios", true, true))
-		} else if !os.IsNotExist(err) {
+	// Decide by the monitor's type, since its binary can have any name.
+	if vmmType == hypervisors.QemuVmm {
+		dataMounts, err := qemuDataMounts(monCfg.DataFiles)
+		if err != nil {
 			return nil, err
 		}
+		mounts = append(mounts, dataMounts...)
 	}
 
 	// Without host libraries, the default, there is nothing to check.
-	if len(libs) == 0 {
+	if len(monCfg.HostLibs) == 0 {
 		return mounts, nil
 	}
 
@@ -560,10 +543,10 @@ func mountsForMonitor(monitorPath string, monitorDataPath string, socketPath str
 	// Reserve the socket itself, not its directory, which might be / (e.g.
 	// for /api.sock). A library that contains the socket would make its
 	// directory read-only, so neither urunc nor the monitor could create it.
-	if socketPath != "" {
-		reservedPaths = append(reservedPaths, socketPath)
+	if monCfg.SocketPath != "" {
+		reservedPaths = append(reservedPaths, monCfg.SocketPath)
 	}
-	libMounts, err := hostLibMounts(libs, reservedPaths)
+	libMounts, err := hostLibMounts(monCfg.HostLibs, reservedPaths)
 	if err != nil {
 		return nil, err
 	}
@@ -603,6 +586,43 @@ func hostLibMounts(libs []string, reservedPaths []string) ([]specs.Mount, error)
 		}
 		valid = append(valid, lib)
 		mounts = append(mounts, bindMount(lib, lib, true, true, "nodev", "nosuid"))
+	}
+
+	return mounts, nil
+}
+
+// qemuDataMounts returns the mounts of Qemu's data files, which come only from
+// the data_files of its configuration: either a single directory, mounted as a
+// whole at hypervisors.QemuDataDir, or files, each mounted there under its own
+// name. Every path must be absolute and clean, as LoadUruncConfig checks, and
+// exist on the host. Two files can not have the same name, so a file listed
+// twice is an error too. Since a bind mount follows the symlinks of its source,
+// a file that is a link (e.g. to ../seabios/bios-256k.bin) brings its target
+// along.
+func qemuDataMounts(dataFiles []string) ([]specs.Mount, error) {
+	var mounts []specs.Mount
+	names := make(map[string]string)
+	for _, path := range dataFiles {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get info of qemu data file %s: %w", path, err)
+		}
+		if info.IsDir() {
+			if len(dataFiles) > 1 {
+				return nil, fmt.Errorf("qemu data directory %s must be the only entry of data_files", path)
+			}
+			return []specs.Mount{bindMount(path, hypervisors.QemuDataDir, true, true, "nodev", "nosuid", "noexec")}, nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("qemu data file %s is neither a regular file nor a directory", path)
+		}
+		name := filepath.Base(path)
+		other, found := names[name]
+		if found {
+			return nil, fmt.Errorf("qemu data files %s and %s have the same name", other, path)
+		}
+		names[name] = path
+		mounts = append(mounts, bindMount(path, filepath.Join(hypervisors.QemuDataDir, name), true, true, "nodev", "nosuid", "noexec"))
 	}
 
 	return mounts, nil
