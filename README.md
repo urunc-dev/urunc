@@ -41,7 +41,7 @@ particular software running alongside the user's application, inside or outside
 the unikernel. As a result, `urunc` manages the user's application running
 inside the unikernel through the respective VM process.
 
-![demo](docs/img/urunc-nerdctl-example.gif)
+![demo](docs/assets/images/urunc-nerdctl-example.gif)
 
 ## Quick start
 
@@ -255,4 +255,4 @@ for more information on what changed in the latest and previous releases.
 We kindly invite everyone interested in `urunc` to join our
 [Slack channel](https://cloud-native.slack.com/archives/C08V201G35J).
 To directly communicate with the maintainers, feel free to drop an email at
-[`urunc`'s maintainers' mailing list](cncf-urunc-maintainers@lists.cncf.io )
+[`urunc`'s maintainers' mailing list](mailto:cncf-urunc-maintainers@lists.cncf.io)

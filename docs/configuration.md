@@ -150,12 +150,12 @@ values.
 
 #### Supported monitors and their respective subsection names
 
-- [QEMU/KVM](./hypervisor-support#qemu) - `qemu`
-- [Firecracker](./hypervisor-support#firecracker) - `firecracker`
-- [Cloud-Hypervisor](./hypervisor-support#cloud-hypervisor) - `cloud-hypervisor`
-- [Solo5-hvt](./hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
-- [Solo5-spt](./hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
-- [Hyperlight](./hypervisor-support#hyperlight) - `hyperlight-unikraft`
+- [QEMU/KVM](../hypervisor-support#qemu) - `qemu`
+- [Firecracker](../hypervisor-support#aws-firecracker) - `firecracker`
+- [Cloud-Hypervisor](../hypervisor-support#cloud-hypervisor) - `cloud-hypervisor`
+- [Solo5-hvt](../hypervisor-support#solo5-hvt) - `hvt` - Solo5 hvt (KVM-based tender)
+- [Solo5-spt](../hypervisor-support#solo5-spt) - `spt` - Solo5 spt (Seccomp-based tender)
+- [Hyperlight](../hypervisor-support#hyperlight) - `hyperlight-unikraft`
 
 #### Monitor Fields
 

@@ -126,7 +126,7 @@ You can obtain [urunit](https://github.com/nubificus/urunit) in two ways:
 ## Preparing the image
 
 To differentiate traditional containers from unikernels, `urunc` uses specific
-[annotations](../image-building#annotations). Therefore, to run a container with
+[annotations](../../package#annotations). Therefore, to run a container with
 a Linux kernel on `urunc`, these annotations must be configured, and the Linux
 kernel must be included in the container image’s root filesystem. To simplify
 this process, we will use [bunny](https://github.com/nubificus/bunny).
@@ -149,7 +149,7 @@ the container's image in the form of a block image and `urunc` can then
 directly attach this block image to the VM.
 
 To set up devmapper as a snapshotter please refer to the [installation
-guide](../installation#setup-thinpool-devmapper).
+guide](../../installation#setting-and-configuring-devmapper).
 
 #### Preparing the container image.
 
