@@ -17,7 +17,7 @@ package hypervisors
 import "testing"
 
 func newTestSPT() *SPT {
-	return &SPT{binary: SptBinary, binaryPath: testSptBinary}
+	return &SPT{solo5{binary: SptBinary, binaryPath: testSptBinary}}
 }
 
 func TestSptBuildExecCmd(t *testing.T) {

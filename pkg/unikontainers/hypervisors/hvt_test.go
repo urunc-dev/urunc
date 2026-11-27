@@ -17,7 +17,7 @@ package hypervisors
 import "testing"
 
 func newTestHVT() *HVT {
-	return &HVT{binary: HvtBinary, binaryPath: testHvtBinary}
+	return &HVT{solo5{binary: HvtBinary, binaryPath: testHvtBinary}}
 }
 
 func TestHvtBuildExecCmd(t *testing.T) {
