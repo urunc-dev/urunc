@@ -150,14 +150,35 @@ func (u *Unikraft) Init(data types.UnikernelParams) error {
 }
 
 func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGateway, ethDeviceMask, dnsServer string) error {
-	if dnsServer == "" {
-		dnsServer = defaultDNSServer
+	u.Net = UnikraftNet{}
+	var currentAddress string
+	switch {
+	case ethDeviceIP == "":
+	case ethDeviceGateway == "":
+		prefix, err := subnetMaskToCIDR(ethDeviceMask)
+		if err != nil {
+			return err
+		}
+		currentAddress = fmt.Sprintf("netdev.ip=%s/%d", ethDeviceIP, prefix)
+		if dnsServer != "" {
+			// Keep the gateway field empty when passing a DNS server.
+			currentAddress += "::" + dnsServer
+		}
+	default:
+		if dnsServer == "" {
+			dnsServer = defaultDNSServer
+		}
+		currentAddress = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":" + dnsServer
 	}
 
 	setCompatArgs := func() {
-		u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
-		u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
-		u.Net.Mask = "netdev.ipv4_subnet_mask=" + ethDeviceMask
+		if ethDeviceIP != "" {
+			u.Net.Address = "netdev.ipv4_addr=" + ethDeviceIP
+			u.Net.Mask = "netdev.ipv4_subnet_mask=" + ethDeviceMask
+		}
+		if ethDeviceGateway != "" {
+			u.Net.Gateway = "netdev.ipv4_gw_addr=" + ethDeviceGateway
+		}
 		// TODO: We need to add support for actual block devices (e.g. virtio-blk)
 		// and sharedfs or any other Unikraft related ways to pass data to guest.
 		if rootFsType == "initrd" {
@@ -168,7 +189,7 @@ func (u *Unikraft) configureUnikraftArgs(rootFsType, ethDeviceIP, ethDeviceGatew
 	}
 
 	setCurrentArgs := func() {
-		u.Net.Address = "netdev.ip=" + ethDeviceIP + "/24:" + ethDeviceGateway + ":" + dnsServer
+		u.Net.Address = currentAddress
 		switch rootFsType {
 		case "initrd":
 			// TODO: This needs better handling. We need to revisit this

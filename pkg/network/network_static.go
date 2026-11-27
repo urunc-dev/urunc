@@ -91,7 +91,7 @@ func setNATRule(iface string, sourceIP string) error {
 func (n StaticNetwork) NetworkSetup(uid uint32, gid uint32) (*UnikernelNetworkInfo, error) {
 	newTapName := strings.ReplaceAll(DefaultTap, "X", "0")
 	addTCRules := false
-	redirectLink, err := discoverContainerIface()
+	redirectLink, _, err := discoverContainerIface()
 	if err != nil {
 		netlog.Errorf("failed to find container interface, (unikernel may have been spawned using ctr): %v", err)
 		return nil, err

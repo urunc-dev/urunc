@@ -119,7 +119,7 @@ func (l *Linux) CommandString() (string, error) {
 			bootParams += retainInitrdPath
 		}
 	}
-	if !IsIPInSubnet(l.Net) {
+	if l.Net.Gateway != "" && !IsIPInSubnet(l.Net) {
 		bootParams += " URUNIT_DEFROUTE=1"
 	}
 	if l.App != "" {

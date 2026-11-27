@@ -17,7 +17,6 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/cyphar/filepath-securejoin v0.7.0
 	github.com/hashicorp/go-version v1.9.0
-	github.com/jackpal/gateway v1.2.0
 	github.com/moby/sys/mountinfo v0.7.3
 	github.com/moby/sys/userns v0.2.1
 	github.com/nubificus/hedge_cli v0.0.3

@@ -105,6 +105,7 @@ func (m *Mirage) MonitorCli() types.MonitorCliArgs {
 }
 
 func (m *Mirage) Init(data types.UnikernelParams) error {
+	m.Net = MirageNet{}
 	// if Mask is empty, there is no network support
 	if data.Net.Mask != "" {
 		mask, err := subnetMaskToCIDR(data.Net.Mask)
@@ -116,12 +117,13 @@ func (m *Mirage) Init(data types.UnikernelParams) error {
 		// the plain --ipv4 and --ipv4-gateway flags, but any other device needs
 		// its name as the prefix, like --management-ipv4 for a device called
 		// "management". So we only add the prefix when the device is not "service".
+		prefix := "--"
 		if data.NetDevName != "" && data.NetDevName != "service" {
-			m.Net.Address = fmt.Sprintf("--%s-ipv4=%s/%d", data.NetDevName, data.Net.IP, mask)
-			m.Net.Gateway = "--" + data.NetDevName + "-ipv4-gateway=" + data.Net.Gateway
-		} else {
-			m.Net.Address = fmt.Sprintf("--ipv4=%s/%d", data.Net.IP, mask)
-			m.Net.Gateway = "--ipv4-gateway=" + data.Net.Gateway
+			prefix += data.NetDevName + "-"
+		}
+		m.Net.Address = fmt.Sprintf("%sipv4=%s/%d", prefix, data.Net.IP, mask)
+		if data.Net.Gateway != "" {
+			m.Net.Gateway = prefix + "ipv4-gateway=" + data.Net.Gateway
 		}
 	}
 	m.Block = make([]MirageBlock, 0, len(data.Block))
