@@ -13,3 +13,4 @@ pymdown-extensions
 mkdocstrings[python]
 ruff
 mike
+requests>=2.33.0 # not directly required, pinned by Snyk to avoid a vulnerability
