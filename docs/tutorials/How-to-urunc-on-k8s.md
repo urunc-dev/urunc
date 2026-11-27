@@ -235,12 +235,19 @@ During installation, the following steps take place:
       install, all of them by default.
     * Copies QEMU data files to `/opt/urunc/share`.
     * Installs a configuration file at `/etc/urunc/config.toml`.
-    * Registers `urunc` as a `containerd` runtime: with containerd 2.x through a
-      drop-in file, and with containerd 1.x or k0s by adding the runtime to the
-      configuration file itself. The drop-in file goes into a directory the
-      configuration already imports (`conf.d`, or `config-v3.toml.d` on
-      k3s/rke2) if there is one, or else into `config.d`, with an import line
-      added to the configuration. A missing configuration file is created. On
+    * Registers `urunc` as a `containerd` runtime. On k0s it writes
+      `/etc/k0s/containerd.d/urunc.toml`. A k0s-managed containerd configuration
+      loads this file automatically. With a user-managed containerd 2.x
+      configuration, add `/etc/k0s/containerd.d/*.toml` to the `imports` in
+      `/etc/k0s/containerd.toml` before deploying. On containerd 1.x, the
+      DaemonSet requires a k0s-managed configuration because an imported
+      snippet can replace the existing CRI settings.
+      On other distributions it uses a drop-in file with containerd 2.x and
+      updates the configuration file with containerd 1.x. The drop-in goes
+      into a directory already imported by the configuration (`conf.d`, or
+      `config-v3.toml.d` on k3s/rke2) if there is one, or else into `config.d`,
+      with an import line added to the configuration. A missing configuration
+      file is created. On
       k3s/rke2, which render `config.toml` on every start, the
       configuration file is their template (`config-v3.toml.tmpl`, or else
       `config.toml.tmpl`). A missing one is created as a copy of the rendered
@@ -248,7 +255,8 @@ During installation, the following steps take place:
       Do not edit the `urunc-deploy.toml` drop-in file: `urunc-deploy` rewrites
       it on every install and deletes it on uninstall.
     * Restarts `containerd`, if necessary.
-    * Labels the Node with label `urunc.io/urunc-runtime=true`.
+    * Labels the Node with `urunc.io/urunc-runtime=true`. On k0s, it waits
+      for the running containerd to report the `urunc` runtime first.
 - Finally, `urunc` is added as a runtime class in k8s.
 
 During cleanup, these changes are reverted:
@@ -275,6 +283,21 @@ During cleanup, these changes are reverted:
 > the comments and formatting of that file are lost. With containerd 2.x,
 > configurations that already import `conf.d` (or `config-v3.toml.d` on
 > k3s/rke2) are never edited.
+
+### Upgrading k0s to 1.36 or later
+
+k0s 1.36 rejects containerd drop-ins that use the legacy CRI plugin name.
+When upgrading from k0s 1.35 or earlier, migrate the existing
+`/etc/k0s/containerd.d/urunc.toml` on each worker. Do this during the node
+upgrade after stopping the old k0s service and before starting the upgraded
+service.
+
+1. Rename `[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.urunc]`
+   to `[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.urunc]`.
+2. If the snippet has a top-level `version`, set it to `3`.
+
+Keep the runtime settings under the renamed table. Check other drop-ins as
+part of the same upgrade. See the [k0s containerd configuration guide](https://docs.k0sproject.io/stable/runtime/#k0s-managed-dynamic-runtime-configuration).
 
 ### Customizing the urunc configuration
 

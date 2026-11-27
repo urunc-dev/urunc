@@ -134,6 +134,6 @@ COPY --from=intermediate /usr/bin/kubectl /usr/bin/kubectl
 COPY deployment/urunc-deploy/scripts/install.sh /urunc-artifacts/scripts/install.sh
 COPY deployment/urunc-deploy/config.toml /deployment/config.toml
 RUN apk update && \
-    apk add --no-cache bash curl py3-pip && \
+    apk add --no-cache bash cri-tools curl py3-pip && \
     pip install --no-cache-dir --break-system-packages yq==3.2.3 && \
     chmod +x /urunc-artifacts/scripts/install.sh
